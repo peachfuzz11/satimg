@@ -1,0 +1,5 @@
+rasterio
+pillow
+xarray
+rioxarray
+dask[array]

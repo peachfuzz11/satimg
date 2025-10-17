@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "satproducts"
+version = "0.1.0"
+description = "A Python package for handling various satellite data products."
+readme = "README.md"
+authors = [
+    { name = "ph" }
+]
+
+requires-python = ">=3.9"
+dynamic = ["dependencies", "optional-dependencies"]
+
+
+keywords = ["satellite", "data", "products", "Sentinel", "Landsat", "Iceye", "RCM"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[project.urls]
+Repository = "https://github.com/peachfuzz11/satproducts"
+
+
