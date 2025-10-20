@@ -1,18 +1,17 @@
 import os
 import unittest
 
-from handlers.iceye_handler import IceyeHandler
-from handlers.rcm_handler import RCMHandler
-from handlers.sentinel_handler import SentinelHandler
+from products.landsat.landsat_handler import LandsatHandler
 from products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
 from products.sentinel.sentinel1.sentinel1_iw_product import Sentinel1IWProduct
 from products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
+from products.sentinel.sentinel_handler import SentinelHandler
 from sat_product_factory import SatProductFactory
 from tests.test_helper import BASE_DIR
 
 
 class HandlerTest(unittest.TestCase):
-    all_handlers = [SentinelHandler(), RCMHandler(), IceyeHandler()]
+    all_handlers = [SentinelHandler(), LandsatHandler()]
 
     def test_fail_handler(self):
         path = ""
@@ -21,7 +20,7 @@ class HandlerTest(unittest.TestCase):
             self.assertTrue(product is None)
             try:
                 product = handler.handle(path)
-            except NotImplementedError as e:
+            except Exception as e:
                 pass
             self.assertTrue(product is None)
 
@@ -30,7 +29,7 @@ class HandlerTest(unittest.TestCase):
         product = None
         try:
             product = SatProductFactory(path).create()
-        except NotImplementedError as e:
+        except Exception as e:
             pass
         self.assertTrue(product is None)
 

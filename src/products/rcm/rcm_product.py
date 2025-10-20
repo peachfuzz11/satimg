@@ -8,7 +8,7 @@ import xarray as xr
 from PIL.Image import Image
 
 from common.image_slice import ImageSlice
-from metadata.base_transformer import BaseTransformer
+from transformers.base_transformer import BaseTransformer
 from products.base.image.raster_product import RasterProduct
 from products.rcm.rcm_metadata import RCMMetadataLoader
 
@@ -135,7 +135,7 @@ class RCMProduct(RasterProduct):
         return super().get_transformer(self.tiff_files[0])
 
     def parse_metadata(self):
-        """Extract metadata from the XML file."""
+        """Extract transformers from the XML file."""
         xml_file = self.files["xml"][0]  # Get the first XML file from the list
 
         tree = ET.parse(xml_file)
@@ -143,7 +143,7 @@ class RCMProduct(RasterProduct):
 
         ns = {"ns": "rcmGsProductSchema"}  # Define the XML namespace
 
-        # Extract relevant metadata fields from the XML structure
+        # Extract relevant transformers fields from the XML structure
         self.metadata = {
             "ProductType": root.find("ns:sourceAttributes/ns:radarParameters/ns:acquisitionType", ns).text,
             "productId": root.find("ns:productId", ns).text,
@@ -180,7 +180,7 @@ class RCMProduct(RasterProduct):
                 # Load the band using rioxarray
                 band = rioxarray.open_rasterio(tif_file, chunks=True, masked=True)
 
-                # Extract the band name from TIFF metadata
+                # Extract the band name from TIFF transformers
                 band_name = band.attrs.get("TIFFTAG_IMAGEDESCRIPTION", f"band_{i + 1}")
                 band_order.append(band_name)
 

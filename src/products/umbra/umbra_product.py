@@ -10,7 +10,7 @@ import rioxarray
 from PIL.Image import Image
 
 from common.image_slice import ImageSlice
-from metadata.base_transformer import BaseTransformer
+from transformers.base_transformer import BaseTransformer
 from products.base.image.raster_product import RasterProduct
 
 
@@ -169,7 +169,7 @@ class UmbraProduct(RasterProduct, abc.ABC):
         self._umbra_type = value
 
     def parse_metadata(self):
-        """Extract metadata from the JSON file."""
+        """Extract transformers from the JSON file."""
         json_file = self.files["json"][0]  # Get the first JSON file from the list
 
         try:
@@ -213,7 +213,7 @@ class UmbraProduct(RasterProduct, abc.ABC):
             }
 
         except Exception as e:
-            logging.error(f"Failed to extract metadata from {json_file}: {e}")
+            logging.error(f"Failed to extract transformers from {json_file}: {e}")
             raise
 
     def _extract_metadata(self):

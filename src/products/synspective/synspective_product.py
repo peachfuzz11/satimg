@@ -73,7 +73,7 @@ class SynspectiveProduct(RasterProduct, abc.ABC):
         return image
 
     def _extract_metadata(self):
-        """Extract metadata specific to Sentinel-1."""
+        """Extract transformers specific to Sentinel-1."""
         pass
 
     @abc.abstractmethod

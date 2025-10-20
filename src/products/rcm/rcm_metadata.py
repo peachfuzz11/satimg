@@ -30,7 +30,7 @@ def check_image_order(image_list: List[str]) -> List[str]:
 
 class RCMMetadataLoader:
     """
-    Class for loading and parsing RCM metadata from product.xml.
+    Class for loading and parsing RCM transformers from product.xml.
 
     Attributes:
         product_path (str): Path to the RCM product folder.
@@ -56,15 +56,15 @@ class RCMMetadataLoader:
 
     def load_product_metadata(self) -> Optional[Dict[str, Any]]:
         """
-        Load metadata from the RCM product.xml file.
+        Load transformers from the RCM product.xml file.
 
         Returns:
-            dict: Parsed metadata as a structured dictionary.
+            dict: Parsed transformers as a structured dictionary.
         """
         if not self._product_path:
             raise ValueError("Product path is not set.")
 
-        product_file = os.path.join(self._product_path, "metadata", "product.xml")
+        product_file = os.path.join(self._product_path, "transformers", "product.xml")
         if not os.path.exists(product_file):
             raise FileNotFoundError(f"product.xml not found in {self._product_path}")
 
@@ -149,7 +149,7 @@ class RCMMetadataLoader:
             return None
 
         except Exception as e:
-            warnings.warn(f"Error loading product metadata: {e}")
+            warnings.warn(f"Error loading product transformers: {e}")
             return None
 
     def load_calibration_incidence_angles(self) -> Optional[Dict[str, Any]]:
@@ -157,12 +157,12 @@ class RCMMetadataLoader:
         Load incidence angles from RCM calibration/incidenceAngles.xml.
 
         Returns:
-            dict: Parsed incidence angle metadata as a structured dictionary.
+            dict: Parsed incidence angle transformers as a structured dictionary.
         """
         if not self._product_path:
             raise ValueError("Product path is not set.")
 
-        incidence_file = os.path.join(self._product_path, "metadata", "calibration", "incidenceAngles.xml")
+        incidence_file = os.path.join(self._product_path, "transformers", "calibration", "incidenceAngles.xml")
         if not os.path.exists(incidence_file):
             raise FileNotFoundError(f"incidenceAngles.xml not found in {self._product_path}/calibration")
 
@@ -194,14 +194,14 @@ class RCMMetadataLoader:
 
     def load_lut(self, lut_file: str, lut_name: str) -> Optional[Dict[str, Any]]:
         """
-        Load lookup table (LUT) data from a specified LUT XML file and add it to calibration metadata.
+        Load lookup table (LUT) data from a specified LUT XML file and add it to calibration transformers.
 
         Args:
             lut_file (str): Path to the LUT XML file.
-            lut_name (str): Name to store the LUT in calibration metadata.
+            lut_name (str): Name to store the LUT in calibration transformers.
 
         Returns:
-            dicpasst: Parsed LUT metadata including pixel first value, step size, offset, and gains.
+            dicpasst: Parsed LUT transformers including pixel first value, step size, offset, and gains.
         """
         if not os.path.exists(lut_file):
             raise FileNotFoundError(f"LUT file not found: {lut_file}")
@@ -210,7 +210,7 @@ class RCMMetadataLoader:
             tree = ET.parse(lut_file)
             root = tree.getroot()
 
-            # Extract LUT metadata
+            # Extract LUT transformers
             pixel_first_value = int(root.find("rcm:pixelFirstLutValue", self._ns).text)
             step_size = int(root.find("rcm:stepSize", self._ns).text)
             number_of_values = int(root.find("rcm:numberOfValues", self._ns).text)
@@ -225,7 +225,7 @@ class RCMMetadataLoader:
                 "gains": gains,
             }
 
-            # Add LUT data to calibration metadata
+            # Add LUT data to calibration transformers
             if not hasattr(self, "calibration_metadata"):
                 self.calibration_metadata = {}
 
@@ -240,18 +240,18 @@ class RCMMetadataLoader:
     def load_all_luts(self):
         """
         Load all LUT files (Beta, Gamma, Sigma) for HH and HV polarizations
-        and add them to calibration metadata.
+        and add them to calibration transformers.
         """
 
         try:
 
             lut_files = {
-                "lutBeta_HH": os.path.join(self._product_path, "metadata", "calibration", "lutBeta_HH.xml"),
-                "lutBeta_HV": os.path.join(self._product_path, "metadata", "calibration", "lutBeta_HV.xml"),
-                "lutGamma_HH": os.path.join(self._product_path, "metadata", "calibration", "lutGamma_HH.xml"),
-                "lutGamma_HV": os.path.join(self._product_path, "metadata", "calibration", "lutGamma_HV.xml"),
-                "lutSigma_HH": os.path.join(self._product_path, "metadata", "calibration", "lutSigma_HH.xml"),
-                "lutSigma_HV": os.path.join(self._product_path, "metadata", "calibration", "lutSigma_HV.xml"),
+                "lutBeta_HH": os.path.join(self._product_path, "transformers", "calibration", "lutBeta_HH.xml"),
+                "lutBeta_HV": os.path.join(self._product_path, "transformers", "calibration", "lutBeta_HV.xml"),
+                "lutGamma_HH": os.path.join(self._product_path, "transformers", "calibration", "lutGamma_HH.xml"),
+                "lutGamma_HV": os.path.join(self._product_path, "transformers", "calibration", "lutGamma_HV.xml"),
+                "lutSigma_HH": os.path.join(self._product_path, "transformers", "calibration", "lutSigma_HH.xml"),
+                "lutSigma_HV": os.path.join(self._product_path, "transformers", "calibration", "lutSigma_HV.xml"),
             }
             for lut_name, lut_path in lut_files.items():
                 self.load_lut(lut_path, lut_name)
@@ -263,7 +263,7 @@ class RCMMetadataLoader:
         files_dict = {
             "tif": [],  # List to store multiple .tif image files
             "xml": [],  # List to store multiple product .xml files
-            "safe": None,  # SAFE metadata (if present)
+            "safe": None,  # SAFE transformers (if present)
             "noise_levels_hh": [],  # List for HH noise level files
             "noise_levels_hv": [],  # List for HV noise level files
             "noise_levels_vv": [],  # List for VV noise level files
@@ -290,8 +290,8 @@ class RCMMetadataLoader:
 
                     files_dict["tif"].append(file_path)
 
-                # Identify all product .xml files in the "metadata" folder
-                elif file.endswith(".xml") and "metadata" in root:
+                # Identify all product .xml files in the "transformers" folder
+                elif file.endswith(".xml") and "transformers" in root:
                     if "product" in file.lower():
                         files_dict["xml"].append(file_path)
 
@@ -333,7 +333,7 @@ class RCMMetadataLoader:
                 elif "support" in root:
                     files_dict["support_files"].append(file_path)
 
-                # Identify the .SAFE metadata file (if it exists)
+                # Identify the .SAFE transformers file (if it exists)
                 elif file.endswith(".SAFE"):
                     files_dict["safe"] = file_path
 

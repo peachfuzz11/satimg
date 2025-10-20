@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 
 import rioxarray
 
-from metadata.base_transformer import BaseTransformer
+from transformers.base_transformer import BaseTransformer
 from products.synspective.synspective_product import SynspectiveProduct
 
 
@@ -40,7 +40,7 @@ class SynspectiveSMGRDProduct(SynspectiveProduct):
         return tif_file, xml_file
 
     def parse_metadata(self):
-        """Parse the XML metadata file."""
+        """Parse the XML transformers file."""
         tree = ET.parse(self._xml_path)
         root = tree.getroot()
 
@@ -49,14 +49,14 @@ class SynspectiveSMGRDProduct(SynspectiveProduct):
             result = element.find(path, namespaces=namespaces)
             return result.text if result is not None else None
 
-        # Extract useful metadata fields from the XML file
+        # Extract useful transformers fields from the XML file
         meta_data = root.find(".//eop:EarthObservationMetaData", namespaces={"eop": "http://earth.esa.int/eop"})
         processing_info = meta_data.find(".//eop:ProcessingInformation", namespaces={"eop": "http://earth.esa.int/eop"})
         acquisition_info = root.find(".//sar:Acquisition", namespaces={"sar": "http://earth.esa.int/sar"})
         platform_info = root.find(".//eop:EarthObservationEquipment/eop:platform",
                                   namespaces={"eop": "http://earth.esa.int/eop"})
 
-        # Extract metadata fields using the helper function
+        # Extract transformers fields using the helper function
         self.metadata = {
             "creation_date": get_text_or_none(meta_data, "eop:creationDate",
                                               namespaces={"eop": "http://earth.esa.int/eop"}),

@@ -6,7 +6,7 @@ import rasterio
 from PIL.Image import Image
 
 from common.image_slice import ImageSlice
-from metadata.base_transformer import BaseTransformer
+from transformers.base_transformer import BaseTransformer
 from products.base.image.raster_product import RasterProduct
 
 

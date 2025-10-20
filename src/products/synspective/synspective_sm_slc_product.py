@@ -3,7 +3,7 @@ import os
 
 import rasterio
 
-from metadata.base_transformer import BaseTransformer
+from transformers.base_transformer import BaseTransformer
 from products.synspective.synspective_product import SynspectiveProduct
 
 
@@ -58,7 +58,7 @@ class SynspectiveSMSLCProduct(SynspectiveProduct):
             raise FileNotFoundError("NITF file not found.")
 
     def parse_metadata(self):
-        """Parse the XML metadata file."""
+        """Parse the XML transformers file."""
         return NotImplementedError
 
     def close(self):
