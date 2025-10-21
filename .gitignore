@@ -164,3 +164,4 @@ cython_debug/
 
 # macOS stores DS_Store files on remote file systems.
 .DS_Store
+/.idea/

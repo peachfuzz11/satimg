@@ -2,7 +2,7 @@ import datetime
 import os
 import unittest
 
-from products.sentinel.sentinel1.service.sentinel1_service import get_manifest_data
+from satproducts.products.sentinel.sentinel1.service.sentinel1_service import get_manifest_data
 from tests.test_helper import BASE_DIR
 
 

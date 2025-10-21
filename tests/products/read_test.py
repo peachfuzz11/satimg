@@ -1,6 +1,6 @@
 import abc
 
-from common.image_slice import ImageSlice
+from satproducts.common.image_slice import ImageSlice
 
 
 class ReadTest(abc.ABC):

@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import datetime
 
-from products.sentinel.sentinel2.service.sentinel2_service import get_mtd_msil1c_data, get_mtd_tl_data
+from satproducts.products.sentinel.sentinel2.service.sentinel2_service import get_mtd_msil1c_data, get_mtd_tl_data
 from tests.test_helper import BASE_DIR
 
 

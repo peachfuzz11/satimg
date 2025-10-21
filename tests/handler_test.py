@@ -1,12 +1,12 @@
 import os
 import unittest
 
-from products.landsat.landsat_handler import LandsatHandler
-from products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
-from products.sentinel.sentinel1.sentinel1_iw_product import Sentinel1IWProduct
-from products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
-from products.sentinel.sentinel_handler import SentinelHandler
-from sat_product_factory import SatProductFactory
+from satproducts.products.landsat.landsat_handler import LandsatHandler
+from satproducts.products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
+from satproducts.products.sentinel.sentinel1.sentinel1_iw_product import Sentinel1IWProduct
+from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
+from satproducts.products.sentinel.sentinel_handler import SentinelHandler
+from satproducts.sat_product_factory import SatProductFactory
 from tests.test_helper import BASE_DIR
 
 

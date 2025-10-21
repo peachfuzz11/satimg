@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
+from satproducts.products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
 from tests.products.read_test import ReadTest
 from tests.products.transform_test import TransformTest
 from tests.test_helper import BASE_DIR

@@ -1,8 +1,8 @@
 import os
 import unittest
 
-from products.landsat.landsat_handler import LandsatHandler
-from products.landsat.landsat_product import LandsatProduct
+from satproducts.products.landsat.landsat_handler import LandsatHandler
+from satproducts.products.landsat.landsat_product import LandsatProduct
 from tests.products.handler_test import HandlerTest
 from tests.products.read_test import ReadTest
 from tests.products.transform_test import TransformTest
