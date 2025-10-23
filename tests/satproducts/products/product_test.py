@@ -8,18 +8,24 @@ from satproducts.common.image_slice import ImageSlice
 from tests.test_helper import BASE_DIR
 
 
-class ProductTest(unittest.TestCase, abc.ABC):
+class ProductTest(abc.ABC, unittest.TestCase):
     MINI_PATH = os.path.join(BASE_DIR, 'data', 'products_minified')
     PRODUCT_PATH = None
     PRODUCT = None
     HANDLER = None
 
+    def skip(self):
+        if self.PRODUCT_PATH is None or self.PRODUCT is None or self.HANDLER is None:
+            self.skipTest("NONE")
+
     def test_handler_works(self):
+        self.skip()
         product = self.HANDLER().handle(product_path=self.PRODUCT_PATH)
         self.assertTrue(product is not None)
         self.assertTrue(isinstance(product, self.PRODUCT))
 
     def test_handler_fail(self):
+        self.skip()
         try:
             product = self.HANDLER().handle(product_path="")
             self.assertTrue(False)
@@ -27,6 +33,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
             self.assertTrue(True)
 
     def test_read_slice_complete_slice(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
         image_slice = ImageSlice(0, 0, 100, 100)
@@ -40,6 +47,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertEqual(subset.attrs["j"], image_slice.j)
 
     def test_read_slice_incomplete_slice(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
         image_slice = ImageSlice(product.width - 50, product.height - 50, 100, 100)
@@ -53,6 +61,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertEqual(subset.attrs["j"], image_slice.j)
 
     def test_read_slice_empty_slice(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
         image_slice = ImageSlice(product.width + 10, product.height + 10, 100, 100)
@@ -66,6 +75,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertEqual(subset.attrs["j"], image_slice.j)
 
     def test_view_full(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
 
@@ -77,6 +87,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertEqual(image.height, product.height)
 
     def test_view_slice(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
         image_slice = ImageSlice(0, 0, 100, 100)
@@ -89,6 +100,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertEqual(image.height, 100)
 
     def test_get_transformer(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
 
@@ -99,6 +111,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertFalse(transformer is None)
 
     def test_identity_transform(self):
+        self.skip()
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
         rowcol1 = numpy.asarray([[10, 10]])
@@ -115,6 +128,7 @@ class ProductTest(unittest.TestCase, abc.ABC):
         self.assertTrue(numpy.allclose(rowcol1, rowcol2, atol=3))
 
     def test_footprint_and_timestamp(self):
+        self.skip()
         # Arrange + Act
         product = self.PRODUCT(self.PRODUCT_PATH)
 

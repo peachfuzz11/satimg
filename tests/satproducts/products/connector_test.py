@@ -1,0 +1,51 @@
+import abc
+import datetime
+import os
+import unittest
+from pathlib import Path
+
+class ConnectorTest(abc.ABC, unittest.TestCase):
+    PRODUCT_ID = None
+    CONNECTOR = None
+    SKIP_TESTS = True
+    geojson = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [10.0, 54.5],
+                [12.7, 54.5],
+                [12.7, 56.8],
+                [10.0, 56.8],
+                [10.0, 54.5]
+            ]
+        ]
+    }
+    start = datetime.datetime(2025, 10, 10)
+    end = datetime.datetime(2025, 10, 14)
+
+    save_path = os.path.join(Path(__file__).parent.parent, "tmp")
+    os.makedirs(save_path, exist_ok=True)
+
+    def skip(self):
+        if self.PRODUCT_ID is None or self.CONNECTOR is None:
+            self.skipTest("NONE")
+
+    def test_search(self):
+        self.skip()
+        items = self.CONNECTOR().search(geojson=self.geojson, start_datetime=self.start, stop_datetime=self.end)
+        print(len(items))
+
+    def test_download(self):
+        self.skip()
+        connector = self.CONNECTOR()
+        # items = connector.search(geojson=self.geojson, start_datetime=self.start, stop_datetime=self.end)
+        # with TemporaryDirectory(dir=self.save_path) as tmpdir:
+        # zippath = connector.download(items[0], save_path=os.path.join(self.save_path, f"{items[0]["id"]}.zip"))
+        # print(zippath)
+
+    def test_search_by_id(self):
+        self.skip()
+        items = self.CONNECTOR().search(ids=[self.PRODUCT_ID])
+        print(items)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], self.PRODUCT_ID)

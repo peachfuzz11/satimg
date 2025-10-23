@@ -15,9 +15,9 @@ class ViewMixin(abc.ABC):
     def view_thumbnail(self, *args, **kwargs) -> Image:
         pass
 
-    def view(self, image_slice: ImageSlice = None) -> Image:
+    def view(self, image_slice: ImageSlice = None, *args, **kwargs) -> Image:
         return PIL.Image.fromarray(self.viewable(image_slice=image_slice).values)
 
     @abc.abstractmethod
-    def viewable(self, image_slice: ImageSlice = None) -> xarray.DataArray:
+    def viewable(self, image_slice: ImageSlice = None, *args, **kwargs) -> xarray.DataArray:
         pass

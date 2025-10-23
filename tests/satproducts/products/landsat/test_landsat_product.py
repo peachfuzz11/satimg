@@ -2,7 +2,7 @@ import os
 
 from satproducts.products.landsat.landsat_handler import LandsatHandler
 from satproducts.products.landsat.landsat_product import LandsatProduct
-from tests.products.product_test import ProductTest
+from tests.satproducts.products.product_test import ProductTest
 from tests.test_helper import BASE_DIR
 
 
