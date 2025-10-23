@@ -1,11 +1,30 @@
 import abc
+import os
+import unittest
+
+import numpy
 
 from satproducts.common.image_slice import ImageSlice
+from tests.test_helper import BASE_DIR
 
 
-class ReadTest(abc.ABC):
+class ProductTest(unittest.TestCase, abc.ABC):
+    MINI_PATH = os.path.join(BASE_DIR, 'data', 'products_minified')
     PRODUCT_PATH = None
     PRODUCT = None
+    HANDLER = None
+
+    def test_handler_works(self):
+        product = self.HANDLER().handle(product_path=self.PRODUCT_PATH)
+        self.assertTrue(product is not None)
+        self.assertTrue(isinstance(product, self.PRODUCT))
+
+    def test_handler_fail(self):
+        try:
+            product = self.HANDLER().handle(product_path="")
+            self.assertTrue(False)
+        except Exception as e:
+            self.assertTrue(True)
 
     def test_read_slice_complete_slice(self):
         # Arrange
@@ -68,3 +87,37 @@ class ReadTest(abc.ABC):
         # Assert
         self.assertEqual(image.width, 100)
         self.assertEqual(image.height, 100)
+
+    def test_get_transformer(self):
+        # Arrange
+        product = self.PRODUCT(self.PRODUCT_PATH)
+
+        # Act
+        transformer = product.transformer
+
+        # Assert
+        self.assertFalse(transformer is None)
+
+    def test_identity_transform(self):
+        # Arrange
+        product = self.PRODUCT(self.PRODUCT_PATH)
+        rowcol1 = numpy.asarray([[10, 10]])
+
+        # Act
+        transformer = product.transformer
+        latlon1 = transformer.rowcol_to_latlon(rowcol1)
+        rowcol2 = transformer.latlon_to_rowcol(latlon1)
+        latlon2 = transformer.rowcol_to_latlon(rowcol2)
+
+        # Arrange
+        self.assertFalse(transformer is None)
+        self.assertTrue(numpy.allclose(latlon1, latlon2, atol=0.001))
+        self.assertTrue(numpy.allclose(rowcol1, rowcol2, atol=3))
+
+    def test_footprint_and_timestamp(self):
+        # Arrange + Act
+        product = self.PRODUCT(self.PRODUCT_PATH)
+
+        # Assert
+        self.assertTrue(product.timestamp is not None)
+        self.assertTrue(product.footprint is not None)

@@ -41,12 +41,13 @@ class LandsatProduct(Product):
         reindexed_das = [da.reindex_like(target_da, method="nearest").chunk() for da in das]
         self._product = xarray.concat(reindexed_das, dim="band")
 
-        rgb = self.product.isel(band=[3, 2, 1]).astype(numpy.float32)  # shape: (3, y, x)
-        pan = self.product.isel(band=7).astype(numpy.float32)  # shape: (y, x)
-
-        rgb = pan * rgb / (rgb.sum(dim="band") + 1e-6)
-        rgb = ((rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-6) * 255).astype(numpy.uint8)
-        self._tci = rgb
+        rgb = self.product.isel(band=[3, 2, 1]).astype("float32")
+        weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
+        rgb *= weights[:, None, None]
+        rgb /= rgb.sum(dim="band")
+        rgb *= self.product.isel(band=7).astype("float32")
+        rgb = (.75 * rgb.fillna(0) ** (1 / 1.4))
+        self._tci = rgb.clip(0, 255).astype("uint8")
 
         self._width = self.product.sizes['x']
         self._height = self.product.sizes['y']
@@ -55,12 +56,11 @@ class LandsatProduct(Product):
         with rasterio.open(os.path.join(product_path, self.bands[7] + ".TIF")) as src:
             self._transformer = Transformer(transform=src.transform, crs=src.crs)
 
-    def view(self, image_slice: ImageSlice = None) -> Image:
+    def viewable(self, image_slice: ImageSlice = None) -> Image:
         tci = self._tci
         if image_slice:
             tci = tci[image_slice.to_slice()]
-        tci = tci.transpose("y", "x", "band").values.astype("uint8")
-        tci = PIL.Image.fromarray(tci)
+        tci = tci.transpose("y", "x", "band")
         return tci
 
     def view_thumbnail(self, *args, **kwargs) -> Image:

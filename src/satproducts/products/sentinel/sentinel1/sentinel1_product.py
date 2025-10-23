@@ -26,13 +26,12 @@ class Sentinel1Product(Product):
             gcps, crs = src.gcps
             self._transformer = GCPTransformer(gcps=gcps, crs=crs)
 
-    def view(self, image_slice: ImageSlice = None, a_min=0, a_max=510., *args, **kwargs) -> Image:
+    def viewable(self, image_slice: ImageSlice = None, a_min=0, a_max=510., *args, **kwargs) -> Image:
         arr = self.product
         if image_slice:
             arr = self.read_slice(image_slice)
-        arr = (arr.clip(a_min, a_max) * 255. / a_max).astype("uint8")[1]
-        image = PIL.Image.fromarray(arr.values, mode="L")
-        return image
+        arr = (arr.isel(band=slice(0, 1)).transpose("y", "x", "band").clip(a_min, a_max) * 255. / a_max).astype("uint8")
+        return arr
 
     def view_thumbnail(self, *args, **kwargs) -> Image:
         p = os.path.join(self.product_path, "preview", "thumbnail.png")

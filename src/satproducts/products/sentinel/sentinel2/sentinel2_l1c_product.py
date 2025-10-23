@@ -26,7 +26,7 @@ class Sentinel2L1CProduct(Product):
         das = sentinel2_service.open_dataarrays(bands)
         self._product = sentinel2_service.reindex_and_concatenate_dataarrays(das)
         tci = [b["file_path"] for b in bands if b["physical_band"] is None][0]
-        self._tci = xarray.open_dataarray(tci)
+        self._tci = xarray.open_dataarray(tci).astype("uint8")
 
         self._width = self.product.sizes['x']
         self._height = self.product.sizes['y']
@@ -34,12 +34,11 @@ class Sentinel2L1CProduct(Product):
         with rasterio.open(bands[1]['file_path']) as src:
             self._transformer = Transformer(transform=src.transform, crs=src.crs)
 
-    def view(self, image_slice: ImageSlice = None) -> Image:
+    def viewable(self, image_slice: ImageSlice = None):
         tci = self._tci
         if image_slice:
             tci = tci[image_slice.to_slice()]
-        tci = tci.transpose("y", "x", "band").values.astype("uint8")
-        tci = PIL.Image.fromarray(tci)
+        tci = tci.transpose("y", "x", "band")
         return tci
 
     def view_thumbnail(self, *args, **kwargs) -> Image:
