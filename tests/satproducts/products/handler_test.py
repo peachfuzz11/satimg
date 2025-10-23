@@ -1,7 +1,7 @@
 import abc
 import unittest
 
-from satproducts.sat_product import SatProduct
+from satproducts.sat_products import SatProducts
 
 
 class HandlerTest(abc.ABC, unittest.TestCase):
@@ -25,6 +25,6 @@ class HandlerTest(abc.ABC, unittest.TestCase):
 
     def test_sat_product(self):
         self.skip()
-        satproduct = SatProduct(self.PRODUCT_PATH)
+        satproduct = SatProducts(self.PRODUCT_PATH)
         print(satproduct.get_product(), self.PRODUCT)
         self.assertTrue(isinstance(satproduct.get_product(), self.PRODUCT))
