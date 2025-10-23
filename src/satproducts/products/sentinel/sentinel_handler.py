@@ -6,8 +6,8 @@ from xml.etree import ElementTree
 
 from satproducts.products.base.product_handler import ProductHandler
 from satproducts.products.base.product import Product
-from satproducts.products.sentinel.sentinel1.sentinel1_ew_product import Sentinel1EWProduct
-from satproducts.products.sentinel.sentinel1.sentinel1_iw_product import Sentinel1IWProduct
+from satproducts.products.sentinel.sentinel1.ew.sentinel1_ew_product import Sentinel1EWProduct
+from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_product import Sentinel1IWProduct
 from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
 
 

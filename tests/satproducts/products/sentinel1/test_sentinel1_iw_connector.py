@@ -1,4 +1,4 @@
-from satproducts.products.sentinel.sentinel1.sentinel1_iw_connector import Sentinel1IWConnector
+from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_connector import Sentinel1IWConnector
 from tests.satproducts.products.connector_test import ConnectorTest
 
 

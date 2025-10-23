@@ -1,6 +1,6 @@
 from satproducts.deepzoom.dzi_factory import DZIFactory
 from satproducts.products.landsat.landsat_product import LandsatProduct
-from satproducts.products.sentinel.sentinel1.sentinel1_iw_product import Sentinel1IWProduct
+from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_product import Sentinel1IWProduct
 from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
 
 if __name__ == "__main__":

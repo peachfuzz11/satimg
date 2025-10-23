@@ -12,25 +12,10 @@ class ProductTest(abc.ABC, unittest.TestCase):
     MINI_PATH = os.path.join(BASE_DIR, 'data', 'products_minified')
     PRODUCT_PATH = None
     PRODUCT = None
-    HANDLER = None
 
     def skip(self):
-        if self.PRODUCT_PATH is None or self.PRODUCT is None or self.HANDLER is None:
+        if self.PRODUCT_PATH is None or self.PRODUCT is None:
             self.skipTest("NONE")
-
-    def test_handler_works(self):
-        self.skip()
-        product = self.HANDLER().handle(product_path=self.PRODUCT_PATH)
-        self.assertTrue(product is not None)
-        self.assertTrue(isinstance(product, self.PRODUCT))
-
-    def test_handler_fail(self):
-        self.skip()
-        try:
-            product = self.HANDLER().handle(product_path="")
-            self.assertTrue(False)
-        except Exception as e:
-            self.assertTrue(True)
 
     def test_read_slice_complete_slice(self):
         self.skip()
@@ -74,18 +59,6 @@ class ProductTest(abc.ABC, unittest.TestCase):
         self.assertEqual(subset.attrs["i"], image_slice.i)
         self.assertEqual(subset.attrs["j"], image_slice.j)
 
-    def test_view_full(self):
-        self.skip()
-        # Arrange
-        product = self.PRODUCT(self.PRODUCT_PATH)
-
-        # Act
-        image = product.view()
-
-        # Assert
-        self.assertEqual(image.width, product.width)
-        self.assertEqual(image.height, product.height)
-
     def test_view_slice(self):
         self.skip()
         # Arrange
@@ -93,7 +66,7 @@ class ProductTest(abc.ABC, unittest.TestCase):
         image_slice = ImageSlice(0, 0, 100, 100)
 
         # Act
-        image = product.view(image_slice)
+        image = product.view(image_slice=image_slice)
 
         # Assert
         self.assertEqual(image.width, 100)

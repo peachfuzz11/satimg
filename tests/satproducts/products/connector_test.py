@@ -4,10 +4,10 @@ import os
 import unittest
 from pathlib import Path
 
+
 class ConnectorTest(abc.ABC, unittest.TestCase):
     PRODUCT_ID = None
     CONNECTOR = None
-    SKIP_TESTS = True
     geojson = {
         "type": "Polygon",
         "coordinates": [
