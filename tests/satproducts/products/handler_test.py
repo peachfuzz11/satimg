@@ -25,6 +25,5 @@ class HandlerTest(abc.ABC, unittest.TestCase):
 
     def test_sat_product(self):
         self.skip()
-        satproduct = SatProducts(self.PRODUCT_PATH)
-        print(satproduct.get_product(), self.PRODUCT)
+        satproduct = SatProducts.from_path(self.PRODUCT_PATH)
         self.assertTrue(isinstance(satproduct.get_product(), self.PRODUCT))
