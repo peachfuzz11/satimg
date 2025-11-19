@@ -11,7 +11,7 @@ class SentinelConnector(STACConnector, abc.ABC):
     STAC_ENDPOINT = "https://stac.dataspace.copernicus.eu/v1/"
 
     def download(self, item, save_path):
-        url = item['assets']['PRODUCT']['href']
+        url = item['assets']['Product']['href']
         session = self._get_session()
         response = session.get(url, allow_redirects=False)
         while response.status_code in (301, 302, 303, 307):

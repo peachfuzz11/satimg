@@ -2,6 +2,7 @@ import datetime
 import os
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from satproducts.products.sentinel.sentinel2.sentinel2_connector import Sentinel2Connector
 
@@ -33,10 +34,10 @@ class Sentinel2ConnectorTest(unittest.TestCase):
 
     def test_download(self):
         connector = self.CONNECTOR()
-        # items = connector.search(geojson=self.geojson, start_datetime=self.start, stop_datetime=self.end)
-        # with TemporaryDirectory(dir=self.save_path) as tmpdir:
-        # zippath = connector.download(items[0], save_path=os.path.join(self.save_path, f"{items[0]["id"]}.zip"))
-        # print(zippath)
+        items = connector.search(geojson=self.geojson, start_datetime=self.start, stop_datetime=self.end)
+        with TemporaryDirectory(dir=self.save_path) as tmpdir:
+            zippath = connector.download(items[0], save_path=os.path.join(self.save_path, f"{items[0]["id"]}.zip"))
+        print(zippath)
 
     def test_search_by_id(self):
         items = self.CONNECTOR().search(ids=[self.PRODUCT_ID])
