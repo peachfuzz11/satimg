@@ -1,6 +1,0 @@
-rasterio
-pillow
-xarray
-rioxarray
-dask[array]
-roaring-landmask

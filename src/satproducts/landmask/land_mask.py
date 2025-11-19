@@ -1,4 +1,4 @@
-from roaring_landmask import RoaringLandmask
+from roaring_landmask.roaring_landmask import RoaringLandmask
 
 
 class LandMask:
