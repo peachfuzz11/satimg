@@ -12,7 +12,7 @@ class BBox:
 @dataclass
 class Label:
     label: str
-    confidence: float
+    conf: float
 
 
 @dataclass
