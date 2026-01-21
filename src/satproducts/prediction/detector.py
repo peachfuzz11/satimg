@@ -29,6 +29,8 @@ class Detector:
                 x, y, w, h, conf = map(float, detection)
                 if not 1 <= w <= 50 or not 1 <= h <= 50:
                     continue
+                if not w / h <= 10 or not h / w <= 10:
+                    continue
                 bbox = BBox(x, y, w, h)
                 label = Label("ship", conf)
                 latlon = self._product.transformer.rowcol_to_latlon((bbox.y, bbox.x))
