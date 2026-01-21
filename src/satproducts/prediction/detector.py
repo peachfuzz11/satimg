@@ -27,6 +27,8 @@ class Detector:
             detections[:, 1] += islice.j
             for detection in detections:
                 x, y, w, h, conf = map(float, detection)
+                if not 1 <= w <= 50 or not 1 <= h <= 50:
+                    continue
                 bbox = BBox(x, y, w, h)
                 label = Label("ship", conf)
                 latlon = self._product.transformer.rowcol_to_latlon((bbox.y, bbox.x))
@@ -40,7 +42,7 @@ class Detector:
 
 def detection_factory(product: Product, *args, **kwargs) -> Yolo26Model:
     if isinstance(product, Sentinel1IWProduct):
-        return Yolo26Model(ModelCatalog.S1.get_path())
+        return Yolo26Model(ModelCatalog.S1.get_path(), config={})
     elif isinstance(product, Sentinel2L1CProduct):
         return Yolo26Model(ModelCatalog.S2.get_path())
     else:
