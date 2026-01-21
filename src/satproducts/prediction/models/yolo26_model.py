@@ -6,7 +6,7 @@ from satproducts.prediction.models.model import Model
 
 class Yolo26Model(Model):
 
-    def predict(self, subset: PIL.Image, *args, **kwargs):
+    def predict(self, subset: PIL.Image, *args, **kwargs) -> numpy.ndarray:
         subset = subset if subset.mode == "RGB" else subset.convert("RGB")
         subset = numpy.einsum("ijk->kij", numpy.asarray(subset))
         subset = subset.astype(numpy.float32)
@@ -16,7 +16,7 @@ class Yolo26Model(Model):
         subset = numpy.expand_dims(subset, axis=0)
         detections = self._infer(subset, *args, **kwargs)
         detections = detections[..., 0:5]
-        detections = numpy.squeeze(detections, axis=0)[:, 0:5]
+        detections = numpy.squeeze(detections, axis=0)
 
         conf_threshold = kwargs.get("conf_threshold", 0.2)
         detections = detections[(detections[:, 4] > conf_threshold)]
