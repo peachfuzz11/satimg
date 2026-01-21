@@ -12,39 +12,56 @@ from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentin
 
 class Detector:
 
-    def __init__(self, product: Product):
+    def __init__(self, product: Product, **kwargs):
         self._product = product
         self._model = detection_factory(product)
         self._land_mask = RoaringLandmask.new()
+        self._config = {
+            "conf_threshold": 0.1,
+            "slice_size": 256,
+            "min_size": 1,
+            "max_size": 300,
+            "min_area": 4,
+            "max_area": 300 ** 2,
+            "max_aspect_ratio": 15,
+            "apply_landmask": True,
+        }
+        self._config.update(**kwargs)
 
     def detect(self, *args, **kwargs) -> typing.List[Detection]:
+        config = self._config.copy()
+        config.update(kwargs)
         detection_list = []
-        slice_size = kwargs.get("slice_size", 256)
-        for islice in self._product.slices(slice_size):
+        for islice in self._product.slices(config.get("slice_size")):
             subset = self._product.view(islice)
-            detections = self._model.predict(subset, **kwargs)
+            detections = self._model.predict(subset, **config)
             detections[:, 0] += islice.i
             detections[:, 1] += islice.j
             for detection in detections:
                 x, y, w, h, conf = map(float, detection)
-                if not 1 <= w <= 50 or not 1 <= h <= 50:
+                if not config.get("min_size") <= w <= config.get("max_size"):
                     continue
-                if not w / h <= 10 or not h / w <= 10:
+                if not config.get("min_size") <= h <= config.get("max_size"):
+                    continue
+                if not config.get("min_area", 4) < (w * h) < config.get("max_area"):
+                    continue
+                if w / h >= config.get("max_aspect_ratio") or h / w >= config.get("max_aspect_ratio"):
                     continue
                 bbox = BBox(x, y, w, h)
                 label = Label("ship", conf)
                 latlon = self._product.transformer.rowcol_to_latlon((bbox.y, bbox.x))
                 coordinate = Coordinate(lat=float(latlon[0, 0]), lon=float(latlon[0, 1]))
-                if self._land_mask.contains(coordinate.lon, coordinate.lat):
+                if config.get("apply_landmask") and self._land_mask.contains(coordinate.lon, coordinate.lat):
                     continue
                 detection_dto = Detection(bbox, label, coordinate)
                 detection_list.append(detection_dto)
+        print(len(detection_list))
         return detection_list
 
 
 def detection_factory(product: Product, *args, **kwargs) -> Yolo26Model:
     if isinstance(product, Sentinel1IWProduct):
-        return Yolo26Model(ModelCatalog.S1.get_path(), config={})
+        return Yolo26Model(ModelCatalog.S1.get_path())
     elif isinstance(product, Sentinel2L1CProduct):
         return Yolo26Model(ModelCatalog.S2.get_path())
     else:

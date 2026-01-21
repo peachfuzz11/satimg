@@ -11,6 +11,6 @@ class TestDetector(unittest.TestCase):
                                 'S2A_MSIL1C_20220114T103401_N0301_R108_T33UUB_20220114T123457.SAFE')
 
     def test_detection(self):
-        detector = Detector(Sentinel2L1CProduct(self.PRODUCT_PATH))
-        detections = detector.detect()
+        detector = Detector(Sentinel2L1CProduct("/home/ph/git/oow/oow/media/engine/product/S2C_MSIL1C_20250630T104041_N0511_R008_T32VNJ_20250630T141911.SAFE"))
+        detections = detector.detect(conf_threshold=.1)
         print(detections)
