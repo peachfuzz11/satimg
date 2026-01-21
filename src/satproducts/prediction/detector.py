@@ -35,7 +35,7 @@ class Detector:
                 label = Label("ship", conf)
                 latlon = self._product.transformer.rowcol_to_latlon((bbox.y, bbox.x))
                 coordinate = Coordinate(lat=float(latlon[0, 0]), lon=float(latlon[0, 1]))
-                if not self._land_mask.contains(coordinate.lat, coordinate.lon):
+                if self._land_mask.contains(coordinate.lon, coordinate.lat):
                     continue
                 detection_dto = Detection(bbox, label, coordinate)
                 detection_list.append(detection_dto)

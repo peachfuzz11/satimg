@@ -18,3 +18,23 @@ class TestModel(unittest.TestCase):
             with PIL.Image.open(img_path) as img:
                 detections = model.predict(img)
                 print(detections)
+
+    def test_landmask(self):
+        from roaring_landmask.roaring_landmask import RoaringLandmask
+        mask = RoaringLandmask.new()
+        cities_coords = [
+            (40.7128, -74.0060),  # New York City, USA
+            (51.5074, -0.1278),  # London, UK
+            (35.6895, 139.6917),  # Tokyo, Japan
+            (48.8566, 2.3522),  # Paris, France
+            (39.9042, 116.4074),  # Beijing, China
+            (55.7558, 37.6173),  # Moscow, Russia
+            (-33.8688, 151.2093),  # Sydney, Australia
+            (30.0444, 31.2357),  # Cairo, Egypt
+            (-22.9068, -43.1729),  # Rio de Janeiro, Brazil
+            (43.6532, -79.3832),  # Toronto, Canada
+            (19.0760, 72.8777),  # Mumbai, India
+            (-26.2041, 28.0473)  # Johannesburg, South Africa
+        ]
+        for c in cities_coords:
+            print(mask.contains(*c[::-1]))
