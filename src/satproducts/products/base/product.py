@@ -13,3 +13,4 @@ class Product(ViewMixin, SliceMixin, GeoMixin, abc.ABC):
     @property
     def product_path(self):
         return self._product_path
+

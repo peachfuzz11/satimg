@@ -16,7 +16,7 @@ class TestModel(unittest.TestCase):
         imgs = [os.path.join(self.IMG_PATH, i) for i in os.listdir(self.IMG_PATH)]
         for img_path in imgs:
             with PIL.Image.open(img_path) as img:
-                detections = model.predict(img)
+                detections = model.predict(img, conf_threshold=.1, slice_size=256)
                 print(detections)
 
     def test_landmask(self):

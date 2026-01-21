@@ -3,7 +3,7 @@ import unittest
 
 from satproducts.products.sentinel.sentinel2.sentinel2_l1c_path_handler import Sentinel2L1CPathHandler
 from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
-from satproducts.sat_products import SatProducts
+from satproducts.sat_product import SatProduct
 from tests.test_helper import BASE_DIR
 
 
@@ -22,5 +22,5 @@ class Sentinel2L1CProductTest(unittest.TestCase):
         self.assertFalse(matches)
 
     def test_sat_product(self):
-        satproduct = SatProducts.from_path(self.PRODUCT_PATH)
+        satproduct = SatProduct.from_path(self.PRODUCT_PATH)
         self.assertTrue(isinstance(satproduct.get_product(), self.PRODUCT))

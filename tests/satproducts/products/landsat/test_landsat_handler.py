@@ -3,7 +3,7 @@ import unittest
 
 from satproducts.products.landsat.landsat_path_handler import LandsatPathHandler
 from satproducts.products.landsat.landsat_product import LandsatProduct
-from satproducts.sat_products import SatProducts
+from satproducts.sat_product import SatProduct
 from tests.test_helper import BASE_DIR
 
 
@@ -21,5 +21,5 @@ class LandsatHandlerTest(unittest.TestCase):
         self.assertFalse(matches)
 
     def test_sat_product(self):
-        satproduct = SatProducts.from_path(self.PRODUCT_PATH)
+        satproduct = SatProduct.from_path(self.PRODUCT_PATH)
         self.assertTrue(isinstance(satproduct.get_product(), self.PRODUCT))

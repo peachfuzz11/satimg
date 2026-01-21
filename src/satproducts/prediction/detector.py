@@ -43,7 +43,7 @@ class Detector:
                     continue
                 if not config.get("min_size") <= h <= config.get("max_size"):
                     continue
-                if not config.get("min_area", 4) < (w * h) < config.get("max_area"):
+                if not config.get("min_area") < (w * h) < config.get("max_area"):
                     continue
                 if w / h >= config.get("max_aspect_ratio") or h / w >= config.get("max_aspect_ratio"):
                     continue
@@ -55,7 +55,6 @@ class Detector:
                     continue
                 detection_dto = Detection(bbox, label, coordinate)
                 detection_list.append(detection_dto)
-        print(len(detection_list))
         return detection_list
 
 

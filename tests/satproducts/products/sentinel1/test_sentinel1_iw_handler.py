@@ -3,7 +3,7 @@ import unittest
 
 from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_path_handler import Sentinel1IWPathHandler
 from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_product import Sentinel1IWProduct
-from satproducts.sat_products import SatProducts
+from satproducts.sat_product import SatProduct
 from tests.test_helper import BASE_DIR
 
 
@@ -22,5 +22,5 @@ class Sentinel1IWHandlerTest(unittest.TestCase):
         self.assertFalse(matches)
 
     def test_sat_product(self):
-        satproduct = SatProducts.from_path(self.PRODUCT_PATH)
+        satproduct = SatProduct.from_path(self.PRODUCT_PATH)
         self.assertTrue(isinstance(satproduct.get_product(), self.PRODUCT))
