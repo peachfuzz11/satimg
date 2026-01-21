@@ -16,6 +16,7 @@ class Model(abc.ABC):
     def predict(self, *args, **kwargs):
         return self._infer(*args, **kwargs)
 
-    @abc.abstractmethod
-    def _infer(self, *args, **kwargs):
-        pass
+    def _infer(self, subset, *args, **kwargs):
+        input_name = self.session.get_inputs()[0].name
+        detections = self.session.run(None, {input_name: subset})[0]
+        return detections
