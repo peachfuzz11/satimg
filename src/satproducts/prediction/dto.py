@@ -3,10 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class BBox:
-    x: float
-    y: float
-    w: float
-    h: float
+    x1: float
+    y1: float
+    x2: float
+    y2: float
 
 
 @dataclass
