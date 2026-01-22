@@ -18,7 +18,7 @@ class Detector:
         self._model = detection_factory(product)
         self._land_mask = RoaringLandmask.new()
         self._config = {
-            "conf_threshold": 0.25,
+            "conf_threshold": 0.1,
             "slice_size": 256,
             "min_size": 1,
             "max_size": 300,
@@ -67,7 +67,7 @@ class Detector:
                 x1, y1, x2, y2, conf = map(float, detection)
                 bbox = BBox(x1, y1, x2, y2)
                 label = Label("ship", conf)
-                x, y = x1 + x2 / 2, y1 + y2 / 2
+                x, y = x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2
                 latlon = self._product.transformer.rowcol_to_latlon((y, x))
                 coordinate = Coordinate(lat=float(latlon[0, 0]), lon=float(latlon[0, 1]))
                 if config.get("apply_landmask") and self._land_mask.contains(coordinate.lon, coordinate.lat):
