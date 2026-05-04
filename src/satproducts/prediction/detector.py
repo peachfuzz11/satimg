@@ -4,18 +4,15 @@ import numpy
 from roaring_landmask.roaring_landmask import RoaringLandmask
 
 from satproducts.prediction.dto import BBox, Label, Detection, Coordinate
-from satproducts.prediction.models.model_catalog import ModelCatalog
-from satproducts.prediction.models.yolo26_model import Yolo26Model
+from satproducts.prediction.models.model import Model
 from satproducts.products.base.product import Product
-from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_product import Sentinel1IWProduct
-from satproducts.products.sentinel.sentinel2.sentinel2_l1c_product import Sentinel2L1CProduct
 
 
 class Detector:
 
-    def __init__(self, product: Product, **kwargs):
+    def __init__(self, product: Product, model: Model, **kwargs):
         self._product = product
-        self._model = detection_factory(product)
+        self._model = model
         self._land_mask = RoaringLandmask.new()
         self._config = {
             "conf_threshold": 0.1,
@@ -75,12 +72,3 @@ class Detector:
                 detection_dto = Detection(bbox, label, coordinate)
                 detection_list.append(detection_dto)
         return detection_list
-
-
-def detection_factory(product: Product, *args, **kwargs) -> Yolo26Model:
-    if isinstance(product, Sentinel1IWProduct):
-        return Yolo26Model(ModelCatalog.S1.get_path())
-    elif isinstance(product, Sentinel2L1CProduct):
-        return Yolo26Model(ModelCatalog.S2.get_path())
-    else:
-        raise NotImplementedError(product)
