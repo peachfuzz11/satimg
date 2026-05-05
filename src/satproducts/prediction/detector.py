@@ -34,7 +34,7 @@ class Detector:
             subset = self._product.view(islice)
             detections = self._model.predict(subset, **config)
             conf_threshold = config.get("conf_threshold")
-            detections = detections[numpy.any(detections[:, 4:] > conf_threshold, axis=1)]
+            detections = detections[(detections[:, 4] > conf_threshold)]
 
             x1 = detections[:, 0]
             y1 = detections[:, 1]
@@ -61,13 +61,9 @@ class Detector:
             detections[:, [0, 2]] += islice.i
             detections[:, [1, 3]] += islice.j
             for detection in detections:
-                x1, y1, x2, y2 = map(float, detection[:4])
-                class_confidences = detection[4:6]
-                class_index = int(numpy.argmax(class_confidences))
-                conf = float(class_confidences[class_index])
-                label_name = "ship" if class_index == 0 else "other"
-                label = Label(label_name, conf)
+                x1, y1, x2, y2, conf = map(float, detection)
                 bbox = BBox(x1, y1, x2, y2)
+                label = Label("ship", conf)
                 x, y = x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2
                 latlon = self._product.transformer.rowcol_to_latlon((y, x))
                 coordinate = Coordinate(lat=float(latlon[0, 0]), lon=float(latlon[0, 1]))

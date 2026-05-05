@@ -14,6 +14,7 @@ class Yolo26Model(Model):
         subset = pad_axis_to_size(subset, axis=2, target_size=kwargs.get("slice_size"))
         subset = numpy.expand_dims(subset, axis=0)
         detections = self._infer(subset, *args, **kwargs)
+        detections = detections[..., 0:5]
         detections = numpy.squeeze(detections, axis=0)
         return detections
 
