@@ -9,12 +9,11 @@ class Yolo26Model(Model):
     def predict(self, subset: PIL.Image, *args, **kwargs) -> numpy.ndarray:
         subset = subset if subset.mode == "RGB" else subset.convert("RGB")
         subset = numpy.einsum("ijk->kij", numpy.asarray(subset))
-        subset = subset.astype(numpy.float32)
+        subset = subset.astype(numpy.float32) / 255.0
         subset = pad_axis_to_size(subset, axis=1, target_size=kwargs.get("slice_size"))
         subset = pad_axis_to_size(subset, axis=2, target_size=kwargs.get("slice_size"))
         subset = numpy.expand_dims(subset, axis=0)
         detections = self._infer(subset, *args, **kwargs)
-        detections = detections[..., 0:5]
         detections = numpy.squeeze(detections, axis=0)
         return detections
 

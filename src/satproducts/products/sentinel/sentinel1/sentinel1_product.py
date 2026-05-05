@@ -31,7 +31,7 @@ class Sentinel1Product(Product):
         arr = self.product
         if image_slice:
             arr = self.read_slice(image_slice)
-        arr = 10 * numpy.log10(arr.astype(float))
+        arr = 10 * numpy.log10(arr.where(arr > 0))
         arr = arr.fillna(0)
         arr = arr.mean(dim="band")
         arr = (255 * (1 / (1 + numpy.exp(-((arr - 20) * 0.18))))).clip(0, 255).astype("uint8")
