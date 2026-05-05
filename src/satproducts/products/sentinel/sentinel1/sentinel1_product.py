@@ -38,7 +38,7 @@ class Sentinel1Product(Product):
         return arr
 
     def view(self, image_slice=None, **kwargs):
-        return PIL.Image.fromarray(self.viewable(image_slice=image_slice).isel(band=0).values)
+        return PIL.Image.fromarray(self.viewable(image_slice=image_slice).values)
 
     def view_thumbnail(self, *args, **kwargs) -> Image:
         p = os.path.join(self.product_path, "preview", "thumbnail.png")
