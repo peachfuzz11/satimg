@@ -2,6 +2,7 @@ import datetime
 import os
 
 import PIL.Image
+import numpy
 import rasterio
 from PIL.Image import Image
 
@@ -26,11 +27,14 @@ class Sentinel1Product(Product):
             gcps, crs = src.gcps
             self._transformer = GCPTransformer(gcps=gcps, crs=crs)
 
-    def viewable(self, image_slice: ImageSlice = None, a_min=0, a_max=510., *args, **kwargs):
+    def viewable(self, image_slice: ImageSlice = None, *args, **kwargs):
         arr = self.product
         if image_slice:
             arr = self.read_slice(image_slice)
-        arr = (arr.isel(band=slice(0, 1)).transpose("y", "x", "band").clip(a_min, a_max) * 255. / a_max).astype("uint8")
+        arr = 10 * numpy.log10(arr.astype(float))
+        arr = arr.fillna(0)
+        arr = arr.mean(dim="band")
+        arr = (255 * (1 / (1 + numpy.exp(-((arr - 20) * 0.18))))).clip(0, 255).astype("uint8")
         return arr
 
     def view(self, image_slice=None, **kwargs):
