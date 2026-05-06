@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 
 import numpy
@@ -55,14 +56,14 @@ class Sentinel1IWProductTest(unittest.TestCase):
     def test_view_slice(self):
         # Arrange
         product = self.PRODUCT(self.PRODUCT_PATH)
-        image_slice = ImageSlice(0, 0, 100, 100)
+        image_slice = ImageSlice(0, 0, 512, 512)
 
         # Act
         image = product.view(image_slice=image_slice)
 
         # Assert
-        self.assertEqual(image.width, 100)
-        self.assertEqual(image.height, 100)
+        self.assertEqual(image.width, 512)
+        self.assertEqual(image.height, 512)
 
     def test_get_transformer(self):
         # Arrange
@@ -97,3 +98,10 @@ class Sentinel1IWProductTest(unittest.TestCase):
         # Assert
         self.assertTrue(product.timestamp is not None)
         self.assertTrue(product.footprint is not None)
+
+    def test_tile(self):
+        product = self.PRODUCT(self.PRODUCT_PATH)
+        for img_slice, tile in product.tile(512):
+            print(img_slice)
+            print(tile.shape)
+            break

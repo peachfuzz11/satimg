@@ -1,5 +1,6 @@
 import datetime
 import os
+import typing
 
 import PIL.Image
 import numpy
@@ -26,6 +27,20 @@ class Sentinel1Product(Product):
         with rasterio.open(self.product_path) as src:
             gcps, crs = src.gcps
             self._transformer = GCPTransformer(gcps=gcps, crs=crs)
+
+    def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
+        xarr = self.product.chunk(dict(x=tile_size, y=tile_size, band=-1))
+        for image_slice in self.slices(tile_size):
+            m = xarr[image_slice.to_slice()].to_numpy().astype(numpy.float32)
+            m = numpy.clip(m, 1e-12, None)
+            m = 10 * numpy.log10(m)
+            m = numpy.nan_to_num(m)
+            m = numpy.mean(m, axis=0)
+            m = 255 / (1 + numpy.exp(-((m - 20) * 0.18)))
+            m = numpy.clip(m, 0, 255).astype("uint8")
+            m = numpy.expand_dims(m, axis=0)
+            m = numpy.repeat(m, 3, axis=0)
+            yield image_slice, m
 
     def viewable(self, image_slice: ImageSlice = None, *args, **kwargs):
         arr = self.product

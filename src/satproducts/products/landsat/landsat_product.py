@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import typing
 
 import PIL.Image
 import numpy
@@ -55,6 +56,19 @@ class LandsatProduct(Product):
 
         with rasterio.open(os.path.join(product_path, self.bands[7] + ".TIF")) as src:
             self._transformer = Transformer(transform=src.transform, crs=src.crs)
+
+    def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
+        p = self.product.chunk(dict(x=tile_size, y=tile_size, band=-1))
+        for image_slice in self.slices(tile_size):
+            block = p.isel(band=[3, 2, 1, 7], **image_slice.to_slice()).to_numpy().astype(numpy.float32)
+            rgb = block[0:3]
+            pan = block[3]
+            weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
+            rgb *= weights[:, None, None]
+            rgb /= (rgb.sum(axis=0) + 1e-12)
+            rgb *= pan
+            rgb = (.75 * numpy.nan_to_num(rgb) ** (1 / 1.4))
+            yield image_slice, rgb.astype("uint8")
 
     def viewable(self, image_slice: ImageSlice = None) -> Image:
         tci = self._tci

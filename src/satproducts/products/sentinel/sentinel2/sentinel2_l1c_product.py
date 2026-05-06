@@ -1,7 +1,9 @@
 import datetime
 import os
+import typing
 
 import PIL.Image
+import numpy
 import rasterio
 import xarray
 from PIL.Image import Image
@@ -33,6 +35,11 @@ class Sentinel2L1CProduct(Product):
         self._channels = self.product.sizes['band']
         with rasterio.open(bands[1]['file_path']) as src:
             self._transformer = Transformer(transform=src.transform, crs=src.crs)
+
+    def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
+        tci = self._tci.chunk(dict(x=tile_size, y=tile_size, band=-1))
+        for image_slice in self.slices(tile_size):
+            yield image_slice, tci[image_slice.to_slice()].to_numpy().astype("uint8")
 
     def viewable(self, image_slice: ImageSlice = None):
         tci = self._tci

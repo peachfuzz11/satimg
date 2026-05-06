@@ -1,12 +1,18 @@
 import abc
 import typing
 
+import numpy
+
 from satproducts.common.image_slice import ImageSlice, slice_generator, patch_generator
 
 
 class SliceMixin(abc.ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    @abc.abstractmethod
+    def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
+        pass
 
     def read_slice(self, image_slice: ImageSlice):
         subset = self.product.isel(**image_slice.to_slice())

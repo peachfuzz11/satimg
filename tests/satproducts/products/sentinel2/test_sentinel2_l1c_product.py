@@ -97,3 +97,10 @@ class Sentinel2L1CProductTest(unittest.TestCase):
         # Assert
         self.assertTrue(product.timestamp is not None)
         self.assertTrue(product.footprint is not None)
+
+    def test_tile(self):
+        product = self.PRODUCT(self.PRODUCT_PATH)
+        for img_slice, tile in product.tile(512):
+            print(img_slice)
+            print(tile.shape)
+            break

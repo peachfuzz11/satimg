@@ -1,4 +1,3 @@
-import PIL.Image
 import numpy
 
 from satproducts.prediction.models.model import Model
@@ -6,9 +5,7 @@ from satproducts.prediction.models.model import Model
 
 class Yolo26Model(Model):
 
-    def predict(self, subset: PIL.Image, *args, **kwargs) -> numpy.ndarray:
-        subset = subset if subset.mode == "RGB" else subset.convert("RGB")
-        subset = numpy.einsum("ijk->kij", numpy.asarray(subset))
+    def predict(self, subset: numpy.ndarray, *args, **kwargs) -> numpy.ndarray:
         subset = subset.astype(numpy.float32) / 255.0
         subset = pad_axis_to_size(subset, axis=1, target_size=kwargs.get("slice_size"))
         subset = pad_axis_to_size(subset, axis=2, target_size=kwargs.get("slice_size"))
