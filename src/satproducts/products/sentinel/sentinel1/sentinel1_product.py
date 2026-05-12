@@ -29,9 +29,9 @@ class Sentinel1Product(Product):
             self._transformer = GCPTransformer(gcps=gcps, crs=crs)
 
     def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
-        xarr = self.product.chunk(dict(x=tile_size, y=tile_size, band=-1))
+        xarr = self.product.chunk(dict(x=tile_size, y=tile_size, band=-1)).persist()
         for image_slice in self.slices(tile_size):
-            m = xarr[image_slice.to_slice()].to_numpy().astype(numpy.float32)
+            m = xarr.isel(**image_slice.to_slice()).to_numpy().astype(numpy.float32)
             m = numpy.clip(m, 1e-12, None)
             m = 10 * numpy.log10(m)
             m = numpy.nan_to_num(m)

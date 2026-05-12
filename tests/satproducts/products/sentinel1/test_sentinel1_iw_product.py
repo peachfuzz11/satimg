@@ -101,7 +101,8 @@ class Sentinel1IWProductTest(unittest.TestCase):
 
     def test_tile(self):
         product = self.PRODUCT(self.PRODUCT_PATH)
+        start = time.time()
         for img_slice, tile in product.tile(512):
-            print(img_slice)
             print(tile.shape)
+            print(time.time() - start)
             break

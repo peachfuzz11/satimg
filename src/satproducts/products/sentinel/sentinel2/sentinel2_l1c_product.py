@@ -37,9 +37,9 @@ class Sentinel2L1CProduct(Product):
             self._transformer = Transformer(transform=src.transform, crs=src.crs)
 
     def tile(self, tile_size) -> typing.Generator[typing.Tuple[ImageSlice, numpy.ndarray], None, None]:
-        tci = self._tci.chunk(dict(x=tile_size, y=tile_size, band=-1))
+        tci = self._tci.chunk(dict(x=tile_size, y=tile_size, band=-1)).persist()
         for image_slice in self.slices(tile_size):
-            yield image_slice, tci[image_slice.to_slice()].to_numpy().astype("uint8")
+            yield image_slice, tci.isel(**image_slice.to_slice()).to_numpy().astype("uint8")
 
     def viewable(self, image_slice: ImageSlice = None):
         tci = self._tci

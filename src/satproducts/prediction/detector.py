@@ -3,10 +3,10 @@ import typing
 import numpy
 from roaring_landmask.roaring_landmask import RoaringLandmask
 
+from satproducts.prediction import nms
 from satproducts.prediction.dto import BBox, Label, Detection, Coordinate
 from satproducts.prediction.models.model import Model
 from satproducts.products.base.product import Product
-from satproducts.products.sentinel.sentinel1.sentinel1_product import Sentinel1Product
 
 
 class Detector:
@@ -32,10 +32,15 @@ class Detector:
         config.update(kwargs)
         detection_list = []
 
-        for islice,tile in self._product.tile(config.get("slice_size")):
+        for islice, tile in self._product.tile(config.get("slice_size")):
             detections = self._model.predict(tile, **config)
             conf_threshold = config.get("conf_threshold")
             detections = detections[(detections[:, 4] > conf_threshold)]
+
+            if config.get("nms_threshold"):
+                keep = nms.non_max_suppression(detections[:, 4:], detections[:, :4],
+                                               overlap_threshold=config["nms_threshold"])
+                detections = detections[keep]
 
             x1 = detections[:, 0]
             y1 = detections[:, 1]
