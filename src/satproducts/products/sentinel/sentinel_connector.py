@@ -1,5 +1,6 @@
 import abc
 import io
+import random
 import zipfile
 
 import requests
@@ -9,6 +10,15 @@ from satproducts.common.stac_connector import STACConnector
 
 class SentinelConnector(STACConnector, abc.ABC):
     STAC_ENDPOINT = "https://stac.dataspace.copernicus.eu/v1/"
+    CREDENTIALS = [
+        ("rib40681@dcobe.com", "Tordenskjold-123!"),
+        ("shzrughoiqyqxvyihk@kjkpc.net", "Openoceanwatch!001"),
+        ("sesay85277@hidevak.com", "Openoceanwatch!002"),
+        ("fku96214@laoia.com", "Openoceanwatch!003"),
+        ("idq00664@laoia.com", "Openoceanwatch!004"),
+        ("jotigo8982@acanok.com", "Openoceanwatch!005"),
+        ("bdiqjpqspqvpzgqnhk@kjkpc.net", "Openoceanwatch!006"),
+    ]
 
     def download(self, item, save_path):
         url = item['assets']['Product']['href']
@@ -28,8 +38,7 @@ class SentinelConnector(STACConnector, abc.ABC):
         return save_path
 
     def _get_session(self, *args, **kwargs):
-        username = "rib40681@dcobe.com"
-        password = "Tordenskjold-123!"
+        username, password = self.CREDENTIALS[random.randint(0, len(self.CREDENTIALS) - 1)]
         token_request = {
             "url": "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
             "data": {
