@@ -34,9 +34,7 @@ class DZIFactory:
             s = slice(None, None, scale)
             resized_xr = xr.isel(**{"x": s, "y": s}).fillna(0)
             chunk = {'x': min(self._tile_size, resized_xr.sizes["x"]), 'y': min(self._tile_size, resized_xr.sizes["y"])}
-            if resized_xr.sizes["band"] == 1:
-                resized_xr = resized_xr.isel(band=0)
-            else:
+            if "band" in resized_xr.dims:
                 chunk["band"] = -1
             resized_xr = resized_xr.chunk(chunk).data
 
