@@ -1,3 +1,5 @@
+import time
+
 from satproducts.deepzoom.dzi_factory import DZIFactory
 from satproducts.products.landsat.landsat_product import LandsatProduct
 from satproducts.products.sentinel.sentinel1.iw.sentinel1_iw_product import Sentinel1IWProduct
@@ -12,8 +14,10 @@ if __name__ == "__main__":
            Sentinel2L1CProduct)
     for p, prod in (ps2,):# ps2, ps3):
         pro = prod(p)
+        start = time.time()
         factory = DZIFactory(out_path=p)
         factory.create(pro)
+        print(prod,time.time() - start)
 
     import http.server
     import socketserver

@@ -36,7 +36,7 @@ class DZIFactory:
             chunk = {'x': min(self._tile_size, resized_xr.sizes["x"]), 'y': min(self._tile_size, resized_xr.sizes["y"])}
             if "band" in resized_xr.dims:
                 chunk["band"] = -1
-            resized_xr = resized_xr.chunk(chunk).data
+            resized_xr = resized_xr.chunk(chunk).persist().data
 
             # Function to save each tile block
             def save_tile(block, block_info=None):
