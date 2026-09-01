@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "satimg"
+version = "0.4.0"
+description = "A uniform, tile-friendly wrapper over satellite imagery"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "peachfuzz11", email = "pederh11@gmail.com" }]
+keywords = [
+    "satellite",
+    "imagery",
+    "remote-sensing",
+    "sentinel",
+    "landsat",
+    "raster",
+    "geospatial",
+    "tiling",
+    "deep-zoom",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "beautifulsoup4>=4.14.2",
+    "dask[array]>=2025.10.0",
+    "onnxruntime>=1.23.2",
+    "pillow>=12.0.0",
+    "pystac-client>=0.9.0",
+    "rasterio>=1.4.3",
+    "rioxarray>=0.19.0",
+    "roaring-landmask>=0.10.1",
+    "xarray>=2025.10.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/peachfuzz11/satimg"
+Repository = "https://github.com/peachfuzz11/satimg"
+Issues = "https://github.com/peachfuzz11/satimg/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/satimg"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/satimg", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
