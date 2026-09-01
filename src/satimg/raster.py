@@ -170,11 +170,12 @@ class Patch:
     or ``.values`` is accessed.
     """
 
-    __slots__ = ("raster", "window")
+    __slots__ = ("raster", "window", "_product")
 
     def __init__(self, raster: Raster, window: Window):
         self.raster = raster
         self.window = window
+        self._product = None  # set by Product.patches() so .meta works
 
     # -- index passthrough ---------------------------------------
     @property
@@ -199,6 +200,19 @@ class Patch:
     def values(self) -> numpy.ndarray:
         """Materialised ``(band, y, x)`` array."""
         return self.raster.values(self.window)
+
+    @property
+    def meta(self) -> "PatchMeta":
+        """Lazy per-pixel metadata for this window (see
+        :class:`~satimg.metadata.PatchMeta`). Only available on patches from
+        ``product.patches()`` / ``iter(product)``."""
+        if self._product is None:
+            raise AttributeError(
+                "patch has no product -- iterate product.patches() to use .meta"
+            )
+        from satimg.metadata import PatchMeta
+
+        return PatchMeta(self._product.metadata, self.window)
 
     def image(self) -> "PIL.Image.Image":
         """Render as a PIL image (only meaningful for ``uint8`` rasters)."""

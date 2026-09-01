@@ -92,6 +92,37 @@ for patch in ndwi.patches(512):
     ...
 ```
 
+## Per-pixel metadata
+
+Every sensor ships scene geometry that varies across the image — Sentinel-1's
+incidence / elevation angles, Sentinel-2's and Landsat's sun / viewing angles —
+stored on a coarse grid. `product.metadata` exposes those as named fields that
+bilinearly interpolate to any pixel:
+
+```python
+m = product.metadata
+m.fields                          # ['sun_zenith', 'sun_azimuth', 'view_zenith', ...]
+m.sun_zenith.at((row, col))       # -> float, bilinear on the coarse grid
+m.sample((row, col))              # -> {field: value} for every field
+m.attrs                           # scalar scene-level metadata (mean angles, ...)
+```
+
+| Product | Fields (all `degrees` unless noted) |
+| --- | --- |
+| Sentinel-1 | `incidence_angle`, `elevation_angle`, `slant_range_time` (seconds), `height` (metres) |
+| Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+| Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+
+Each field also materialises as a lazy full-grid `Raster` (`m.sun_zenith.raster`),
+and patches from `product.patches()` carry a matching lazy view over their window:
+
+```python
+for patch in product.patches(512):
+    patch.meta.sun_zenith          # lazy (512, 512) DataArray for this window
+    patch.meta.at((y, x))          # -> {field: value} at a patch-local pixel
+    patch.meta.sample()            # -> {field: value} at the patch centre
+```
+
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive.
@@ -123,8 +154,9 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 
 ## Adding a product
 
-Subclass `Product`, implement `raw`, `_render_visual`, and the metadata properties,
-and register a filename pattern:
+Subclass `Product`, implement the abstract hooks (`raw`, `_render_visual`,
+`transformer`, `timestamp`, `footprint`, `thumbnail`), optionally override
+`_read_metadata` to expose per-pixel metadata, and register a filename pattern:
 
 ```python
 from satimg.registry import register

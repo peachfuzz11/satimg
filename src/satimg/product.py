@@ -24,6 +24,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Iterator
 
 from satimg.geometry import EdgeMode
+from satimg.metadata import Field, Metadata
 from satimg.raster import Patch, Raster
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -81,10 +82,17 @@ class Product(abc.ABC):
         kind: Kind = "raw",
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk a pixel view in windows. See :meth:`Raster.patches`."""
-        return self.view(kind).patches(
+        """Walk a pixel view in windows. See :meth:`Raster.patches`.
+
+        Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
+        product's :attr:`metadata`.
+        """
+        for item in self.view(kind).patches(
             size or self.patch_size, overlap=overlap, edge=edge, batch=batch
-        )
+        ):
+            for patch in item if isinstance(item, list) else (item,):
+                patch._product = self
+            yield item
 
     def __iter__(self) -> Iterator[Patch]:
         return self.patches()
@@ -121,6 +129,33 @@ class Product(abc.ABC):
     @abc.abstractmethod
     def thumbnail(self) -> "PIL.Image.Image":
         """The product's shipped quick-look image."""
+
+    @cached_property
+    def metadata(self) -> Metadata:
+        """Per-pixel ancillary geometry (incidence / sun / view angles, ...).
+
+        See :class:`~satimg.metadata.Metadata`. Empty for products that do not
+        override :meth:`_read_metadata`.
+        """
+        return self._read_metadata()
+
+    def _read_metadata(self) -> Metadata:
+        """Build this product's :class:`~satimg.metadata.Metadata`. Override in a
+        subclass; the default has no fields."""
+        return Metadata({})
+
+    def _field(self, rows, cols, values, *, name: str, units: str = "") -> Field:
+        """Helper for :meth:`_read_metadata`: a :class:`~satimg.metadata.Field` on
+        a coarse grid in this product's pixel coordinates."""
+        return Field(
+            rows,
+            cols,
+            values,
+            name=name,
+            units=units,
+            transform=self.transformer,
+            shape=(self.height, self.width),
+        )
 
     def bounds(self) -> tuple[float, float, float, float]:
         """``(min_lon, min_lat, max_lon, max_lat)`` of the footprint."""

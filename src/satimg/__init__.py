@@ -27,6 +27,7 @@ except PackageNotFoundError:  # running from a source tree without an install
 from satimg import products as _products  # noqa: F401  (populates the registry)
 from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window
+from satimg.metadata import Field, Metadata
 from satimg.product import Product
 from satimg.raster import Patch, Raster
 from satimg.registry import UnknownProductError, resolve
@@ -41,6 +42,8 @@ __all__ = [
     "Patch",
     "Window",
     "Grid",
+    "Metadata",
+    "Field",
     "UnknownProductError",
     "CredentialsError",
 ]
