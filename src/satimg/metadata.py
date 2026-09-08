@@ -10,6 +10,7 @@ named :class:`Field` s that interpolate to any pixel, the same way
     m.fields                       # ['incidence_angle', 'slant_range_time', ...]
     m.incidence_angle.at((row, col))   # -> float, bilinear on the coarse grid
     m.sample((row, col))           # -> {field: value} for every field
+    m.corners()                    # -> {field: {'top_left': ..., ..., 'center': ...}}
     m.attrs                        # scalar scene-level metadata
 
 Each field also materialises as a lazy full-grid ``(y, x)``
@@ -71,6 +72,18 @@ def bilinear(
     return top * (1 - tr) + bot * tr
 
 
+#: keys of the dict returned by every ``corners()``, in the order they map to
+#: :func:`_corner_center`.
+CORNER_KEYS = ("top_left", "top_right", "bottom_left", "bottom_right", "center")
+
+
+def _corner_center(height: float, width: float) -> list[tuple[float, float]]:
+    """The five ``(row, col)`` points for a ``height`` x ``width`` grid: the four
+    corner pixels, then the centre (matching :meth:`PatchMeta.sample`)."""
+    h, w = height - 1, width - 1
+    return [(0.0, 0.0), (0.0, w), (h, 0.0), (h, w), (height / 2, width / 2)]
+
+
 class Field:
     """One scalar quantity sampled on a coarse ``(rows, cols, values)`` grid given
     in the product's own pixel coordinates."""
@@ -107,6 +120,15 @@ class Field:
         rc = _as_n2(coords)
         out = numpy.asarray(bilinear(self._rows, self._cols, self._values, rc[:, 0], rc[:, 1]))
         return float(out[0]) if numpy.ndim(coords) == 1 else out
+
+    def corners(self) -> dict:
+        """``{"top_left": v, "top_right": v, "bottom_left": v, "bottom_right": v,
+        "center": v}`` -- the field at the four corners and centre of the full
+        product grid."""
+        if self._shape is None:
+            raise AttributeError(f"field {self.name!r} has no product grid attached")
+        vals = self.at(_corner_center(*self._shape))
+        return {k: float(v) for k, v in zip(CORNER_KEYS, vals)}
 
     # -- full grid ----------------------------------------------------
     @cached_property
@@ -186,6 +208,11 @@ class Metadata:
 
     sample = at
 
+    def corners(self) -> dict:
+        """``{field: {"top_left": v, ...}}`` for every field over the full product
+        grid (see :meth:`Field.corners`)."""
+        return {name: field.corners() for name, field in self._fields.items()}
+
     def __repr__(self) -> str:
         if not self._fields:
             return "Metadata(empty)"
@@ -230,6 +257,16 @@ class PatchMeta:
     def sample(self) -> dict:
         """``{field: value}`` at the patch centre."""
         return self.at((self._window.height / 2, self._window.width / 2))
+
+    def corners(self) -> dict:
+        """``{field: {"top_left": v, "top_right": v, "bottom_left": v,
+        "bottom_right": v, "center": v}}`` for this patch window."""
+        pts = _corner_center(self._window.height, self._window.width)
+        per = self.at(pts)  # {field: (5,) array}
+        return {
+            name: {k: float(v) for k, v in zip(CORNER_KEYS, vals)}
+            for name, vals in per.items()
+        }
 
     def __repr__(self) -> str:
         return f"PatchMeta({self._meta.fields}, {self._window})"
