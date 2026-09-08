@@ -10,6 +10,7 @@ produces ``/tmp/scene.dzi`` + ``/tmp/scene_files/`` viewable with OpenSeadragon.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import shutil
@@ -19,6 +20,8 @@ import numpy
 import PIL.Image
 
 from satimg.raster import Raster
+
+logger = logging.getLogger(__name__)
 
 _NS = "http://schemas.microsoft.com/deepzoom/2008"
 
@@ -36,9 +39,17 @@ class DeepZoom:
 
         data = raster.hwc()
         width, height = raster.width, raster.height
+        logger.info(
+            "building Deep Zoom pyramid: %dx%d tile=%d -> %s",
+            width,
+            height,
+            self.tile_size,
+            out_path,
+        )
         self._write_descriptor(dzi_path, width, height)
 
         for level, scale in _pyramid(width, height):
+            logger.debug("level %d (scale %d)", level, scale)
             level_dir = os.path.join(files_dir, str(level))
             os.makedirs(level_dir, exist_ok=True)
             step = slice(None, None, scale)
@@ -56,6 +67,7 @@ class DeepZoom:
                 return block
 
             blocks.map_blocks(save, dtype="uint8").compute(scheduler="threads")
+        logger.info("Deep Zoom pyramid written: %s", dzi_path)
         return dzi_path
 
     def _write_descriptor(self, dzi_path: str, width: int, height: int) -> None:

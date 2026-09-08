@@ -10,6 +10,7 @@ the environment.
 
 from __future__ import annotations
 
+import logging
 import os
 import zipfile
 from pathlib import Path
@@ -17,6 +18,8 @@ from pathlib import Path
 from satimg.connectors._auth import ers_login
 from satimg.connectors._credentials import Credentials
 from satimg.connectors.base import STACConnector
+
+logger = logging.getLogger(__name__)
 
 _ASSETS = (
     "thumbnail", "MTL.json", "coastal", "blue", "green", "red", "nir08", "swir16",
@@ -49,9 +52,14 @@ class LandsatConnector(STACConnector):
             service=self.SERVICE,
             env_prefix=self.ENV_PREFIX,
         )
+        logger.debug("logging in to %s as %s", self.SERVICE, creds.username)
         return ers_login(creds.username, creds.password, creds.token)
 
     def download(self, item: dict, save_path: str) -> str:
+        assets = [name for name in item["assets"] if name in _ASSETS]
+        logger.info(
+            "downloading %s (%d assets) -> %s", item["id"], len(assets), save_path
+        )
         session = self._get_session()
         with zipfile.ZipFile(save_path, "w", zipfile.ZIP_DEFLATED) as archive:
             for name, asset in item["assets"].items():
@@ -59,9 +67,11 @@ class LandsatConnector(STACConnector):
                     continue
                 href = asset["href"]
                 filename = name if Path(name).suffix else name + Path(href).suffix
+                logger.debug("fetching asset %s: %s", name, href)
                 response = session.get(href, timeout=120)
                 response.raise_for_status()
                 archive.writestr(os.path.join(item["id"], filename), response.content)
             if archive.testzip() is not None:
                 raise zipfile.BadZipFile("invalid zip archive")
+        logger.info("wrote %s", save_path)
         return save_path

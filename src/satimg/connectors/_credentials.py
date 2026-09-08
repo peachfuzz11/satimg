@@ -11,8 +11,11 @@ or leave them unset and export the service's environment variables
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class CredentialsError(RuntimeError):
@@ -39,9 +42,18 @@ class Credentials:
 
         Raises :class:`CredentialsError` if username or password is still absent.
         """
+        explicit = bool(username and password)
         username = username or os.environ.get(f"{env_prefix}_USERNAME")
         password = password or os.environ.get(f"{env_prefix}_PASSWORD")
         token = token or os.environ.get(f"{env_prefix}_TOKEN")
+        if explicit:
+            logger.debug("using explicit credentials for %s", service)
+        elif username and password:
+            logger.debug(
+                "resolved %s credentials from %s_* environment variables",
+                service,
+                env_prefix,
+            )
         if not (username and password):
             raise CredentialsError(
                 f"{service} downloads require a username and password. Pass "

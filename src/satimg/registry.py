@@ -12,11 +12,14 @@ Products register themselves with the :func:`register` decorator; importing
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Callable, TypeVar
 
 from satimg.product import Product
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=type[Product])
 
@@ -50,9 +53,13 @@ def resolve(path: str) -> type[Product]:
     name = Path(path).name
     for pattern, cls in _REGISTRY:
         if pattern.search(name):
+            logger.debug(
+                "resolved %s via pattern %r -> %s", name, pattern.pattern, cls.__name__
+            )
             return cls
     for _, cls in _REGISTRY:
         sniff = getattr(cls, "sniff", None)
         if callable(sniff) and sniff(path):
+            logger.debug("resolved %s via %s.sniff()", name, cls.__name__)
             return cls
     raise UnknownProductError(path)

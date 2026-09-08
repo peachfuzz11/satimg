@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import abc
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Connector(abc.ABC):
@@ -42,6 +45,7 @@ class STACConnector(Connector, abc.ABC):
         if client is None:
             from pystac_client import Client
 
+            logger.debug("opening STAC client: %s", self.STAC_ENDPOINT)
             client = self._client = Client.open(self.STAC_ENDPOINT)
         return client
 
@@ -74,6 +78,9 @@ class STACConnector(Connector, abc.ABC):
                 }
             }
 
+        logger.debug(
+            "STAC search: collection=%s datetime=%s ids=%s", self.collection, dt, ids
+        )
         items = [
             item.to_dict()
             for item in self.client.search(
@@ -85,7 +92,14 @@ class STACConnector(Connector, abc.ABC):
             ).items()
         ]
         if exclude_ids:
-            items = [i for i in items if i["id"] not in exclude_ids]
+            kept = [i for i in items if i["id"] not in exclude_ids]
+            logger.debug(
+                "STAC search returned %d item(s), %d after exclude_ids",
+                len(items),
+                len(kept),
+            )
+            return kept
+        logger.debug("STAC search returned %d item(s)", len(items))
         return items
 
     @abc.abstractmethod

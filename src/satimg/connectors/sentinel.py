@@ -10,12 +10,15 @@ or set ``CDSE_USERNAME`` / ``CDSE_PASSWORD`` in the environment.
 from __future__ import annotations
 
 import io
+import logging
 import zipfile
 
 import requests
 
 from satimg.connectors._credentials import Credentials
 from satimg.connectors.base import STACConnector
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_URL = (
     "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
@@ -40,11 +43,13 @@ class _DataspaceConnector(STACConnector):
         )
 
     def download(self, item: dict, save_path: str) -> str:
+        logger.info("downloading %s -> %s", item["id"], save_path)
         session = self._get_session()
         url = item["assets"]["Product"]["href"]
         response = session.get(url, allow_redirects=False)
         while response.status_code in (301, 302, 303, 307):
             url = response.headers["Location"]
+            logger.debug("redirect %d -> %s", response.status_code, url)
             response = session.get(url, allow_redirects=False)
 
         payload = session.get(url, allow_redirects=True).content
@@ -53,10 +58,12 @@ class _DataspaceConnector(STACConnector):
                 raise zipfile.BadZipFile("invalid zip archive")
         with open(save_path, "wb") as f:
             f.write(payload)
+        logger.info("wrote %s (%d bytes)", save_path, len(payload))
         return save_path
 
     def _get_session(self, *args, **kwargs) -> requests.Session:
         creds = self._credentials()
+        logger.debug("requesting %s access token for %s", self.SERVICE, creds.username)
         response = requests.post(
             _TOKEN_URL,
             data={
@@ -69,6 +76,7 @@ class _DataspaceConnector(STACConnector):
         response.raise_for_status()
         session = requests.Session()
         session.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
+        logger.debug("obtained %s access token", self.SERVICE)
         return session
 
 
