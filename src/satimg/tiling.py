@@ -35,6 +35,17 @@ def as_band_yx(data: xarray.DataArray) -> xarray.DataArray:
     return data.transpose("band", "y", "x", *[d for d in data.dims if d not in ("band", "y", "x")])
 
 
+def label_bands(da: xarray.DataArray, names) -> xarray.DataArray:
+    """Attach ``names`` as the ``band`` coordinate of ``da`` (a ``(band, y, x)``
+    array). ``len(names)`` must equal the band count."""
+    names = list(names)
+    if len(names) != da.sizes["band"]:
+        raise ValueError(
+            f"got {len(names)} band names for {da.sizes['band']} bands: {names}"
+        )
+    return da.assign_coords(band=names)
+
+
 def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:
     """Lazy sub-array of ``da`` for ``window``.
 
@@ -157,21 +168,48 @@ class Patch:
 
     @property
     def values(self) -> numpy.ndarray:
-        """Materialised array for this window."""
+        """Materialised array for this window (shorthand for ``.raw.values``)."""
         return numpy.asarray(self.array.data)
+
+    @property
+    def raw(self) -> xarray.DataArray:
+        """This window read from ``product.raw`` (band-labelled). Only available
+        on patches from ``product.patches()`` / ``product.patches_at()``."""
+        return read_window(self._require_product().raw, self.window)
+
+    @property
+    def visual(self) -> xarray.DataArray:
+        """This window read from ``product.visual`` (uint8, band-labelled). Only
+        available on patches from ``product.patches()`` /
+        ``product.patches_at()``."""
+        product = self._require_product()
+        visual = product.visual
+        if (visual.sizes["x"], visual.sizes["y"]) != (
+            product.raw.sizes["x"],
+            product.raw.sizes["y"],
+        ):
+            raise ValueError(
+                "product.visual is not co-registered with product.raw; "
+                "patch.visual needs matching grids"
+            )
+        return read_window(visual, self.window)
+
+    def _require_product(self) -> "Product":
+        if self._product is None:
+            raise AttributeError(
+                "patch has no product -- iterate product.patches() / "
+                "product.patches_at() to use .raw / .visual / .meta"
+            )
+        return self._product
 
     @property
     def meta(self) -> "PatchMeta":
         """Lazy per-pixel metadata for this window (see
         :class:`~satimg.metadata.PatchMeta`). Only available on patches from
         ``product.patches()`` / ``iter(product)``."""
-        if self._product is None:
-            raise AttributeError(
-                "patch has no product -- iterate product.patches() to use .meta"
-            )
         from satimg.metadata import PatchMeta
 
-        return PatchMeta(self._product.metadata, self.window)
+        return PatchMeta(self._require_product().metadata, self.window)
 
     def image(self) -> "PIL.Image.Image":
         """Render as a PIL image (only meaningful for ``uint8`` data)."""

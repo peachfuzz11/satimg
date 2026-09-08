@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import warnings
 from functools import cached_property
 from xml.etree import ElementTree
@@ -16,11 +17,16 @@ from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
 from satimg.readers import find_file, merge_bands, open_band
 from satimg.registry import register
-from satimg.tiling import as_band_yx
+from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
 
 #: spacing of the MTD_TL.xml angle grids, metres.
 _ANGLE_STEP_M = 5000.0
+
+
+def _pad_band(name: str) -> str:
+    """``B1`` -> ``B01``; leaves ``B8A`` / ``B10`` .. ``B12`` unchanged."""
+    return re.sub(r"^B(\d)$", r"B0\1", name)
 
 
 def _parse_mtd(path: str) -> dict:
@@ -29,9 +35,13 @@ def _parse_mtd(path: str) -> dict:
         raise FileNotFoundError(f"no MTD_MSIL1C.xml under {path}")
     root = ElementTree.parse(mtd).getroot()
 
-    physical = {}
+    physical, wavelengths = {}, {}
     for info in root.findall(".//Spectral_Information"):
-        physical[int(info.get("bandId"))] = info.get("physicalBand")
+        bid = int(info.get("bandId"))
+        physical[bid] = info.get("physicalBand")
+        central = info.find(".//CENTRAL")
+        if central is not None:
+            wavelengths[bid] = float(central.text)
 
     reflectance, tci = [], None
     for band_id, elem in enumerate(root.iter("IMAGE_FILE")):
@@ -41,10 +51,16 @@ def _parse_mtd(path: str) -> dict:
         else:
             reflectance.append(file_path)
 
+    n = len(reflectance)
+    band_names = [_pad_band(physical[i]) for i in range(n)]
+    band_wavelengths = [wavelengths.get(i, numpy.nan) for i in range(n)]
+
     ext = [float(v) for v in root.find(".//EXT_POS_LIST").text.split()]
     ring = [(ext[i + 1], ext[i]) for i in range(0, len(ext), 2)]
     return {
         "reflectance": reflectance,
+        "band_names": band_names,
+        "wavelengths": band_wavelengths,
         "tci": tci,
         "footprint": {
             "type": "Feature",
@@ -133,10 +149,15 @@ class Sentinel2L1CProduct(Product):
 
     @cached_property
     def raw(self) -> xarray.DataArray:
-        return as_band_yx(merge_bands(self._meta["reflectance"], match=1))
+        da = label_bands(
+            as_band_yx(merge_bands(self._meta["reflectance"], match=1)),
+            self._meta["band_names"],
+        )
+        return da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
 
     def _render_visual(self) -> xarray.DataArray:
-        return as_band_yx(open_band(self._meta["tci"]).astype("uint8"))
+        tci = as_band_yx(open_band(self._meta["tci"]).astype("uint8"))
+        return label_bands(tci, ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
         rows, cols = self._tl["axes"]
