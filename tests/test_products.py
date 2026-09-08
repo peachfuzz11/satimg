@@ -9,6 +9,7 @@ import pytest
 import xarray
 
 from satimg.geometry import Window
+from satimg.products.landsat import BANDS as _LS_BANDS
 from satimg.tiling import read_window
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
@@ -17,6 +18,10 @@ PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
 @pytest.fixture(params=PRODUCTS)
 def product(request):
     return request.getfixturevalue(request.param)
+
+
+_S2_BANDS = ["B01", "B02", "B03", "B04", "B05", "B06", "B07",
+             "B08", "B8A", "B09", "B10", "B11", "B12"]
 
 
 class TestViews:
@@ -36,6 +41,37 @@ class TestViews:
         assert visual.dtype == numpy.uint8
         assert visual.sizes["band"] == bands
         assert (visual.sizes["x"], visual.sizes["y"]) == (product.width, product.height)
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("sentinel1_iw", ["VV", "VH"]),
+            ("sentinel2_l1c", _S2_BANDS),
+            ("landsat", list(_LS_BANDS)),
+        ],
+    )
+    def test_raw_band_coord_is_named(self, request, name, expected):
+        raw = request.getfixturevalue(name).raw
+        assert [str(b) for b in raw.band.values] == expected
+        # named selection works and round-trips a coord
+        assert raw.sel(band=expected[0]).shape == (raw.sizes["y"], raw.sizes["x"])
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("sentinel1_iw", ["amplitude"]),
+            ("sentinel2_l1c", ["red", "green", "blue"]),
+            ("landsat", ["red", "green", "blue"]),
+        ],
+    )
+    def test_visual_band_coord_is_named(self, request, name, expected):
+        assert [str(b) for b in request.getfixturevalue(name).visual.band.values] == expected
+
+    def test_sentinel2_wavelength_coord(self, sentinel2_l1c):
+        wl = sentinel2_l1c.raw.wavelength_nm
+        assert wl.dims == ("band",) and wl.size == 13
+        assert float(wl.sel(band="B08")) == pytest.approx(832.8, abs=0.1)
+        assert float(wl.sel(band="B04")) == pytest.approx(664.6, abs=0.1)
 
 
 class TestPatches:
@@ -73,6 +109,20 @@ class TestPatches:
         numpy.testing.assert_array_equal(
             patch.values, read_window(product.raw, win).values
         )
+
+    def test_patch_exposes_raw_visual_and_meta(self, product):
+        p = next(product.patches_at([(600, 600)], 256))
+        assert p.raw.dims == ("band", "y", "x")
+        assert p.raw.shape == (product.bands, 256, 256)
+        assert list(p.raw.band.values) == list(product.raw.band.values)
+        assert p.visual.dtype == numpy.uint8
+        assert p.visual.shape[1:] == (256, 256)
+        assert p.visual.sizes["band"] == product.visual.sizes["band"]
+        # window is shared: raw patch == direct read at the same window
+        numpy.testing.assert_array_equal(
+            p.raw.values, read_window(product.raw, p.window).values
+        )
+        assert set(p.meta.sample()) == set(product.metadata.fields)
 
 
 class TestMetadata:

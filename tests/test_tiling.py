@@ -3,7 +3,14 @@ import pytest
 import xarray
 
 from satimg.geometry import Window
-from satimg.tiling import Patch, as_band_yx, patches, patches_at, read_window
+from satimg.tiling import (
+    Patch,
+    as_band_yx,
+    label_bands,
+    patches,
+    patches_at,
+    read_window,
+)
 
 
 def make_da(bands=3, height=200, width=300, dtype="uint8"):
@@ -24,6 +31,19 @@ class TestAsBandYX:
     def test_rejects_unnamed_dims(self):
         with pytest.raises(ValueError):
             as_band_yx(xarray.DataArray(numpy.zeros((3, 4, 5))))
+
+
+class TestLabelBands:
+    def test_assigns_band_coord(self):
+        da = label_bands(make_da(bands=3), ["red", "green", "blue"])
+        assert list(da.band.values) == ["red", "green", "blue"]
+        assert da.sel(band="green").shape == (200, 300)
+        # rides through a windowed read
+        assert list(read_window(da, Window(0, 0, 8, 8)).band.values) == ["red", "green", "blue"]
+
+    def test_length_mismatch_raises(self):
+        with pytest.raises(ValueError):
+            label_bands(make_da(bands=3), ["red", "green"])
 
 
 class TestReadWindow:
@@ -121,6 +141,13 @@ class TestPatch:
         p = Patch(make_da(), Window(0, 0, 4, 4))
         with pytest.raises(AttributeError):
             p.meta
+
+    def test_without_product_raw_visual_raise(self):
+        p = next(patches(make_da(), 4))
+        with pytest.raises(AttributeError):
+            p.raw
+        with pytest.raises(AttributeError):
+            p.visual
 
     def test_image_from_bare_yx(self):
         grid = xarray.DataArray(

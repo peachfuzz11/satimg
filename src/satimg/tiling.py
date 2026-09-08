@@ -35,6 +35,17 @@ def as_band_yx(data: xarray.DataArray) -> xarray.DataArray:
     return data.transpose("band", "y", "x", *[d for d in data.dims if d not in ("band", "y", "x")])
 
 
+def label_bands(da: xarray.DataArray, names) -> xarray.DataArray:
+    """Attach ``names`` as the ``band`` coordinate of ``da`` (a ``(band, y, x)``
+    array). ``len(names)`` must equal the band count."""
+    names = list(names)
+    if len(names) != da.sizes["band"]:
+        raise ValueError(
+            f"got {len(names)} band names for {da.sizes['band']} bands: {names}"
+        )
+    return da.assign_coords(band=names)
+
+
 def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:
     """Lazy sub-array of ``da`` for ``window``.
 
@@ -115,6 +126,19 @@ class Patch:
 
     Cheap to create and pass around; reads happen only when ``.array`` is
     computed or ``.values`` is accessed.
+
+    A patch from ``product.patches()`` / ``product.patches_at()`` is
+    *product-bound*: it reads every view and the metadata at its own window::
+
+        for p in product.patches_at(points, 512):
+            p.raw                 # (band, y, x) DataArray for this window, band-labelled
+            p.raw.sel(band="red") # ("B04" for Sentinel-2, "VV" for Sentinel-1)
+            p.visual              # uint8 DataArray, same window
+            p.meta.sample()       # {field: value} per-pixel angles at the patch centre
+            p.center_latlon       # where the patch sits on Earth
+
+    A bare ``satimg.patches(da, ...)`` patch only has ``.array`` / ``.values``
+    (and ``.center_latlon`` if a ``transformer=`` was passed).
     """
 
     __slots__ = ("data", "window", "_transformer", "_product")
@@ -157,18 +181,27 @@ class Patch:
 
     @property
     def values(self) -> numpy.ndarray:
-        """Materialised array for this window."""
+        """Materialised array for this window (shorthand for ``.raw.values``)."""
         return numpy.asarray(self.array.data)
+
+    @property
+    def raw(self) -> xarray.DataArray:
+        """This window read from ``product.raw`` (band-labelled). Only available
+        on patches from ``product.patches()`` / ``product.patches_at()``."""
+        return read_window(self._product.raw, self.window)
+
+    @property
+    def visual(self) -> xarray.DataArray:
+        """This window read from ``product.visual`` (uint8, band-labelled). Only
+        available on patches from ``product.patches()`` /
+        ``product.patches_at()``."""
+        return read_window(self._product.visual, self.window)
 
     @property
     def meta(self) -> "PatchMeta":
         """Lazy per-pixel metadata for this window (see
         :class:`~satimg.metadata.PatchMeta`). Only available on patches from
         ``product.patches()`` / ``iter(product)``."""
-        if self._product is None:
-            raise AttributeError(
-                "patch has no product -- iterate product.patches() to use .meta"
-            )
         from satimg.metadata import PatchMeta
 
         return PatchMeta(self._product.metadata, self.window)

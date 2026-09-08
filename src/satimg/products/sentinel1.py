@@ -17,8 +17,11 @@ from satimg.metadata import Metadata, grid_from_points
 from satimg.product import Product
 from satimg.readers import find_file, merge_bands
 from satimg.registry import register
-from satimg.tiling import as_band_yx
+from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import GCPTransformer
+
+#: measurement-file polarisation -> sort order (co-pol before cross-pol).
+_POL_ORDER = {"vv": 0, "vh": 1, "hh": 2, "hv": 3}
 
 _GEOLOC_FIELDS = {
     "incidence_angle": ("incidenceAngle", "degrees"),
@@ -110,17 +113,20 @@ class Sentinel1Product(Product):
     @cached_property
     def raw(self) -> xarray.DataArray:
         measurement = os.path.join(self._path, "measurement")
-        files = sorted(
-            (os.path.join(measurement, f) for f in os.listdir(measurement)),
-            key=lambda f: f[::-1],
-        )
-        return as_band_yx(merge_bands(files))
+        pols = {}
+        for f in os.listdir(measurement):
+            m = re.search(r"-(vv|vh|hh|hv)-", f)
+            if m:
+                pols[os.path.join(measurement, f)] = m.group(1)
+        files = sorted(pols, key=lambda f: _POL_ORDER[pols[f]])
+        da = as_band_yx(merge_bands(files))
+        return label_bands(da, [pols[f].upper() for f in files])
 
     def _render_visual(self) -> xarray.DataArray:
         a = self.raw
         db = (10 * numpy.log10(a.where(a > 0))).fillna(0).mean("band")
         u8 = (255 / (1 + numpy.exp(-((db - 20) * 0.18)))).clip(0, 255).astype("uint8")
-        return as_band_yx(u8)
+        return label_bands(as_band_yx(u8), ("amplitude",))
 
     def _read_metadata(self) -> Metadata:
         points, attrs = _read_geolocation(_annotation_file(self._path))

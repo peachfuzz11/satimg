@@ -32,8 +32,14 @@ product.visual  # uint8 visualisation: 3-band true colour for optical    -> xarr
                 # (Sentinel-1)
 ```
 
-Both are lazy `DataArray`s over the same grid, so a `Window` means the same
-thing in each.
+Both are lazy `DataArray`s over the **same grid**, so a `Window` means the same
+thing in each. The `band` axis is labelled, so select by name:
+
+```python
+product.raw.sel(band="red")        # Landsat / (SWIR etc.)  ; "B04" for Sentinel-2, "VV" for Sentinel-1
+product.raw.band.values            # e.g. ['coastal', 'blue', 'green', 'red', ...]
+product.raw.wavelength_nm          # Sentinel-2 only: central wavelength per band
+```
 
 ### Walking the image in patches
 
@@ -46,8 +52,10 @@ for patch in product.patches(512, overlap=64):
 ```
 
 `for patch in product` is shorthand for `product.patches()` (raw bands,
-512 px, no overlap). Patches from `product.patches()` walk `raw` and carry
-`.meta`; to walk any other array (the `visual` view, a derived index) use
+512 px, no overlap). Patches from `product.patches()` walk `raw` and expose
+`.raw` / `.visual` / `.meta` for that window (see
+[Reading raw + visual + metadata together](#reading-raw--visual--metadata-together));
+to walk any *other* array (a derived index) use
 `satimg.patches(da, 512, transformer=product.transformer)`.
 
 `batch=n` yields lists of `n` patches instead of one at a time.
@@ -82,6 +90,31 @@ for patch in product.patches_at(points, 512):
 `batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
 gives the bare `Window`s if you don't need a patch bound.
 
+### Reading raw + visual + metadata together
+
+A patch from `product.patches()` / `product.patches_at()` is **product-bound**:
+one window, every view, plus metadata at three levels.
+
+```python
+scene = product.metadata.attrs                 # scene-level scalars, constant per product
+                                               # e.g. {"mean_sun_zenith": 77.5, ...}
+
+for p in product.patches_at(points, 512):
+    raw = p.raw                                # xarray.DataArray (band, 512, 512), band-labelled
+    red = p.raw.sel(band="red").values         # np.ndarray (512, 512)   ("B04" on Sentinel-2)
+    nir = p.raw.sel(band="nir08").values       #                          ("B08" on Sentinel-2)
+    rgb = p.visual.values                       # np.ndarray (3, 512, 512) uint8, same window
+
+    angles = p.meta.sample()                    # {"sun_zenith": 78.1, "view_zenith": 4.9, ...}
+                                               #   -> per-pixel fields, bilinear at the patch centre
+    sza_grid = p.meta["sun_zenith"].values      # np.ndarray (512, 512) — the field over the patch
+
+    lat, lon = p.center_latlon                  # where the patch sits on Earth
+```
+
+`.raw` / `.visual` / `.meta` need the patch to come from `product.patches*()`;
+a bare `satimg.patches(da, ...)` patch only has `.array` / `.values`.
+
 ### Mapping results back
 
 ```python
@@ -108,8 +141,9 @@ chip.values                                   # numpy, zero-padded if the window
 them the same way — a bare `(y, x)` array is fine:
 
 ```python
-b = product.raw
-ndwi = (b.isel(band=2) - b.isel(band=7)) / (b.isel(band=2) + b.isel(band=7))
+b = product.raw                                  # Sentinel-2
+green, nir = b.sel(band="B03"), b.sel(band="B08")
+ndwi = (green - nir) / (green + nir)
 for patch in satimg.patches(ndwi, 512):
     ...
 ```
@@ -134,6 +168,10 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-1 | `incidence_angle`, `elevation_angle`, `slant_range_time` (seconds), `height` (metres) |
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+
+This is per-pixel geometry (varies across the scene). Per-*band* identity lives
+on `product.raw` instead — the labelled `band` coordinate, plus `wavelength_nm`
+for Sentinel-2. Scene-wide scalars are `product.metadata.attrs`.
 
 Each field also materialises as a lazy full-grid `(y, x)` `xarray.DataArray`
 (`m.sun_zenith.grid`), and patches from `product.patches()` carry a matching lazy
@@ -178,10 +216,10 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 ## Adding a product
 
 Subclass `Product`, implement the abstract hooks (`raw`, `_render_visual` — both
-return an `xarray.DataArray`; wrap the result in `satimg.tiling.as_band_yx(...)`
-to normalise dims — `transformer`, `timestamp`, `footprint`, `thumbnail`),
-optionally override `_read_metadata` to expose per-pixel metadata, and register a
-filename pattern:
+return an `xarray.DataArray`; normalise dims with `satimg.as_band_yx(...)` and
+name the band axis with `satimg.label_bands(da, [...])` — `transformer`,
+`timestamp`, `footprint`, `thumbnail`), optionally override `_read_metadata` to
+expose per-pixel metadata, and register a filename pattern:
 
 ```python
 from satimg.registry import register

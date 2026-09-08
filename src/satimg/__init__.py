@@ -40,7 +40,7 @@ from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
 from satimg.product import Product
 from satimg.registry import UnknownProductError, resolve
-from satimg.tiling import Patch, patches, patches_at, read_window
+from satimg.tiling import Patch, as_band_yx, label_bands, patches, patches_at, read_window
 
 __all__ = [
     "__version__",
@@ -52,6 +52,8 @@ __all__ = [
     "patches",
     "patches_at",
     "read_window",
+    "as_band_yx",
+    "label_bands",
     "Window",
     "Grid",
     "windows_at",

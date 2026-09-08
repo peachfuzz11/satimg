@@ -16,7 +16,7 @@ from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import merge_bands
 from satimg.registry import register
-from satimg.tiling import as_band_yx
+from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
 
 #: band order of :attr:`LandsatProduct.raw`.
@@ -67,17 +67,18 @@ class LandsatProduct(Product):
     @cached_property
     def raw(self) -> xarray.DataArray:
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        return as_band_yx(merge_bands(paths, match=_PAN))
+        return label_bands(as_band_yx(merge_bands(paths, match=_PAN)), BANDS)
 
     def _render_visual(self) -> xarray.DataArray:
-        a = self.raw
+        a = self.raw.drop_vars("band")  # positional indexing below; relabel at the end
         rgb = a.isel(band=list(_RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
         rgb = rgb * weights[:, None, None]
         rgb = rgb / (rgb.sum(dim="band") + 1e-12)
         rgb = rgb * a.isel(band=_PAN).astype("float32")
         rgb = 0.75 * rgb.fillna(0) ** (1 / 1.4)
-        return as_band_yx(rgb.clip(0, 255).astype("uint8"))
+        return label_bands(as_band_yx(rgb.clip(0, 255).astype("uint8")),
+                           ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
         pan = self._transformer._transform
