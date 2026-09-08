@@ -21,7 +21,7 @@ from __future__ import annotations
 import abc
 import datetime
 from functools import cached_property
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
@@ -78,7 +78,7 @@ class Product(abc.ABC):
         size: int | tuple[int, int] | None = None,
         *,
         overlap: int | tuple[int, int] = 0,
-        edge: EdgeMode = "trim",
+        edge: EdgeMode = "pad",
         kind: Kind = "raw",
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
@@ -89,6 +89,27 @@ class Product(abc.ABC):
         """
         for item in self.view(kind).patches(
             size or self.patch_size, overlap=overlap, edge=edge, batch=batch
+        ):
+            for patch in item if isinstance(item, list) else (item,):
+                patch._product = self
+            yield item
+
+    def patches_at(
+        self,
+        points: Iterable[tuple[float, float]],
+        size: int | tuple[int, int] | None = None,
+        *,
+        kind: Kind = "raw",
+        batch: int | None = None,
+    ) -> Iterator[Patch] | Iterator[list[Patch]]:
+        """Walk a pixel view at caller-supplied ``(col, row)`` points. See
+        :meth:`Raster.patches_at`.
+
+        Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
+        product's :attr:`metadata`.
+        """
+        for item in self.view(kind).patches_at(
+            points, size or self.patch_size, batch=batch
         ):
             for patch in item if isinstance(item, list) else (item,):
                 patch._product = self

@@ -55,12 +55,29 @@ for patch in product.patches(512, overlap=64, kind="visual"):
 
 | `edge` | behaviour | use for |
 | --- | --- | --- |
-| `"trim"` (default) | last row/col of patches is smaller — you get exactly the pixels that exist | analysis, lossless re-assembly |
-| `"pad"` | every patch is exactly `size`, overhang zero-filled | batched model inference |
+| `"pad"` (default) | every patch is exactly `size`, overhang zero-filled | batched model inference |
+| `"trim"` | last row/col of patches is smaller — you get exactly the pixels that exist | analysis, lossless re-assembly |
 | `"skip"` | drop partial patches, keep only full interior tiles | training-set extraction |
 
 Indices are always conserved: `patch.window` tells you where the tile belongs,
 `patch.window.clip(product.width, product.height)` gives its valid region.
+
+### Patches at specific points
+
+When you already know where to look — detections, sample sites, a sparse set of
+tiles — `patches_at` visits only those points instead of sweeping the whole
+image. Each `(col, row)` is the **centre** of its patch, and every patch is
+exactly `size` (overhang zero-filled, so points near an edge still work):
+
+```python
+points = [(4096, 2048), (10500, 512), (0, 0)]
+for patch in product.patches_at(points, 512, kind="visual"):
+    tile = patch.values             # (3, 512, 512), centred on the point
+    lat, lon = patch.center_latlon  # ~ the point you asked for
+```
+
+`batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
+gives the bare `Window`s if you don't need a raster bound.
 
 ### Mapping results back
 
