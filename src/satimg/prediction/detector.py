@@ -8,6 +8,7 @@ optionally dropped if they land on shore.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy
@@ -17,6 +18,8 @@ from satimg.prediction import nms
 from satimg.prediction.models import Model
 from satimg.prediction.types import BBox, Coordinate, Detection, Label
 from satimg.product import Product
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,21 +46,36 @@ class Detector:
 
     def detect(self, **overrides) -> list[Detection]:
         cfg = DetectorConfig(**{**self._config.__dict__, **overrides})
+        logger.info(
+            "detecting over %s: slice=%d overlap=%d",
+            self._product,
+            cfg.slice_size,
+            cfg.overlap,
+        )
         raster = self._product.visual.chunk(cfg.slice_size).persist()
         results: list[Detection] = []
 
         for patch in raster.patches(cfg.slice_size, overlap=cfg.overlap, edge="pad"):
             boxes = self._model.predict(patch.values, slice_size=cfg.slice_size)
+            n_raw = len(boxes)
             boxes = boxes[boxes[:, 4] > cfg.conf_threshold]
             if cfg.nms_threshold:
                 boxes = boxes[nms.non_max_suppression(
                     boxes[:, 4:], boxes[:, :4], overlap_threshold=cfg.nms_threshold
                 )]
             boxes = boxes[_shape_mask(boxes, cfg)]
+            logger.debug(
+                "tile (%d,%d): %d boxes -> %d after filters",
+                patch.window.col,
+                patch.window.row,
+                n_raw,
+                len(boxes),
+            )
 
             boxes[:, [0, 2]] += patch.window.col
             boxes[:, [1, 3]] += patch.window.row
             results.extend(self._to_detections(boxes, cfg))
+        logger.info("detection complete: %d detection(s)", len(results))
         return results
 
     def _to_detections(self, boxes: numpy.ndarray, cfg: DetectorConfig) -> list[Detection]:

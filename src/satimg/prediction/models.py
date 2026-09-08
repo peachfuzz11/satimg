@@ -4,14 +4,18 @@ returns an ``(N, 5)`` array of ``x1, y1, x2, y2, confidence`` in tile pixels."""
 from __future__ import annotations
 
 import abc
+import logging
 
 import numpy
+
+logger = logging.getLogger(__name__)
 
 
 class Model(abc.ABC):
     def __init__(self, model_path: str):
         import onnxruntime
 
+        logger.debug("loading ONNX model: %s", model_path)
         self._session = onnxruntime.InferenceSession(model_path)
 
     @property

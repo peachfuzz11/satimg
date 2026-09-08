@@ -12,12 +12,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 import zipfile
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError, version as _version
 from typing import Iterator
+
+# Library convention: log under the ``satimg.*`` namespace and let the
+# application attach handlers. The NullHandler keeps us silent by default.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+logger = logging.getLogger(__name__)
 
 try:
     __version__ = _version("satimg")
@@ -51,7 +57,9 @@ __all__ = [
 
 def open(path: str) -> Product:
     """Open a product directory, returning the matching :class:`Product`."""
-    return resolve(path)(path)
+    cls = resolve(path)
+    logger.debug("opened %s as %s", path, cls.__name__)
+    return cls(path)
 
 
 @contextmanager
@@ -61,8 +69,10 @@ def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
     The temp dir (under ``dest``, or the system default) is removed on exit.
     """
     with tempfile.TemporaryDirectory(dir=dest) as tmp:
+        logger.debug("extracting %s to %s", zip_path, tmp)
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(tmp)
         entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
         root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp
+        logger.debug("extracted product root: %s", root)
         yield open(root)

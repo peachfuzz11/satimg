@@ -5,11 +5,14 @@ Login-form handling adapted from the ``landsatlook-stac`` package.
 
 from __future__ import annotations
 
+import logging
 import time
 
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter, Retry
+
+logger = logging.getLogger(__name__)
 
 ERS_LOGIN_URL = "https://ers.cr.usgs.gov/login/"
 USER_AGENT = "satimg (+python-requests)"
@@ -30,6 +33,10 @@ def _submit_login_form(s: requests.Session, username: str, password: str) -> Non
     soup = BeautifulSoup(r.text, "html.parser")
     form = soup.find("form")
     if form is None:
+        logger.warning(
+            "ERS login form not found at %s; falling back to direct POST",
+            ERS_LOGIN_URL,
+        )
         # Try direct post as fallback
         data = {"username": username, "password": password}
         r = s.post(ERS_LOGIN_URL, data=data, timeout=30, allow_redirects=True)
@@ -70,9 +77,11 @@ def ers_login(username: str, password: str, token: str | None = None) -> request
         Authorization header.
     """
     s = make_session()
+    logger.debug("submitting ERS login form for %s", username)
     _submit_login_form(s, username, password)
     # Heuristic settle
     time.sleep(0.3)
     if token:
         s.headers.update({"Authorization": f"Bearer {token}"})
+    logger.debug("ERS login complete for %s", username)
     return s

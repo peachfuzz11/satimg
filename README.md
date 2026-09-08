@@ -168,6 +168,22 @@ class MySensorProduct(Product):
 
 Importing `satimg.products` registers the built-ins.
 
+## Logging
+
+`satimg` logs under the `satimg.*` logger namespace and never installs a handler
+of its own. Opt in from your application:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)              # your app configures handlers
+logging.getLogger("satimg").setLevel(logging.DEBUG)  # DEBUG for per-tile / per-request detail
+```
+
+`INFO` covers milestones (downloads, Deep Zoom builds, detection runs); `DEBUG`
+adds STAC queries, redirect hops, per-tile counts and product resolution.
+Credentials are never logged.
+
 ## Development
 
 ```sh
