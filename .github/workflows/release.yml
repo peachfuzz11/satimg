@@ -1,12 +1,40 @@
 name: Release
 
+# Publish to PyPI whenever the version in pyproject.toml lands on main without a
+# matching tag. Bump the version in a PR, merge it -- that is the whole release.
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths: ["pyproject.toml"]
   workflow_dispatch:
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: v
+        run: |
+          version=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/.*"(.*)".*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version already tagged -- nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new -- will publish"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,16 +54,17 @@ jobs:
           path: dist/
 
   publish:
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
-    # Only publish on an actual GitHub Release, not on manual dispatch.
-    if: github.event_name == 'release'
     environment:
       name: pypi
       url: https://pypi.org/p/satimg
     permissions:
-      id-token: write  # OIDC token for PyPI Trusted Publishing
+      id-token: write   # OIDC token for PyPI Trusted Publishing
+      contents: write   # push the tag + create the GitHub Release
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -43,3 +72,16 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+      - name: Tag + GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag
