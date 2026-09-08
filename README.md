@@ -52,8 +52,10 @@ for patch in product.patches(512, overlap=64):
 ```
 
 `for patch in product` is shorthand for `product.patches()` (raw bands,
-512 px, no overlap). Patches from `product.patches()` walk `raw` and carry
-`.meta`; to walk any other array (the `visual` view, a derived index) use
+512 px, no overlap). Patches from `product.patches()` walk `raw` and expose
+`.raw` / `.visual` / `.meta` for that window (see
+[Reading raw + visual + metadata together](#reading-raw--visual--metadata-together));
+to walk any *other* array (a derived index) use
 `satimg.patches(da, 512, transformer=product.transformer)`.
 
 `batch=n` yields lists of `n` patches instead of one at a time.
@@ -88,18 +90,26 @@ for patch in product.patches_at(points, 512):
 `batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
 gives the bare `Window`s if you don't need a patch bound.
 
+### Reading raw + visual + metadata together
+
 A patch from `product.patches()` / `product.patches_at()` is **product-bound**:
-alongside `.values` it gives you the same window in every view plus the metadata —
+one window, every view, plus metadata at three levels.
 
 ```python
-for p in product.patches_at(points, 512):
-    p.raw                     # (band, y, x) DataArray, band-labelled
-    p.raw.sel(band="red")     # ("B04" for Sentinel-2, "VV" for Sentinel-1)
-    p.visual                  # uint8 DataArray, same window
-    p.meta.sample()           # {field: value} per-pixel angles at the patch centre
-    p.meta["sun_zenith"]      # lazy (y, x) DataArray for the whole patch
+scene = product.metadata.attrs                 # scene-level scalars, constant per product
+                                               # e.g. {"mean_sun_zenith": 77.5, ...}
 
-product.metadata.attrs        # scene-level scalars (hoist out of the loop)
+for p in product.patches_at(points, 512):
+    raw = p.raw                                # xarray.DataArray (band, 512, 512), band-labelled
+    red = p.raw.sel(band="red").values         # np.ndarray (512, 512)   ("B04" on Sentinel-2)
+    nir = p.raw.sel(band="nir08").values       #                          ("B08" on Sentinel-2)
+    rgb = p.visual.values                       # np.ndarray (3, 512, 512) uint8, same window
+
+    angles = p.meta.sample()                    # {"sun_zenith": 78.1, "view_zenith": 4.9, ...}
+                                               #   -> per-pixel fields, bilinear at the patch centre
+    sza_grid = p.meta["sun_zenith"].values      # np.ndarray (512, 512) — the field over the patch
+
+    lat, lon = p.center_latlon                  # where the patch sits on Earth
 ```
 
 `.raw` / `.visual` / `.meta` need the patch to come from `product.patches*()`;

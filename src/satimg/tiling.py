@@ -126,6 +126,19 @@ class Patch:
 
     Cheap to create and pass around; reads happen only when ``.array`` is
     computed or ``.values`` is accessed.
+
+    A patch from ``product.patches()`` / ``product.patches_at()`` is
+    *product-bound*: it reads every view and the metadata at its own window::
+
+        for p in product.patches_at(points, 512):
+            p.raw                 # (band, y, x) DataArray for this window, band-labelled
+            p.raw.sel(band="red") # ("B04" for Sentinel-2, "VV" for Sentinel-1)
+            p.visual              # uint8 DataArray, same window
+            p.meta.sample()       # {field: value} per-pixel angles at the patch centre
+            p.center_latlon       # where the patch sits on Earth
+
+    A bare ``satimg.patches(da, ...)`` patch only has ``.array`` / ``.values``
+    (and ``.center_latlon`` if a ``transformer=`` was passed).
     """
 
     __slots__ = ("data", "window", "_transformer", "_product")
@@ -175,32 +188,14 @@ class Patch:
     def raw(self) -> xarray.DataArray:
         """This window read from ``product.raw`` (band-labelled). Only available
         on patches from ``product.patches()`` / ``product.patches_at()``."""
-        return read_window(self._require_product().raw, self.window)
+        return read_window(self._product.raw, self.window)
 
     @property
     def visual(self) -> xarray.DataArray:
         """This window read from ``product.visual`` (uint8, band-labelled). Only
         available on patches from ``product.patches()`` /
         ``product.patches_at()``."""
-        product = self._require_product()
-        visual = product.visual
-        if (visual.sizes["x"], visual.sizes["y"]) != (
-            product.raw.sizes["x"],
-            product.raw.sizes["y"],
-        ):
-            raise ValueError(
-                "product.visual is not co-registered with product.raw; "
-                "patch.visual needs matching grids"
-            )
-        return read_window(visual, self.window)
-
-    def _require_product(self) -> "Product":
-        if self._product is None:
-            raise AttributeError(
-                "patch has no product -- iterate product.patches() / "
-                "product.patches_at() to use .raw / .visual / .meta"
-            )
-        return self._product
+        return read_window(self._product.visual, self.window)
 
     @property
     def meta(self) -> "PatchMeta":
@@ -209,7 +204,7 @@ class Patch:
         ``product.patches()`` / ``iter(product)``."""
         from satimg.metadata import PatchMeta
 
-        return PatchMeta(self._require_product().metadata, self.window)
+        return PatchMeta(self._product.metadata, self.window)
 
     def image(self) -> "PIL.Image.Image":
         """Render as a PIL image (only meaningful for ``uint8`` data)."""
