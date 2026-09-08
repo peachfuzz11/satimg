@@ -69,9 +69,41 @@ class TestRaster:
         groups = list(r.patches(128, edge="pad", batch=4))
         assert [len(g) for g in groups] == [4, 2]
 
+    def test_default_edge_is_pad(self):
+        r = make_raster(height=200, width=300)
+        assert {p.values.shape for p in r.patches(128)} == {(3, 128, 128)}
+
     def test_iter_uses_defaults(self):
         r = make_raster(height=600, width=600)
         assert sum(1 for _ in r) == len(list(r.patches(512)))
+
+    def test_patches_at_centers_on_points(self):
+        r = make_raster(height=200, width=300)
+        points = [(150, 100), (40, 30)]
+        patches = list(r.patches_at(points, 64))
+        assert len(patches) == 2
+        for p, (col, row) in zip(patches, points):
+            assert isinstance(p, Patch)
+            assert p.values.shape == (3, 64, 64)
+            assert p.window.center == (col, row)
+            # centre pixel of the patch is the raster pixel at the point
+            numpy.testing.assert_array_equal(
+                p.values[:, 32, 32], r.array.to_numpy()[:, row, col]
+            )
+
+    def test_patches_at_out_of_bounds_is_padded(self):
+        r = make_raster(height=100, width=100)
+        (p,) = list(r.patches_at([(2, 2)], 32))
+        arr = p.values
+        assert arr.shape == (3, 32, 32)
+        assert (arr[:, :14, :] == 0).all()  # rows above y=0
+        assert (arr[:, :, :14] == 0).all()  # cols left of x=0
+
+    def test_patches_at_batched(self):
+        r = make_raster()
+        points = [(x, x) for x in range(10, 100, 10)]  # 9 points
+        groups = list(r.patches_at(points, 32, batch=4))
+        assert [len(g) for g in groups] == [4, 4, 1]
 
     def test_map_is_lazy_chain(self):
         r = make_raster(dtype="float32")

@@ -8,12 +8,13 @@ tiles without ever losing track of where each tile came from.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator
+from itertools import batched
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 import numpy
 import xarray
 
-from satimg.geometry import EdgeMode, Grid, Window
+from satimg.geometry import EdgeMode, Grid, Window, windows_at
 
 if TYPE_CHECKING:  # pragma: no cover
     import PIL.Image
@@ -113,7 +114,7 @@ class Raster:
         size: int | tuple[int, int],
         *,
         overlap: int | tuple[int, int] = 0,
-        edge: EdgeMode = "trim",
+        edge: EdgeMode = "pad",
     ) -> Grid:
         return Grid(self.width, self.height, size, overlap, edge)
 
@@ -122,10 +123,14 @@ class Raster:
         size: int | tuple[int, int] = 512,
         *,
         overlap: int | tuple[int, int] = 0,
-        edge: EdgeMode = "trim",
+        edge: EdgeMode = "pad",
         batch: int | None = None,
     ) -> Iterator["Patch"] | Iterator[list["Patch"]]:
         """Iterate the raster in windows of ``size``.
+
+        ``edge`` defaults to ``"pad"`` so every patch is exactly ``size`` (the
+        border overhang is zero-filled); pass ``edge="trim"`` for lossless
+        re-assembly or ``"skip"`` to keep only full interior tiles.
 
         With ``batch=n`` the patches arrive in lists of up to ``n`` instead of one
         at a time.
@@ -136,6 +141,30 @@ class Raster:
                 yield Patch(self, win)
         else:
             for group in grid.batched(batch):
+                yield [Patch(self, win) for win in group]
+
+    def patches_at(
+        self,
+        points: Iterable[tuple[float, float]],
+        size: int | tuple[int, int] = 512,
+        *,
+        batch: int | None = None,
+    ) -> Iterator["Patch"] | Iterator[list["Patch"]]:
+        """Iterate patches centred on caller-supplied ``(col, row)`` pixel points.
+
+        Where :meth:`patches` sweeps a regular grid over the whole raster, this
+        visits only ``points`` -- one patch per point, in order. Each patch is
+        exactly ``size``; any part lying outside the raster is zero-filled, so a
+        point near (or past) an edge still yields a full-size patch.
+
+        With ``batch=n`` the patches arrive in lists of up to ``n``.
+        """
+        windows = windows_at(points, size)
+        if batch is None:
+            for win in windows:
+                yield Patch(self, win)
+        else:
+            for group in batched(windows, batch):
                 yield [Patch(self, win) for win in group]
 
     def __iter__(self) -> Iterator["Patch"]:

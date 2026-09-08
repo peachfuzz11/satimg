@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterable, Iterator
 
 EdgeMode = str  # "trim" | "pad" | "skip"
 _EDGE_MODES = ("trim", "pad", "skip")
@@ -118,9 +118,10 @@ class Grid:
 
     ``edge`` decides what happens to windows that run past the image border:
 
-    * ``"trim"`` -- clip them to the image (last row/col of patches is smaller).
-    * ``"pad"``  -- keep them full size; the reader zero-fills the overhang so
-      every patch has identical shape (what you want for batched inference).
+    * ``"pad"`` (the default) -- keep them full size; the reader zero-fills the
+      overhang so every patch has identical shape ``size``.
+    * ``"trim"`` -- clip them to the image (last row/col of patches is smaller);
+      use this for lossless re-assembly.
     * ``"skip"`` -- drop them, keeping only windows fully inside the image.
     """
 
@@ -128,7 +129,7 @@ class Grid:
     height: int
     size: int | tuple[int, int]
     overlap: int | tuple[int, int] = 0
-    edge: EdgeMode = "trim"
+    edge: EdgeMode = "pad"
 
     def __post_init__(self) -> None:
         if self.edge not in _EDGE_MODES:
@@ -179,3 +180,22 @@ class Grid:
                 batch = []
         if batch:
             yield batch
+
+
+def windows_at(
+    points: Iterable[tuple[float, float]],
+    size: int | tuple[int, int],
+) -> Iterator[Window]:
+    """Yield a :class:`Window` of ``size`` centred on each ``(col, row)`` point.
+
+    Where :class:`Grid` sweeps a regular grid over a whole image, this visits
+    only the points you pass -- e.g. one chip per detection or per sample site.
+    ``size`` is a single int (square) or a ``(width, height)`` pair. Points may
+    lie anywhere: a window that overhangs the image (or sits partly at negative
+    indices) is zero-filled by the reader, so every window is exactly ``size``.
+    """
+    sw, sh = size if isinstance(size, tuple) else (size, size)
+    if sw <= 0 or sh <= 0:
+        raise ValueError("size must be positive")
+    for col, row in points:
+        yield Window(round(col - sw / 2), round(row - sh / 2), sw, sh)

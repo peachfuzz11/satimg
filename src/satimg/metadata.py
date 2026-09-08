@@ -137,6 +137,10 @@ class Field:
         """Walk :attr:`raster` in windows. See :meth:`Raster.patches`."""
         return self.raster.patches(*args, **kwargs)
 
+    def patches_at(self, *args, **kwargs):
+        """Walk :attr:`raster` at given points. See :meth:`Raster.patches_at`."""
+        return self.raster.patches_at(*args, **kwargs)
+
     def __repr__(self) -> str:
         u = f", units={self.units!r}" if self.units else ""
         return (

@@ -1,6 +1,6 @@
 import pytest
 
-from satimg.geometry import Grid, Window
+from satimg.geometry import Grid, Window, windows_at
 
 
 class TestWindow:
@@ -42,6 +42,11 @@ class TestWindow:
 
 
 class TestGrid:
+    def test_default_edge_is_pad(self):
+        windows = list(Grid(1000, 800, 256))
+        assert all(w.width == 256 and w.height == 256 for w in windows)
+        assert windows[-1] == Window(768, 768, 256, 256)
+
     def test_trim_covers_every_pixel(self):
         grid = Grid(1000, 800, 256, edge="trim")
         windows = list(grid)
@@ -80,3 +85,32 @@ class TestGrid:
             Grid(100, 100, 64, overlap=64)
         with pytest.raises(ValueError):
             Grid(100, 100, 64, edge="bogus")
+
+
+class TestWindowsAt:
+    def test_centres_each_window_on_its_point(self):
+        windows = list(windows_at([(100, 50), (300, 300)], 64))
+        assert windows[0] == Window(68, 18, 64, 64)   # 100 - 32, 50 - 32
+        assert windows[1] == Window(268, 268, 64, 64)
+        assert all(w.center == (p[0], p[1]) for w, p in
+                   zip(windows, [(100, 50), (300, 300)]))
+
+    def test_rectangular_size(self):
+        (w,) = list(windows_at([(100, 100)], (40, 20)))
+        assert w == Window(80, 90, 40, 20)
+
+    def test_point_near_edge_still_full_size(self):
+        (w,) = list(windows_at([(5, 5)], 64))
+        assert (w.width, w.height) == (64, 64)
+        assert w.col < 0 and w.row < 0  # overhangs the origin; reader zero-fills
+
+    def test_odd_size_rounds(self):
+        (w,) = list(windows_at([(10, 10)], 5))
+        assert w == Window(8, 8, 5, 5)  # round(10 - 2.5) == 8
+
+    def test_empty_points_yields_nothing(self):
+        assert list(windows_at([], 64)) == []
+
+    def test_bad_size_rejected(self):
+        with pytest.raises(ValueError):
+            list(windows_at([(0, 0)], 0))
