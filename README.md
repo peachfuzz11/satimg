@@ -11,11 +11,13 @@ Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1.
 
 | Object | What it is |
 | --- | --- |
-| `Product` | A product directory. Exposes `.raw`, `.visual`, `.patches(...)`, metadata. |
-| `Raster` | A lazy `(band, y, x)` array. Reads nothing until you ask for values. |
+| `Product` | A product directory. Exposes `.raw`, `.visual` (DataArrays), `.patches(...)`, `.width/.height/.bands`, metadata. |
 | `Window` | An immutable pixel rectangle (`col`, `row`, `width`, `height`). Pure geometry. |
 | `Grid` | Lays `Window`s over an image with a step and an edge policy. |
-| `Patch` | A `Window` bound to the `Raster` it came from. `.array` (lazy) / `.values` (numpy) + geo helpers. |
+| `Patch` | A `Window` bound to the `DataArray` it came from. `.array` (lazy) / `.values` (numpy) + geo helpers. |
+
+`.raw` and `.visual` are plain lazy `xarray.DataArray`s, dims `(band, y, x)` —
+use them with the full xarray API directly.
 
 ### Two views on the pixels
 
@@ -24,30 +26,31 @@ import satimg
 
 product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE")
 
-product.raw     # every native band, merged onto one grid, native dtype      -> Raster
-product.visual  # uint8 visualisation: 3-band true colour for optical        -> Raster
+product.raw     # every native band, merged onto one grid, native dtype  -> xarray.DataArray
+product.visual  # uint8 visualisation: 3-band true colour for optical    -> xarray.DataArray
                 # sensors (Sentinel-2, Landsat), 1-band greyscale for SAR
                 # (Sentinel-1)
 ```
 
-Both are lazy `Raster`s over the same grid, so a `Window` means the same
+Both are lazy `DataArray`s over the same grid, so a `Window` means the same
 thing in each.
 
 ### Walking the image in patches
 
 ```python
-for patch in product.patches(512, overlap=64, kind="visual"):
-    tile = patch.values            # np.ndarray, uint8, (3, 512, 512) optical / (1, 512, 512) SAR
+for patch in product.patches(512, overlap=64):
+    tile = patch.values            # np.ndarray, (band, 512, 512), native dtype
     x0, y0 = patch.col, patch.row  # exact offset in the full image
     lat, lon = patch.center_latlon # where the patch sits on Earth
     ...
 ```
 
 `for patch in product` is shorthand for `product.patches()` (raw bands,
-512 px, no overlap).
+512 px, no overlap). Patches from `product.patches()` walk `raw` and carry
+`.meta`; to walk any other array (the `visual` view, a derived index) use
+`satimg.patches(da, 512, transformer=product.transformer)`.
 
-`kind=` picks the view (`"raw"` / `"visual"`). `batch=n` yields lists of
-`n` patches instead of one at a time.
+`batch=n` yields lists of `n` patches instead of one at a time.
 
 ### Edge handling
 
@@ -71,18 +74,18 @@ exactly `size` (overhang zero-filled, so points near an edge still work):
 
 ```python
 points = [(4096, 2048), (10500, 512), (0, 0)]
-for patch in product.patches_at(points, 512, kind="visual"):
-    tile = patch.values             # (3, 512, 512), centred on the point
+for patch in product.patches_at(points, 512):
+    tile = patch.values             # (band, 512, 512), centred on the point
     lat, lon = patch.center_latlon  # ~ the point you asked for
 ```
 
 `batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
-gives the bare `Window`s if you don't need a raster bound.
+gives the bare `Window`s if you don't need a patch bound.
 
 ### Mapping results back
 
 ```python
-patch = next(product.patches(1024, kind="visual"))
+patch = next(satimg.patches(product.visual, 1024, transformer=product.transformer))
 boxes = detect(patch.values)            # boxes in patch pixels
 boxes[:, [0, 2]] += patch.window.col    # -> full-image pixels
 boxes[:, [1, 3]] += patch.window.row
@@ -95,17 +98,19 @@ latlon = product.transformer.rowcol_to_latlon(boxes[:, [1, 0]])
 from satimg import Window
 
 win = Window(col=4096, row=2048, width=1024, height=1024)
-chip = product.raw.read(win)     # lazy xarray.DataArray, dims (band, y, x)
-chip = product.raw.values(win)   # numpy, zero-padded if the window overhangs
+chip = satimg.read_window(product.raw, win)   # lazy xarray.DataArray, (band, y, x)
+chip.values                                   # numpy, zero-padded if the window overhangs
 ```
 
-## Rasters compose
+## Views compose
+
+`.raw` / `.visual` are xarray, so derive new arrays with the xarray API and tile
+them the same way — a bare `(y, x)` array is fine:
 
 ```python
-ndwi = product.raw.map(lambda d: (d.isel(band=2) - d.isel(band=7))
-                                 / (d.isel(band=2) + d.isel(band=7)),
-                       name="ndwi")
-for patch in ndwi.patches(512):
+b = product.raw
+ndwi = (b.isel(band=2) - b.isel(band=7)) / (b.isel(band=2) + b.isel(band=7))
+for patch in satimg.patches(ndwi, 512):
     ...
 ```
 
@@ -130,8 +135,9 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 
-Each field also materialises as a lazy full-grid `Raster` (`m.sun_zenith.raster`),
-and patches from `product.patches()` carry a matching lazy view over their window:
+Each field also materialises as a lazy full-grid `(y, x)` `xarray.DataArray`
+(`m.sun_zenith.grid`), and patches from `product.patches()` carry a matching lazy
+view over their window:
 
 ```python
 for patch in product.patches(512):
@@ -171,9 +177,11 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 
 ## Adding a product
 
-Subclass `Product`, implement the abstract hooks (`raw`, `_render_visual`,
-`transformer`, `timestamp`, `footprint`, `thumbnail`), optionally override
-`_read_metadata` to expose per-pixel metadata, and register a filename pattern:
+Subclass `Product`, implement the abstract hooks (`raw`, `_render_visual` — both
+return an `xarray.DataArray`; wrap the result in `satimg.tiling.as_band_yx(...)`
+to normalise dims — `transformer`, `timestamp`, `footprint`, `thumbnail`),
+optionally override `_read_metadata` to expose per-pixel metadata, and register a
+filename pattern:
 
 ```python
 from satimg.registry import register
@@ -206,7 +214,7 @@ Credentials are never logged.
 ```sh
 uv sync
 uv run pytest                      # fast unit tests + product integration tests
-uv run pytest tests/test_geometry.py tests/test_raster.py   # just the fast ones
+uv run pytest tests/test_geometry.py tests/test_tiling.py   # just the fast ones
 ```
 
 Integration tests run against minified scenes under `tests/data/` — real

@@ -1,5 +1,5 @@
 """Per-pixel metadata: the bilinear kernel, the three product readers, the
-full-grid Raster, and ``patch.meta``.
+full-grid DataArray, and ``patch.meta``.
 
 Run against the minified scenes. ``tests/minify.py`` zeroes every ``.TIF``, so
 Landsat angle *values* are all 0.0 here -- Landsat assertions cover plumbing
@@ -10,12 +10,13 @@ real XML, so those get real numbers.
 import dask.array
 import numpy
 import pytest
+import xarray
 
 import satimg
 from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
-from satimg.raster import Patch, Raster
+from satimg.tiling import Patch, read_window
 
 
 # -- the kernel --------------------------------------------------------
@@ -126,23 +127,24 @@ class TestLandsat:
         assert 0 < attrs["earth_sun_distance"] < 2
 
 
-# -- Field.raster --------------------------------------------------
+# -- Field.grid --------------------------------------------------
 
-def test_field_raster_is_lazy_full_grid(sentinel1_iw):
+def test_field_grid_is_lazy_full_grid(sentinel1_iw):
     field = sentinel1_iw.metadata.incidence_angle
-    raster = field.raster
-    assert isinstance(raster, Raster)
-    assert raster.shape == (1, sentinel1_iw.height, sentinel1_iw.width)
-    assert raster.dtype == numpy.float64
-    assert isinstance(raster.array.data, dask.array.Array)          # not materialised
+    grid = field.grid
+    assert isinstance(grid, xarray.DataArray)
+    assert grid.dims == ("y", "x")
+    assert grid.shape == (sentinel1_iw.height, sentinel1_iw.width)
+    assert grid.dtype == numpy.float64
+    assert isinstance(grid.data, dask.array.Array)                  # not materialised
 
     win = Window(0, 0, 64, 64)
-    sub = raster.read(win)
-    assert tuple(sub.shape) == (1, 64, 64)
-    assert float(raster.values(win)[0, 0, 0]) == pytest.approx(field.at((0, 0)), abs=1e-6)
+    sub = read_window(grid, win)
+    assert tuple(sub.shape) == (64, 64)
+    assert float(sub.values[0, 0]) == pytest.approx(field.at((0, 0)), abs=1e-6)
 
 
-def test_field_raster_patches_carry_transform(sentinel1_iw):
+def test_field_patches_carry_transform(sentinel1_iw):
     field = sentinel1_iw.metadata.incidence_angle
     patch = next(iter(field.patches(512)))
     assert patch.center_latlon                                      # transform attached
@@ -152,7 +154,7 @@ def test_field_raster_patches_carry_transform(sentinel1_iw):
 
 def test_patch_meta_whole_window_and_point(sentinel1_iw):
     m = sentinel1_iw.metadata
-    for patch in sentinel1_iw.patches(256, kind="visual"):
+    for patch in sentinel1_iw.patches(256):
         whole = patch.meta.incidence_angle
         assert tuple(whole.shape) == (256, 256)
         assert isinstance(whole.data, dask.array.Array)             # lazy
@@ -174,12 +176,8 @@ def test_patch_meta_getitem(sentinel2_l1c):
 
 
 def test_bare_patch_has_no_meta():
-    raster = Raster(
-        __import__("xarray").DataArray(
-            numpy.zeros((1, 8, 8)), dims=("band", "y", "x")
-        )
-    )
-    patch = Patch(raster, Window(0, 0, 4, 4))
+    da = xarray.DataArray(numpy.zeros((1, 8, 8)), dims=("band", "y", "x"))
+    patch = Patch(da, Window(0, 0, 4, 4))
     with pytest.raises(AttributeError):
         patch.meta
 
