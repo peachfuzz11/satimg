@@ -4,10 +4,14 @@
 
     product = satimg.open("/data/S2A_MSIL1C_....SAFE")
 
-    for patch in product.patches(512, overlap=64, kind="visual"):
-        do_something(patch.values)        # (band, y, x) uint8
+    for patch in product.patches(512, overlap=64):
+        do_something(patch.values)        # (band, y, x) native dtype
         print(patch.col, patch.row)       # where it sits in the full image
         print(patch.center_latlon)        # where it sits on Earth
+
+    # any other array -- the uint8 visualisation, a derived index, ...
+    for patch in satimg.patches(product.visual, 512, transformer=product.transformer):
+        ...
 """
 
 from __future__ import annotations
@@ -35,8 +39,8 @@ from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
 from satimg.product import Product
-from satimg.raster import Patch, Raster
 from satimg.registry import UnknownProductError, resolve
+from satimg.tiling import Patch, patches, patches_at, read_window
 
 __all__ = [
     "__version__",
@@ -44,8 +48,10 @@ __all__ = [
     "open_zip",
     "get_connector",
     "Product",
-    "Raster",
     "Patch",
+    "patches",
+    "patches_at",
+    "read_window",
     "Window",
     "Grid",
     "windows_at",

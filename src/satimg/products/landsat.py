@@ -9,13 +9,14 @@ from functools import cached_property
 
 import numpy
 import rasterio
+import xarray
 from rasterio.transform import Affine
 
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.raster import Raster
 from satimg.readers import merge_bands
 from satimg.registry import register
+from satimg.tiling import as_band_yx
 from satimg.transform import Transformer
 
 #: band order of :attr:`LandsatProduct.raw`.
@@ -64,19 +65,19 @@ class LandsatProduct(Product):
             self._transformer = Transformer(src.transform, src.crs)
 
     @cached_property
-    def raw(self) -> Raster:
+    def raw(self) -> xarray.DataArray:
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        return Raster(merge_bands(paths, match=_PAN), transform=self._transformer, name="dn")
+        return as_band_yx(merge_bands(paths, match=_PAN))
 
-    def _render_visual(self) -> Raster:
-        a = self.raw.array
+    def _render_visual(self) -> xarray.DataArray:
+        a = self.raw
         rgb = a.isel(band=list(_RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
         rgb = rgb * weights[:, None, None]
         rgb = rgb / (rgb.sum(dim="band") + 1e-12)
         rgb = rgb * a.isel(band=_PAN).astype("float32")
         rgb = 0.75 * rgb.fillna(0) ** (1 / 1.4)
-        return Raster(rgb.clip(0, 255).astype("uint8"), transform=self._transformer, name="tci")
+        return as_band_yx(rgb.clip(0, 255).astype("uint8"))
 
     def _read_metadata(self) -> Metadata:
         pan = self._transformer._transform

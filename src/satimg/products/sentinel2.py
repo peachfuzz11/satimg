@@ -14,9 +14,9 @@ import xarray
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
-from satimg.raster import Raster
 from satimg.readers import find_file, merge_bands, open_band
 from satimg.registry import register
+from satimg.tiling import as_band_yx
 from satimg.transform import Transformer
 
 #: spacing of the MTD_TL.xml angle grids, metres.
@@ -132,13 +132,11 @@ class Sentinel2L1CProduct(Product):
             self._transformer = Transformer(src.transform, src.crs)
 
     @cached_property
-    def raw(self) -> Raster:
-        da = merge_bands(self._meta["reflectance"], match=1)
-        return Raster(da, transform=self._transformer, name="reflectance")
+    def raw(self) -> xarray.DataArray:
+        return as_band_yx(merge_bands(self._meta["reflectance"], match=1))
 
-    def _render_visual(self) -> Raster:
-        tci = open_band(self._meta["tci"]).astype("uint8")
-        return Raster(tci, transform=self._transformer, name="tci")
+    def _render_visual(self) -> xarray.DataArray:
+        return as_band_yx(open_band(self._meta["tci"]).astype("uint8"))
 
     def _read_metadata(self) -> Metadata:
         rows, cols = self._tl["axes"]

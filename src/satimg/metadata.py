@@ -12,9 +12,9 @@ named :class:`Field` s that interpolate to any pixel, the same way
     m.sample((row, col))           # -> {field: value} for every field
     m.attrs                        # scalar scene-level metadata
 
-Each field also materialises as a lazy full-grid :class:`~satimg.raster.Raster`
-(``m.incidence_angle.raster``), which is what backs ``patch.meta`` when walking a
-product in windows::
+Each field also materialises as a lazy full-grid ``(y, x)``
+:class:`xarray.DataArray` (``m.incidence_angle.grid``), which is what backs
+``patch.meta`` when walking a product in windows::
 
     for patch in product.patches(512):
         patch.meta.incidence_angle     # lazy (h, w) DataArray for this window
@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING
 import numpy
 import xarray
 
-from satimg.raster import Raster
+from satimg import tiling
+from satimg.tiling import read_window
 from satimg.transform import _as_n2
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -109,8 +110,9 @@ class Field:
 
     # -- full grid ----------------------------------------------------
     @cached_property
-    def raster(self) -> Raster:
-        """The field bilinearly upsampled to the whole product grid, lazy."""
+    def grid(self) -> xarray.DataArray:
+        """The field bilinearly upsampled to the whole product grid, lazy
+        ``(y, x)``."""
         if self._shape is None:
             raise AttributeError(f"field {self.name!r} has no product grid attached")
         import dask.array as darray
@@ -126,20 +128,19 @@ class Field:
             "x",
             dtype=float,
         )
-        data = xarray.DataArray(block, dims=("y", "x"))
-        return Raster(data, transform=self._transform, name=self.name)
+        return xarray.DataArray(block, dims=("y", "x"))
 
     def read(self, window: "Window") -> xarray.DataArray:
         """Lazy ``(y, x)`` sub-array for ``window``."""
-        return self.raster.read(window).squeeze("band", drop=True)
+        return read_window(self.grid, window)
 
     def patches(self, *args, **kwargs):
-        """Walk :attr:`raster` in windows. See :meth:`Raster.patches`."""
-        return self.raster.patches(*args, **kwargs)
+        """Walk :attr:`grid` in windows. See :func:`satimg.tiling.patches`."""
+        return tiling.patches(self.grid, *args, transformer=self._transform, **kwargs)
 
     def patches_at(self, *args, **kwargs):
-        """Walk :attr:`raster` at given points. See :meth:`Raster.patches_at`."""
-        return self.raster.patches_at(*args, **kwargs)
+        """Walk :attr:`grid` at given points. See :func:`satimg.tiling.patches_at`."""
+        return tiling.patches_at(self.grid, *args, transformer=self._transform, **kwargs)
 
     def __repr__(self) -> str:
         u = f", units={self.units!r}" if self.units else ""

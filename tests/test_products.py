@@ -6,9 +6,10 @@ import itertools
 
 import numpy
 import pytest
+import xarray
 
 from satimg.geometry import Window
-from satimg.raster import Raster
+from satimg.tiling import read_window
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
 
@@ -19,11 +20,11 @@ def product(request):
 
 
 class TestViews:
-    def test_raw_is_band_first_raster(self, product):
+    def test_raw_is_band_first_dataarray(self, product):
         raw = product.raw
-        assert isinstance(raw, Raster)
-        assert raw.array.dims == ("band", "y", "x")
-        assert raw.shape == (product.bands, product.height, product.width)
+        assert isinstance(raw, xarray.DataArray)
+        assert raw.dims == ("band", "y", "x")
+        assert product.shape == (product.bands, product.height, product.width)
 
     @pytest.mark.parametrize(
         "name,bands",
@@ -33,14 +34,8 @@ class TestViews:
         product = request.getfixturevalue(name)
         visual = product.visual
         assert visual.dtype == numpy.uint8
-        assert visual.bands == bands
-        assert (visual.width, visual.height) == (product.width, product.height)
-
-    def test_view_lookup(self, product):
-        assert product.view("raw") is product.raw
-        assert product.view("visual") is product.visual
-        with pytest.raises(ValueError):
-            product.view("nope")
+        assert visual.sizes["band"] == bands
+        assert (visual.sizes["x"], visual.sizes["y"]) == (product.width, product.height)
 
 
 class TestPatches:
@@ -50,7 +45,7 @@ class TestPatches:
         assert first.values.shape[0] == product.bands
 
     def test_patches_conserve_indices(self, product):
-        seen = list(product.patches(512, kind="visual"))
+        seen = list(product.patches(512))
         assert seen[0].bounds == (0, 0, min(512, product.width), min(512, product.height))
         # every window lies inside the image and is placed on the stride grid
         for p in seen:
@@ -60,13 +55,13 @@ class TestPatches:
 
     def test_padded_patches_have_constant_shape(self, product):
         # bounded: full-res test scenes have thousands of tiles
-        chan = product.visual.bands
-        head = itertools.islice(product.patches(256, edge="pad", kind="visual"), 8)
+        chan = product.bands
+        head = itertools.islice(product.patches(256, edge="pad"), 8)
         assert {p.values.shape for p in head} == {(chan, 256, 256)}
 
     def test_overlap_batches(self, product):
-        chan = product.visual.bands
-        groups = product.patches(256, overlap=32, edge="pad", batch=8, kind="visual")
+        chan = product.bands
+        groups = product.patches(256, overlap=32, edge="pad", batch=8)
         first = next(groups)
         assert len(first) == 8
         assert first[0].values.shape == (chan, 256, 256)
@@ -74,8 +69,10 @@ class TestPatches:
 
     def test_raw_patch_matches_direct_read(self, product):
         win = Window(0, 0, 64, 64)
-        patch = next(iter(product.patches(64, kind="raw")))
-        numpy.testing.assert_array_equal(patch.values, product.raw.values(win))
+        patch = next(iter(product.patches(64)))
+        numpy.testing.assert_array_equal(
+            patch.values, read_window(product.raw, win).values
+        )
 
 
 class TestMetadata:

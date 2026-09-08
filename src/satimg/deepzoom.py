@@ -1,4 +1,5 @@
-"""Write a Deep Zoom Image (DZI) pyramid from a :class:`~satimg.raster.Raster`.
+"""Write a Deep Zoom Image (DZI) pyramid from an :class:`xarray.DataArray`
+(typically ``product.visual``).
 
     from satimg import open
     from satimg.deepzoom import DeepZoom
@@ -18,8 +19,7 @@ import xml.etree.ElementTree as ElementTree
 
 import numpy
 import PIL.Image
-
-from satimg.raster import Raster
+import xarray
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +31,16 @@ class DeepZoom:
         self.tile_size = tile_size
         self.image_format = image_format
 
-    def build(self, raster: Raster, out_path: str) -> str:
+    def build(self, data: xarray.DataArray, out_path: str) -> str:
         files_dir = out_path + "_files"
         dzi_path = out_path + ".dzi"
         shutil.rmtree(files_dir, ignore_errors=True)
         os.makedirs(files_dir, exist_ok=True)
 
-        data = raster.hwc()
-        width, height = raster.width, raster.height
+        width, height = int(data.sizes["x"]), int(data.sizes["y"])
+        data = data.transpose("y", "x", "band")
+        if data.sizes["band"] == 1:
+            data = data.isel(band=0)
         logger.info(
             "building Deep Zoom pyramid: %dx%d tile=%d -> %s",
             width,

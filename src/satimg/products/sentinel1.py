@@ -11,12 +11,13 @@ from xml.etree import ElementTree
 import numpy
 import PIL.Image
 import rasterio
+import xarray
 
 from satimg.metadata import Metadata, grid_from_points
 from satimg.product import Product
-from satimg.raster import Raster
 from satimg.readers import find_file, merge_bands
 from satimg.registry import register
+from satimg.tiling import as_band_yx
 from satimg.transform import GCPTransformer
 
 _GEOLOC_FIELDS = {
@@ -107,19 +108,19 @@ class Sentinel1Product(Product):
         return m.group(1) if m else "IW"
 
     @cached_property
-    def raw(self) -> Raster:
+    def raw(self) -> xarray.DataArray:
         measurement = os.path.join(self._path, "measurement")
         files = sorted(
             (os.path.join(measurement, f) for f in os.listdir(measurement)),
             key=lambda f: f[::-1],
         )
-        return Raster(merge_bands(files), transform=self._transformer, name="sigma0")
+        return as_band_yx(merge_bands(files))
 
-    def _render_visual(self) -> Raster:
-        a = self.raw.array
+    def _render_visual(self) -> xarray.DataArray:
+        a = self.raw
         db = (10 * numpy.log10(a.where(a > 0))).fillna(0).mean("band")
         u8 = (255 / (1 + numpy.exp(-((db - 20) * 0.18)))).clip(0, 255).astype("uint8")
-        return Raster(u8, transform=self._transformer, name="amplitude")
+        return as_band_yx(u8)
 
     def _read_metadata(self) -> Metadata:
         points, attrs = _read_geolocation(_annotation_file(self._path))

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import numpy
 
+from satimg import tiling
 from satimg.landmask import LandMask
 from satimg.prediction import nms
 from satimg.prediction.models import Model
@@ -52,10 +53,12 @@ class Detector:
             cfg.slice_size,
             cfg.overlap,
         )
-        raster = self._product.visual.chunk(cfg.slice_size).persist()
+        data = self._product.visual.chunk(
+            {"x": cfg.slice_size, "y": cfg.slice_size, "band": -1}
+        ).persist()
         results: list[Detection] = []
 
-        for patch in raster.patches(cfg.slice_size, overlap=cfg.overlap, edge="pad"):
+        for patch in tiling.patches(data, cfg.slice_size, overlap=cfg.overlap, edge="pad"):
             boxes = self._model.predict(patch.values, slice_size=cfg.slice_size)
             n_raw = len(boxes)
             boxes = boxes[boxes[:, 4] > cfg.conf_threshold]

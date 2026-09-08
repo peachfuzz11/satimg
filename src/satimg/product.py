@@ -23,22 +23,20 @@ import datetime
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
+import xarray
+
+from satimg import tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
-from satimg.raster import Patch, Raster
+from satimg.tiling import Patch
 
 if TYPE_CHECKING:  # pragma: no cover
     import PIL.Image
 
     from satimg.transform import Transformer
 
-Kind = str  # "raw" | "visual"
-
 
 class Product(abc.ABC):
-    #: window size used by bare ``iter(product)`` / ``product.patches()``.
-    patch_size: int = 512
-
     def __init__(self, path: str):
         self._path = str(path)
 
@@ -52,84 +50,80 @@ class Product(abc.ABC):
     # -- pixel views ------------------------------------------------
     @property
     @abc.abstractmethod
-    def raw(self) -> Raster:
-        """All native bands on a common grid, native dtype, lazy."""
+    def raw(self) -> xarray.DataArray:
+        """All native bands on a common ``(band, y, x)`` grid, native dtype, lazy."""
 
     @cached_property
-    def visual(self) -> Raster:
+    def visual(self) -> xarray.DataArray:
         """The sensor's ``uint8`` visualisation, lazy: 3-band true colour for
         optical sensors, 1-band greyscale for SAR."""
         return self._render_visual()
 
     @abc.abstractmethod
-    def _render_visual(self) -> Raster:
-        """Build the visualisation raster (sensor-specific)."""
-
-    def view(self, kind: Kind = "visual") -> Raster:
-        """Return one of the pixel views by name."""
-        try:
-            return {"raw": self.raw, "visual": self.visual}[kind]
-        except KeyError:
-            raise ValueError(f"unknown view {kind!r}; expected raw/visual") from None
+    def _render_visual(self) -> xarray.DataArray:
+        """Build the visualisation array (sensor-specific)."""
 
     # -- iteration ------------------------------------------------
     def patches(
         self,
-        size: int | tuple[int, int] | None = None,
+        size: int | tuple[int, int] = 512,
         *,
         overlap: int | tuple[int, int] = 0,
         edge: EdgeMode = "pad",
-        kind: Kind = "raw",
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk a pixel view in windows. See :meth:`Raster.patches`.
+        """Walk :attr:`raw` in windows. See :func:`satimg.tiling.patches`.
 
         Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
-        product's :attr:`metadata`.
+        product's :attr:`metadata`. To walk another array (``visual``, a derived
+        one) use ``satimg.patches(da, ..., transformer=product.transformer)``.
         """
-        for item in self.view(kind).patches(
-            size or self.patch_size, overlap=overlap, edge=edge, batch=batch
-        ):
-            for patch in item if isinstance(item, list) else (item,):
-                patch._product = self
-            yield item
+        return tiling.patches(
+            self.raw, size, overlap=overlap, edge=edge, batch=batch,
+            transformer=self.transformer, product=self,
+        )
 
     def patches_at(
         self,
         points: Iterable[tuple[float, float]],
-        size: int | tuple[int, int] | None = None,
+        size: int | tuple[int, int] = 512,
         *,
-        kind: Kind = "raw",
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk a pixel view at caller-supplied ``(col, row)`` points. See
-        :meth:`Raster.patches_at`.
+        """Walk :attr:`raw` at caller-supplied ``(col, row)`` points. See
+        :func:`satimg.tiling.patches_at`.
 
         Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
         product's :attr:`metadata`.
         """
-        for item in self.view(kind).patches_at(
-            points, size or self.patch_size, batch=batch
-        ):
-            for patch in item if isinstance(item, list) else (item,):
-                patch._product = self
-            yield item
+        return tiling.patches_at(
+            self.raw, points, size, batch=batch,
+            transformer=self.transformer, product=self,
+        )
 
     def __iter__(self) -> Iterator[Patch]:
-        return self.patches()
+        return iter(self.patches())
 
     # -- shape --------------------------------------------------
     @property
     def width(self) -> int:
-        return self.raw.width
+        return int(self.raw.sizes["x"])
 
     @property
     def height(self) -> int:
-        return self.raw.height
+        return int(self.raw.sizes["y"])
 
     @property
     def bands(self) -> int:
-        return self.raw.bands
+        return int(self.raw.sizes["band"])
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return self.bands, self.height, self.width
+
+    @property
+    def dtype(self):
+        return self.raw.dtype
 
     # -- metadata ---------------------------------------------
     @property
