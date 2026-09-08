@@ -160,6 +160,8 @@ m = product.metadata
 m.fields                          # ['sun_zenith', 'sun_azimuth', 'view_zenith', ...]
 m.sun_zenith.at((row, col))       # -> float, bilinear on the coarse grid
 m.sample((row, col))              # -> {field: value} for every field
+m.sun_zenith.corners()            # -> {'top_left', 'top_right', 'bottom_left', 'bottom_right', 'center'}
+m.corners()                       # -> {field: {'top_left': ..., ..., 'center': ...}}  (whole grid)
 m.attrs                           # scalar scene-level metadata (mean angles, ...)
 ```
 
@@ -182,7 +184,12 @@ for patch in product.patches(512):
     patch.meta.sun_zenith          # lazy (512, 512) DataArray for this window
     patch.meta.at((y, x))          # -> {field: value} at a patch-local pixel
     patch.meta.sample()            # -> {field: value} at the patch centre
+    patch.meta.corners()           # -> {field: {'top_left': ..., ..., 'center': ...}}
 ```
+
+`corners()` samples five points (the four corners and the centre) without
+materialising the patch grid — a cheap way to see how a field varies across a
+tile. `corners()[field]["center"]` equals `sample()[field]`.
 
 ## Downloading
 

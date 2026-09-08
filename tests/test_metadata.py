@@ -175,6 +175,50 @@ def test_patch_meta_getitem(sentinel2_l1c):
     assert tuple(patch.meta["sun_zenith"].shape) == (128, 128)
 
 
+# -- corners() -------------------------------------------------
+
+_CORNER_KEYS = {"top_left", "top_right", "bottom_left", "bottom_right", "center"}
+
+
+def test_field_corners_full_grid(sentinel1_iw):
+    c = sentinel1_iw.metadata.incidence_angle.corners()
+    assert set(c) == _CORNER_KEYS
+    assert all(isinstance(v, float) for v in c.values())
+    # incidence rises left -> right across the range direction
+    assert c["top_left"] < c["center"] < c["top_right"]
+    assert c["bottom_left"] < c["center"] < c["bottom_right"]
+    assert c["center"] == pytest.approx(
+        sentinel1_iw.metadata.incidence_angle.at(
+            (sentinel1_iw.height / 2, sentinel1_iw.width / 2)
+        )
+    )
+
+
+def test_metadata_corners_every_field(sentinel2_l1c):
+    mc = sentinel2_l1c.metadata.corners()
+    assert set(mc) == set(sentinel2_l1c.metadata.fields)
+    for c in mc.values():
+        assert set(c) == _CORNER_KEYS
+
+
+def test_patch_meta_corners(sentinel1_iw):
+    patch = next(sentinel1_iw.patches_at([(6000, 9000)], 256))
+    pc = patch.meta.corners()
+    assert set(pc) == set(sentinel1_iw.metadata.fields)
+    inc = pc["incidence_angle"]
+    assert set(inc) == _CORNER_KEYS
+    assert inc["top_left"] < inc["top_right"]        # near -> far range across the tile
+    assert inc["center"] == pytest.approx(patch.meta.sample()["incidence_angle"])
+
+
+def test_field_corners_without_grid_raises():
+    from satimg.metadata import Field
+
+    bare = Field([0, 1], [0, 1], [[0.0, 1.0], [2.0, 3.0]], name="x")
+    with pytest.raises(AttributeError):
+        bare.corners()
+
+
 def test_bare_patch_has_no_meta():
     da = xarray.DataArray(numpy.zeros((1, 8, 8)), dims=("band", "y", "x"))
     patch = Patch(da, Window(0, 0, 4, 4))
