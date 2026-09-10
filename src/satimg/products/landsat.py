@@ -14,6 +14,7 @@ from rasterio.transform import Affine
 
 from satimg.metadata import Metadata
 from satimg.product import Product
+from satimg.readers import keep_open, merge_bands
 from satimg.registry import register
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
@@ -66,8 +67,8 @@ class LandsatProduct(Product):
     @cached_property
     def raw(self) -> xarray.DataArray:
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        merged = self._merge_bands(paths, match=_PAN)
-        return label_bands(as_band_yx(merged), BANDS)
+        merged = merge_bands(paths, match=_PAN)
+        return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
 
     def _render_visual(self) -> xarray.DataArray:
         a = self.raw.drop_vars("band")  # positional indexing below; relabel at the end

@@ -17,36 +17,46 @@ def find_file(directory: str, filename: str) -> str | None:
     return None
 
 
-def open_band(path: str, *, chunk: int = 512) -> xarray.DataArray:
+def open_band(path: str) -> xarray.DataArray:
     """Open one raster file lazily as a ``(band, y, x)`` DataArray.
 
-    dask-chunked into ``chunk``-square tiles (all bands in one chunk), so a
-    windowed ``isel`` decodes only the tiles it overlaps -- a bare ``.chunk()``
-    makes the whole band one chunk and every window a full-band decode
-    (~500 ms/window on a Sentinel scene). ``chunk`` is a starting granularity;
-    :meth:`~satimg.product.Product.patches` rechunks to the loop's patch size.
-
-    The returned array keeps a live ``_close``; the opener owns closing it.
+    No dask chunking here -- a windowed ``isel`` reads straight through
+    ``rasterio``. :meth:`~satimg.product.Product.patches` chunks the view to the
+    loop's window size when iteration starts. The array keeps a live ``_close``,
+    so ``da.close()`` shuts the GDAL dataset.
     """
-    return rioxarray.open_rasterio(
-        path, chunks={"band": -1, "x": chunk, "y": chunk}, lock=False
-    )
+    return rioxarray.open_rasterio(path)
+
+
+def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataArray:
+    """Carry ``source``'s ``_close`` onto ``view`` and return it.
+
+    ``transpose`` / ``assign_coords`` / ``astype`` / ``chunk`` all return a fresh
+    DataArray without the ``_close`` hook, so a product's final ``raw`` /
+    ``visual`` -- several such ops past :func:`open_band` / :func:`merge_bands` --
+    would otherwise not shut its rasters on ``close()``.
+    """
+    view.set_close(source._close)
+    return view
 
 
 def merge_bands(
-    paths: Iterable[str], *, match: int | None = None, chunk: int = 512
-) -> tuple[xarray.DataArray, list[xarray.DataArray]]:
+    paths: Iterable[str], *, match: int | None = None
+) -> xarray.DataArray:
     """Open each path with :func:`open_band` and stack them along ``band``.
 
-    Returns ``(merged, opened)`` -- ``opened`` is every per-band array, handed
-    back for the caller to close. With ``match`` (an index into ``paths``) the
-    other bands are nearest-neighbour reindexed onto that band's grid first.
+    With ``match`` (an index into ``paths``) the other bands are
+    nearest-neighbour reindexed onto that band's grid first. Each band is given
+    a single dask chunk so ``xarray.concat`` stays lazy (concatenating plain
+    arrays would read every scene into memory); the real tiling happens later,
+    in ``patches``. ``concat`` drops the per-band ``_close``, so it is wired
+    back on -- the returned array's ``close()`` shuts every band it opened.
     """
-    opened = [open_band(p, chunk=chunk) for p in paths]
+    opened = [open_band(p) for p in paths]
+    bands = [b.chunk() for b in opened]  # one chunk each -> concat stays lazy
     if match is not None:
-        target = opened[match]
-        arrays = [a.reindex_like(target, method="nearest") for a in opened]
-    else:
-        arrays = opened
-    merged = arrays[0] if len(arrays) == 1 else xarray.concat(arrays, dim="band")
-    return merged, opened
+        target = bands[match]
+        bands = [b.reindex_like(target, method="nearest") for b in bands]
+    merged = bands[0] if len(bands) == 1 else xarray.concat(bands, dim="band")
+    merged.set_close(lambda: [band.close() for band in opened])
+    return merged

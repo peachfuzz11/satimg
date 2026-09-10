@@ -15,7 +15,7 @@ import xarray
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
-from satimg.readers import find_file
+from satimg.readers import find_file, keep_open, merge_bands, open_band
 from satimg.registry import register
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
@@ -149,15 +149,15 @@ class Sentinel2L1CProduct(Product):
 
     @cached_property
     def raw(self) -> xarray.DataArray:
-        merged = self._merge_bands(self._meta["reflectance"], match=1)
+        merged = merge_bands(self._meta["reflectance"], match=1)
         da = label_bands(as_band_yx(merged), self._meta["band_names"])
-        return da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
+        da = da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
+        return keep_open(da, merged)
 
     def _render_visual(self) -> xarray.DataArray:
-        tci = as_band_yx(
-            self._open_band(self._meta["tci"]).astype("uint8")
-        )
-        return label_bands(tci, ("red", "green", "blue"))
+        src = open_band(self._meta["tci"])
+        tci = as_band_yx(src.astype("uint8"))
+        return keep_open(label_bands(tci, ("red", "green", "blue")), src)
 
     def _read_metadata(self) -> Metadata:
         rows, cols = self._tl["axes"]

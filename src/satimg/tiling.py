@@ -47,9 +47,12 @@ def label_bands(da: xarray.DataArray, names) -> xarray.DataArray:
 
 
 def _chunk_to(da: xarray.DataArray, size: int | tuple[int, int]) -> xarray.DataArray:
-    """Rechunk ``da`` so each ``size`` window is a single chunk."""
+    """Chunk ``da`` so each ``size`` window is a single chunk (``.chunk()`` drops
+    ``_close``, so carry it over)."""
     sw, sh = (size, size) if isinstance(size, int) else size
-    return da.chunk({"y": sh, "x": sw})
+    tiled = da.chunk({"y": sh, "x": sw})
+    tiled.set_close(da._close)
+    return tiled
 
 
 def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:

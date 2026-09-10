@@ -14,32 +14,23 @@
         ...
 """
 
-from __future__ import annotations
-
 import logging
-import os
-import tempfile
-import zipfile
-from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError, version as _version
-from typing import Iterator
 
-# Library convention: log under the ``satimg.*`` namespace and let the
-# application attach handlers. The NullHandler keeps us silent by default.
+# Log under the ``satimg.*`` namespace; the app attaches handlers.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
-logger = logging.getLogger(__name__)
 
 try:
     __version__ = _version("satimg")
-except PackageNotFoundError:  # running from a source tree without an install
+except PackageNotFoundError:  # a source tree without an install
     __version__ = "0.0.0"
 
 from satimg import products as _products  # noqa: F401  (populates the registry)
 from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
-from satimg.product import Product
-from satimg.registry import UnknownProductError, resolve
+from satimg.product import Product, open, open_zip
+from satimg.registry import UnknownProductError
 from satimg.tiling import Patch, as_band_yx, label_bands, patches, patches_at, read_window
 
 __all__ = [
@@ -62,32 +53,3 @@ __all__ = [
     "UnknownProductError",
     "CredentialsError",
 ]
-
-
-def open(path: str) -> Product:
-    """Open a product directory, returning the matching :class:`Product`."""
-    cls = resolve(path)
-    logger.debug("opened %s as %s", path, cls.__name__)
-    return cls(path)
-
-
-@contextmanager
-def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
-    """Extract a zipped product to a temp dir and yield it as a :class:`Product`.
-
-    Use the ``with`` form -- the temp dir (under ``dest``, or the system default)
-    and the product's open rasters are both released on exit. Anything you need
-    after the block must be read while walking patches; a lazy view cannot be
-    rebuilt once the temp dir is gone.
-    """
-    with tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True) as tmp:
-        logger.debug("extracting %s to %s", zip_path, tmp)
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(tmp)
-        entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
-        if not entries:
-            raise ValueError(f"{zip_path} extracted to nothing")
-        root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp
-        logger.debug("extracted product root: %s", root)
-        with open(root) as product:
-            yield product

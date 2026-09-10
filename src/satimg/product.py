@@ -27,12 +27,16 @@ from __future__ import annotations
 import abc
 import datetime
 import logging
+import os
+import tempfile
+import zipfile
+from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
 import xarray
 
-from satimg import readers, tiling
+from satimg import tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
 from satimg.tiling import Patch
@@ -48,7 +52,6 @@ logger = logging.getLogger(__name__)
 class Product(abc.ABC):
     def __init__(self, path: str):
         self._path = str(path)
-        self._opened: list = []  # raster arrays backing raw / visual
 
     @property
     def path(self) -> str:
@@ -65,34 +68,22 @@ class Product(abc.ABC):
         self._close()
 
     def _close(self) -> None:
-        """Release every raster opened for this product and drop the cached
-        :attr:`raw` / :attr:`visual` views.
+        """Close the rasters backing :attr:`raw` / :attr:`visual` and drop the
+        cached views.
 
-        Called when the ``with`` block exits, and by :func:`satimg.open_zip`
-        before its temp dir is removed. Idempotent; a later :attr:`raw` /
-        :attr:`visual` access rebuilds, provided the files still exist.
+        Each view carries a ``_close`` that shuts every band it opened (wired up
+        in :func:`satimg.readers.merge_bands` and kept across the rechunk in
+        :meth:`_align_view_chunks`), so closing the two views is enough -- the
+        product tracks nothing else. Called on ``with`` exit and by
+        :func:`satimg.open_zip`; idempotent, and a later access rebuilds.
         """
-        while self._opened:
-            try:
-                self._opened.pop().close()
-            except Exception:  # pragma: no cover - best effort
-                logger.debug("error closing raster", exc_info=True)
         for name in ("raw", "visual"):
-            self.__dict__.pop(name, None)
-
-    def _open_band(self, path: str, *, chunk: int = 512) -> xarray.DataArray:
-        """:func:`satimg.readers.open_band`, registering the opener for close."""
-        da = readers.open_band(path, chunk=chunk)
-        self._opened.append(da)
-        return da
-
-    def _merge_bands(
-        self, paths, *, match: int | None = None, chunk: int = 512
-    ) -> xarray.DataArray:
-        """:func:`satimg.readers.merge_bands`, registering every opener for close."""
-        merged, opened = readers.merge_bands(paths, match=match, chunk=chunk)
-        self._opened.extend(opened)
-        return merged
+            da = self.__dict__.pop(name, None)
+            if da is not None:
+                try:
+                    da.close()
+                except Exception:  # pragma: no cover - best effort
+                    logger.debug("error closing %s raster(s)", name, exc_info=True)
 
     # -- pixel views ------------------------------------------------
     @property
@@ -112,16 +103,18 @@ class Product(abc.ABC):
 
     # -- iteration ------------------------------------------------
     def _align_view_chunks(self, size: int | tuple[int, int]) -> None:
-        """Rechunk the built :attr:`raw` / :attr:`visual` views so each ``size``
-        window is exactly one dask chunk -- the reason a window read decodes one
-        tile per band instead of the whole band. Runs once per ``patches`` /
-        ``patches_at`` call, before iteration.
+        """Chunk the built :attr:`raw` / :attr:`visual` views to ``size`` tiles so
+        a window read decodes one tile per band instead of the whole band. This
+        is where the readers' unchunked opens get their dask tiling; runs once
+        per ``patches`` / ``patches_at`` call, before iteration. ``.chunk()``
+        drops ``_close``, so it is carried over.
         """
         sw, sh = (size, size) if isinstance(size, int) else size
         for name in ("raw", "visual"):
             da = getattr(self, name)  # builds it lazily; no pixels read yet
-            if getattr(da, "chunks", None) is not None:  # dask-backed only
-                self.__dict__[name] = da.chunk({"band": -1, "y": sh, "x": sw})
+            tiled = da.chunk({"band": -1, "y": sh, "x": sw})
+            tiled.set_close(da._close)
+            self.__dict__[name] = tiled
 
     def patches(
         self,
@@ -242,3 +235,34 @@ class Product(abc.ABC):
             coords = coords[0]
         lons, lats = zip(*coords)
         return min(lons), min(lats), max(lons), max(lats)
+
+
+def open(path: str) -> Product:
+    """Open a product directory, returning the matching :class:`Product`."""
+    from satimg.registry import resolve  # deferred: registry imports Product
+
+    cls = resolve(path)
+    logger.debug("opened %s as %s", path, cls.__name__)
+    return cls(path)
+
+
+@contextmanager
+def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
+    """Extract a zipped product to a temp dir and yield it as a :class:`Product`.
+
+    Use the ``with`` form -- the temp dir (under ``dest``, or the system
+    default) and the product's open rasters are both released on exit. Read
+    what you need inside the block; a lazy view cannot be rebuilt once the temp
+    dir is gone.
+    """
+    with tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True) as tmp:
+        logger.debug("extracting %s to %s", zip_path, tmp)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(tmp)
+        entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
+        if not entries:
+            raise ValueError(f"{zip_path} extracted to nothing")
+        root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp
+        logger.debug("extracted product root: %s", root)
+        with open(root) as product:
+            yield product

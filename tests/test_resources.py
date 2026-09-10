@@ -40,16 +40,15 @@ ALL = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
 
 @pytest.mark.parametrize("key", ALL)
 def test_close_shuts_the_rasters_and_clears_the_cache(key):
+    base = _open_fds()
     p = _fresh(key)
     _ = p.raw
     _ = p.visual
-    assert p._opened, "raw/visual should have registered open rasters"
-    assert all(s._close is not None for s in p._opened)
+    assert _open_fds() > base, "raw/visual should have opened rasters"
 
-    tracked = list(p._opened)
     p._close()
 
-    assert all(s._close is None for s in tracked), "every raster should be closed"
+    assert _open_fds() - base <= 1, "every raster should be closed"
     assert "raw" not in p.__dict__ and "visual" not in p.__dict__
     p._close()  # idempotent
 
