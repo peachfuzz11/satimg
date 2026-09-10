@@ -17,9 +17,10 @@ it offers the same two views on the pixels --
 
 Before a long loop -- especially over the whole image in patches -- call
 ``product.persist()`` to read ``raw`` and ``visual`` into memory once and drop
-the open rasters; every window is then an in-memory slice. A product also closes
-its rasters on ``close()`` / ``__exit__``, so ``with satimg.open(path) as product``
-and :func:`satimg.open_zip` never leak file handles across iterations.
+the open rasters; every window is then an in-memory slice. A product releases
+its rasters when its ``with`` block exits, so use ``with satimg.open(path) as
+product`` (and :func:`satimg.open_zip`) to loop over many without leaking
+handles.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from typing import TYPE_CHECKING, Iterable, Iterator
 
 import xarray
 
-from satimg import tiling
+from satimg import readers, tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
 from satimg.tiling import Patch
@@ -48,7 +49,7 @@ logger = logging.getLogger(__name__)
 class Product(abc.ABC):
     def __init__(self, path: str):
         self._path = str(path)
-        self._sources: list = []  # open GDAL datasets backing raw / visual
+        self._opened: list = []  # raster arrays backing raw / visual
 
     @property
     def path(self) -> str:
@@ -58,23 +59,41 @@ class Product(abc.ABC):
         return f"{type(self).__name__}({self._path!r})"
 
     # -- resources ------------------------------------------------
-    def close(self) -> None:
-        """Close every raster opened for this product and drop the cached
+    def __enter__(self) -> "Product":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._close()
+
+    def _close(self) -> None:
+        """Release every raster opened for this product and drop the cached
         :attr:`raw` / :attr:`visual` views.
 
-        Safe to call repeatedly. A later :attr:`raw` / :attr:`visual` access
-        rebuilds lazily, provided the files still exist -- which they do not
-        after :func:`satimg.open_zip` has cleaned up, so persist anything you
-        still need first.
+        Called when the ``with`` block exits, and by :func:`satimg.open_zip`
+        before its temp dir is removed. Idempotent; a later :attr:`raw` /
+        :attr:`visual` access rebuilds, provided the files still exist.
         """
-        sources, self._sources = getattr(self, "_sources", []), []
-        for src in sources:
+        while self._opened:
             try:
-                src.close()
+                self._opened.pop().close()
             except Exception:  # pragma: no cover - best effort
-                logger.debug("error closing raster source", exc_info=True)
+                logger.debug("error closing raster", exc_info=True)
         for name in ("raw", "visual"):
             self.__dict__.pop(name, None)
+
+    def _open_band(self, path: str, *, chunk: int = 512) -> xarray.DataArray:
+        """:func:`satimg.readers.open_band`, registering the opener for close."""
+        da = readers.open_band(path, chunk=chunk)
+        self._opened.append(da)
+        return da
+
+    def _merge_bands(
+        self, paths, *, match: int | None = None, chunk: int = 512
+    ) -> xarray.DataArray:
+        """:func:`satimg.readers.merge_bands`, registering every opener for close."""
+        merged, opened = readers.merge_bands(paths, match=match, chunk=chunk)
+        self._opened.extend(opened)
+        return merged
 
     def persist(self, *views: str) -> "Product":
         """Read the named pixel views into memory and release the source rasters.
@@ -100,21 +119,9 @@ class Product(abc.ABC):
             for name in ("raw", "visual")
             if name in self.__dict__
         }
-        self.close()
+        self._close()
         self.__dict__.update(loaded)
         return self
-
-    def __enter__(self) -> "Product":
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self.close()
-
-    def __del__(self) -> None:
-        try:
-            self.close()
-        except Exception:  # pragma: no cover - interpreter shutdown
-            pass
 
     # -- pixel views ------------------------------------------------
     @property

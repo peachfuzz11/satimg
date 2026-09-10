@@ -49,7 +49,7 @@ class Detector:
         return self
 
     def __exit__(self, *exc) -> None:
-        self._product.close()
+        self._product.__exit__(*exc)  # scope the product's rasters to the detector
 
     def detect(self, **overrides) -> list[Detection]:
         cfg = DetectorConfig(**{**self._config.__dict__, **overrides})

@@ -70,7 +70,7 @@ for patch in product.patches(512):
     ...
 ```
 
-A product also releases its rasters on `close()` / `with` exit, so looping over
+A product releases its rasters when its `with` block exits, so looping over
 many products never leaks file handles:
 
 ```python

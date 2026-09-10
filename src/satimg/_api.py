@@ -53,8 +53,5 @@ def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
             raise ValueError(f"{zip_path} extracted to nothing")
         root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp
         logger.debug("extracted product root: %s", root)
-        product = open(root)
-        try:
+        with open(root) as product:
             yield product
-        finally:
-            product.close()

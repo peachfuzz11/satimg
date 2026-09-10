@@ -1,7 +1,7 @@
-"""The GDAL rasters a product opens must be released -- on ``close()``, on
-``__exit__``, and by ``open_zip`` -- so a loop over many products does not leak
-file descriptors. ``persist()`` reads the pixels into memory and drops the
-handles up front.
+"""The GDAL rasters a product opens must be released -- on ``with`` exit
+(``__exit__``) and by ``open_zip`` -- so a loop over many products does not
+leak file descriptors. ``persist()`` reads the pixels into memory and drops
+the handles up front.
 
 fd counting is Linux-only (``/proc/self/fd``); ``psutil`` is not a dependency.
 """
@@ -30,7 +30,7 @@ def _open_fds() -> int:
 
 def _fresh(key: str):
     """A brand-new product instance -- never the module-scoped fixtures, whose
-    sharing would let one test's ``close()`` break another."""
+    sharing would let one test's ``_close()`` break another."""
     path = PRODUCT_PATHS[key]
     if not os.path.exists(path):
         pytest.skip(f"test product missing: {path}")
@@ -45,22 +45,22 @@ def test_close_shuts_the_rasters_and_clears_the_cache(key):
     p = _fresh(key)
     _ = p.raw
     _ = p.visual
-    assert p._sources, "raw/visual should have registered open rasters"
-    assert all(s._close is not None for s in p._sources)
+    assert p._opened, "raw/visual should have registered open rasters"
+    assert all(s._close is not None for s in p._opened)
 
-    tracked = list(p._sources)
-    p.close()
+    tracked = list(p._opened)
+    p._close()
 
     assert all(s._close is None for s in tracked), "every raster should be closed"
     assert "raw" not in p.__dict__ and "visual" not in p.__dict__
-    p.close()  # idempotent
+    p._close()  # idempotent
 
 
 @pytest.mark.parametrize("key", ALL)
 def test_views_rebuild_after_close(key):
     p = _fresh(key)
     shape = p.raw.shape
-    p.close()
+    p._close()
     assert p.raw.shape == shape  # rebuilds lazily from files still on disk
 
 
@@ -88,7 +88,7 @@ def test_loop_over_products_does_not_leak(key):
 def test_persist_no_args_covers_raw_and_visual():
     p = _fresh("sentinel1_iw")
     raw_shape, vis_shape = p.raw.shape, p.visual.shape
-    tracked = list(p._sources)
+    tracked = list(p._opened)
 
     out = p.persist()
 
@@ -99,7 +99,7 @@ def test_persist_no_args_covers_raw_and_visual():
         assert isinstance(da.data, numpy.ndarray)
         assert da.shape == shape
     assert all(s._close is None for s in tracked)
-    assert not p._sources
+    assert not p._opened
 
     # patch iteration still works and opens no rasters
     fds = _open_fds()
@@ -107,7 +107,7 @@ def test_persist_no_args_covers_raw_and_visual():
     assert patch.raw.shape[1:] == (64, 64)
     assert patch.values.shape == patch.raw.shape
     assert _open_fds() - fds <= 1
-    p.close()
+    p._close()
 
 
 def test_persist_visual_keeps_raw_it_depended_on():
@@ -117,7 +117,7 @@ def test_persist_visual_keeps_raw_it_depended_on():
     p.persist("visual")
     assert p.__dict__["visual"].chunks is None
     assert p.__dict__["raw"].chunks is None
-    p.close()
+    p._close()
 
 
 def test_persist_named_view_only():
@@ -126,7 +126,7 @@ def test_persist_named_view_only():
     p.persist("visual")
     assert p.__dict__["visual"].chunks is None
     assert "raw" not in p.__dict__  # not requested, never materialised
-    p.close()
+    p._close()
 
 
 @pytest.fixture(scope="module")
