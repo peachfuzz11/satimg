@@ -1,7 +1,6 @@
 """The GDAL rasters a product opens must be released -- on ``with`` exit
 (``__exit__``) and by ``open_zip`` -- so a loop over many products does not
-leak file descriptors. ``persist()`` reads the pixels into memory and drops
-the handles up front.
+leak file descriptors.
 
 fd counting is Linux-only (``/proc/self/fd``); ``psutil`` is not a dependency.
 """
@@ -12,7 +11,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-import numpy
 import pytest
 
 import satimg
@@ -81,52 +79,6 @@ def test_loop_over_products_does_not_leak(key):
         with _fresh(key) as p:
             _ = p.visual
     assert _open_fds() - base <= 1
-
-
-# persist() materialises whole views into RAM, so exercise it on sentinel1_iw
-# only -- the fewest bands, hence the smallest full-image allocation.
-def test_persist_no_args_covers_raw_and_visual():
-    p = _fresh("sentinel1_iw")
-    raw_shape, vis_shape = p.raw.shape, p.visual.shape
-    tracked = list(p._opened)
-
-    out = p.persist()
-
-    assert out is p
-    for name, shape in [("raw", raw_shape), ("visual", vis_shape)]:
-        da = p.__dict__[name]
-        assert da.chunks is None, f"{name} should be in memory after persist"
-        assert isinstance(da.data, numpy.ndarray)
-        assert da.shape == shape
-    assert all(s._close is None for s in tracked)
-    assert not p._opened
-
-    # patch iteration still works and opens no rasters
-    fds = _open_fds()
-    patch = next(iter(p.patches(64)))
-    assert patch.raw.shape[1:] == (64, 64)
-    assert patch.values.shape == patch.raw.shape
-    assert _open_fds() - fds <= 1
-    p._close()
-
-
-def test_persist_visual_keeps_raw_it_depended_on():
-    # Sentinel-1 visual is derived from raw, so persisting "visual" pulls raw in
-    # too -- and it must be upgraded in place, not left lazy over closed rasters.
-    p = _fresh("sentinel1_iw")
-    p.persist("visual")
-    assert p.__dict__["visual"].chunks is None
-    assert p.__dict__["raw"].chunks is None
-    p._close()
-
-
-def test_persist_named_view_only():
-    # Sentinel-2 visual is the shipped TCI, independent of raw.
-    p = _fresh("sentinel2_l1c")
-    p.persist("visual")
-    assert p.__dict__["visual"].chunks is None
-    assert "raw" not in p.__dict__  # not requested, never materialised
-    p._close()
 
 
 @pytest.fixture(scope="module")

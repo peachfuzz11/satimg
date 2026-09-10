@@ -15,10 +15,9 @@ it offers the same two views on the pixels --
 
 ``for patch in product`` is shorthand for ``product.patches()``.
 
-Before a long loop -- especially over the whole image in patches -- call
-``product.persist()`` to read ``raw`` and ``visual`` into memory once and drop
-the open rasters; every window is then an in-memory slice. A product releases
-its rasters when its ``with`` block exits, so use ``with satimg.open(path) as
+``patches`` / ``patches_at`` rechunk ``raw`` and ``visual`` to the loop's
+window size, so each patch read pulls a single tile. A product releases its
+rasters when its ``with`` block exits, so use ``with satimg.open(path) as
 product`` (and :func:`satimg.open_zip`) to loop over many without leaking
 handles.
 """
@@ -95,34 +94,6 @@ class Product(abc.ABC):
         self._opened.extend(opened)
         return merged
 
-    def persist(self, *views: str) -> "Product":
-        """Read the named pixel views into memory and release the source rasters.
-
-        A following patch loop then reads in-memory slices instead of re-opening
-        GDAL for every window -- call this before iterating, especially when
-        tiling the whole image::
-
-            product = satimg.open(path).persist()
-            for patch in product.patches(512):
-                ...
-
-        With no arguments both :attr:`raw` and :attr:`visual` are persisted;
-        pass ``"raw"`` / ``"visual"`` to pick. A view already in memory, or one
-        pulled in as a dependency (``visual`` is built from ``raw`` for Landsat
-        and Sentinel-1), is persisted too rather than left lazy over closed
-        rasters. Returns ``self``.
-        """
-        for name in views or ("raw", "visual"):
-            getattr(self, name)  # build it; may cache another view as a dependency
-        loaded = {
-            name: self.__dict__[name].load()
-            for name in ("raw", "visual")
-            if name in self.__dict__
-        }
-        self._close()
-        self.__dict__.update(loaded)
-        return self
-
     # -- pixel views ------------------------------------------------
     @property
     @abc.abstractmethod
@@ -142,18 +113,14 @@ class Product(abc.ABC):
     # -- iteration ------------------------------------------------
     def _align_view_chunks(self, size: int | tuple[int, int]) -> None:
         """Rechunk the built :attr:`raw` / :attr:`visual` views so each ``size``
-        window is exactly one dask chunk -- the fast granularity for the patch
-        loop about to run, and the reason a window read decodes one tile per
-        band instead of the whole band.
-
-        Runs once per ``patches`` / ``patches_at`` call, before iteration. A
-        no-op for a view :meth:`persist` has already pulled into memory (those
-        are plain slices, no chunking to align).
+        window is exactly one dask chunk -- the reason a window read decodes one
+        tile per band instead of the whole band. Runs once per ``patches`` /
+        ``patches_at`` call, before iteration.
         """
         sw, sh = (size, size) if isinstance(size, int) else size
         for name in ("raw", "visual"):
             da = getattr(self, name)  # builds it lazily; no pixels read yet
-            if getattr(da, "chunks", None) is not None:  # skip persisted (in-RAM) views
+            if getattr(da, "chunks", None) is not None:  # dask-backed only
                 self.__dict__[name] = da.chunk({"band": -1, "y": sh, "x": sw})
 
     def patches(

@@ -60,15 +60,8 @@ to walk any *other* array (a derived index) use
 
 `batch=n` yields lists of `n` patches instead of one at a time.
 
-Tiling the whole image? Call `persist()` first — it reads `raw` and `visual`
-into memory once and closes the underlying rasters, so every window is an
-in-memory slice instead of a fresh GDAL read:
-
-```python
-product = satimg.open(path).persist()   # or .persist("visual") for just that view
-for patch in product.patches(512):
-    ...
-```
+`product.patches()` / `patches_at()` rechunk `raw` and `visual` to the window
+size before iterating, so each patch read decodes just the one tile it covers.
 
 A product releases its rasters when its `with` block exits, so looping over
 many products never leaks file handles:
@@ -227,13 +220,13 @@ connector = get_connector("sentinel-2-l1c",
 connector.download(items[0], "/data/scene.zip")
 
 with satimg.open_zip("/data/scene.zip") as product:
-    product.persist()          # keep the pixels once the temp dir is gone
-    ...
+    for patch in product.patches(512):
+        ...
 ```
 
 `open_zip` extracts to a temp dir that is removed — along with the product's
-open rasters — when the block exits. `persist()` the views you still need
-before then; a lazy view can't be rebuilt afterwards.
+open rasters — when the block exits. Read what you need inside the block; a
+lazy view can't be rebuilt afterwards.
 
 ## Deep Zoom
 
