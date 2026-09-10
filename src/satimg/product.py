@@ -68,13 +68,14 @@ class Product(abc.ABC):
         self._close()
 
     def _close(self) -> None:
-        """Close the rasters backing :attr:`raw` / :attr:`visual` and drop the
+        """Close the rasters behind :attr:`raw` / :attr:`visual` and drop the
         cached views.
 
-        Each view carries a ``_close`` that shuts every band it opened (wired up
-        in :func:`satimg.readers.merge_bands` and kept across the rechunk in
-        :meth:`_align_view_chunks`), so closing the two views is enough -- the
-        product tracks nothing else. Called on ``with`` exit and by
+        Each view carries a ``_close`` that shuts every band it opened -- wired
+        on in :func:`satimg.readers.merge_bands`, kept across the product's
+        wrappers by :func:`satimg.readers.keep_open` and across the rechunk by
+        :meth:`_align_view_chunks` -- so closing the two views is all the
+        product needs to track. Called on ``with`` exit and by
         :func:`satimg.open_zip`; idempotent, and a later access rebuilds.
         """
         for name in ("raw", "visual"):
@@ -106,14 +107,13 @@ class Product(abc.ABC):
         """Chunk the built :attr:`raw` / :attr:`visual` views to ``size`` tiles so
         a window read decodes one tile per band instead of the whole band. This
         is where the readers' unchunked opens get their dask tiling; runs once
-        per ``patches`` / ``patches_at`` call, before iteration. ``.chunk()``
-        drops ``_close``, so it is carried over.
+        per ``patches`` / ``patches_at`` call, before iteration.
         """
         sw, sh = (size, size) if isinstance(size, int) else size
         for name in ("raw", "visual"):
             da = getattr(self, name)  # builds it lazily; no pixels read yet
             tiled = da.chunk({"band": -1, "y": sh, "x": sw})
-            tiled.set_close(da._close)
+            tiled.set_close(da._close)  # .chunk() drops the hook
             self.__dict__[name] = tiled
 
     def patches(

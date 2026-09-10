@@ -11,11 +11,12 @@ from xml.etree import ElementTree
 
 import numpy
 import rasterio
+import rioxarray
 import xarray
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
-from satimg.readers import find_file, keep_open, merge_bands, open_band
+from satimg.readers import find_file, keep_open, merge_bands
 from satimg.registry import register
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
@@ -155,7 +156,7 @@ class Sentinel2L1CProduct(Product):
         return keep_open(da, merged)
 
     def _render_visual(self) -> xarray.DataArray:
-        src = open_band(self._meta["tci"])
+        src = rioxarray.open_rasterio(self._meta["tci"])
         tci = as_band_yx(src.astype("uint8"))
         return keep_open(label_bands(tci, ("red", "green", "blue")), src)
 
