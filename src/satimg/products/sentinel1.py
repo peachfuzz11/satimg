@@ -15,7 +15,7 @@ import xarray
 
 from satimg.metadata import Metadata, grid_from_points
 from satimg.product import Product
-from satimg.readers import find_file, merge_bands
+from satimg.readers import find_file, keep_open, merge_bands
 from satimg.registry import register
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import GCPTransformer
@@ -119,8 +119,9 @@ class Sentinel1Product(Product):
             if m:
                 pols[os.path.join(measurement, f)] = m.group(1)
         files = sorted(pols, key=lambda f: _POL_ORDER[pols[f]])
-        da = as_band_yx(merge_bands(files))
-        return label_bands(da, [pols[f].upper() for f in files])
+        merged = merge_bands(files)
+        da = label_bands(as_band_yx(merged), [pols[f].upper() for f in files])
+        return keep_open(da, merged)
 
     def _render_visual(self) -> xarray.DataArray:
         a = self.raw

@@ -60,6 +60,17 @@ to walk any *other* array (a derived index) use
 
 `batch=n` yields lists of `n` patches instead of one at a time.
 
+`product.patches()` / `patches_at()` rechunk `raw` and `visual` to the window
+size before iterating, so each patch read decodes just the one tile it covers.
+
+A product releases its rasters when its `with` block exits, so looping over
+many products never leaks file handles:
+
+```python
+with satimg.open(path) as product:
+    ...
+```
+
 ### Edge handling
 
 `product.patches(size, edge=...)` decides what happens at the right / bottom border:
@@ -209,8 +220,13 @@ connector = get_connector("sentinel-2-l1c",
 connector.download(items[0], "/data/scene.zip")
 
 with satimg.open_zip("/data/scene.zip") as product:
-    ...
+    for patch in product.patches(512):
+        ...
 ```
+
+`open_zip` extracts to a temp dir that is removed — along with the product's
+open rasters — when the block exits. Read what you need inside the block; a
+lazy view can't be rebuilt afterwards.
 
 ## Deep Zoom
 

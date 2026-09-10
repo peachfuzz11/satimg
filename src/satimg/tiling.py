@@ -46,6 +46,15 @@ def label_bands(da: xarray.DataArray, names) -> xarray.DataArray:
     return da.assign_coords(band=names)
 
 
+def _chunk_to(da: xarray.DataArray, size: int | tuple[int, int]) -> xarray.DataArray:
+    """Chunk ``da`` so each ``size`` window is a single chunk (``.chunk()`` drops
+    the ``_close`` hook, so carry it over)."""
+    sw, sh = (size, size) if isinstance(size, int) else size
+    tiled = da.chunk({"y": sh, "x": sw})
+    tiled.set_close(da._close)
+    return tiled
+
+
 def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:
     """Lazy sub-array of ``da`` for ``window``.
 
@@ -82,10 +91,14 @@ def patches(
     ``"skip"`` to keep only full interior tiles. With ``batch=n`` the patches
     arrive in lists of up to ``n`` instead of one at a time.
 
+    ``da`` is rechunked to ``size`` first, so each window read pulls a single
+    tile rather than decoding a whole band.
+
     ``transformer`` lets the yielded patches resolve ``.center_latlon``;
     ``product`` binds ``.meta``. :meth:`~satimg.product.Product.patches` passes
     both.
     """
+    da = _chunk_to(da, size)
     grid = Grid(int(da.sizes["x"]), int(da.sizes["y"]), size, overlap, edge)
     if batch is None:
         for win in grid:
@@ -111,7 +124,11 @@ def patches_at(
     ``size``; any part lying outside the array is zero-filled, so a point near
     (or past) an edge still yields a full-size patch. With ``batch=n`` the
     patches arrive in lists of up to ``n``.
+
+    ``da`` is rechunked to ``size`` first, so each window read pulls a single
+    tile rather than decoding a whole band.
     """
+    da = _chunk_to(da, size)
     windows = windows_at(points, size)
     if batch is None:
         for win in windows:

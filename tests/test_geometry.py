@@ -106,7 +106,17 @@ class TestWindowsAt:
 
     def test_odd_size_rounds(self):
         (w,) = list(windows_at([(10, 10)], 5))
-        assert w == Window(8, 8, 5, 5)  # round(10 - 2.5) == 8
+        assert w == Window(8, 8, 5, 5)  # round(10) - 5 // 2 == 8
+
+    def test_point_lands_on_the_centre_pixel_for_every_parity(self):
+        # round(col) - sw // 2 puts the point on index sw // 2 regardless of
+        # whether sw (or the point) is odd -- the old round(col - sw / 2) drifted
+        # a pixel on alternate points at odd sizes.
+        for size in (16, 15):
+            for pt in (30, 31, 30.4, 31.6):
+                (w,) = list(windows_at([(pt, pt)], size))
+                assert w.col + size // 2 == round(pt)
+                assert w.row + size // 2 == round(pt)
 
     def test_empty_points_yields_nothing(self):
         assert list(windows_at([], 64)) == []

@@ -125,6 +125,30 @@ class TestPatchesAt:
         assert (arr[:, :14, :] == 0).all()  # rows above y=0
         assert (arr[:, :, :14] == 0).all()  # cols left of x=0
 
+    @pytest.mark.parametrize(
+        "col,row,size",
+        [
+            (150, 100, 64),   # interior
+            (3, 4, 64),       # overhangs the origin -- left/top zero-pad
+            (297, 198, 64),   # overhangs the far edge -- right/bottom zero-pad
+            (150, 100, 61),   # odd size, still dead-centre
+            (30, 30, 500),    # window larger than the image -- padded all round
+            (150.4, 99.6, 64),  # fractional point rounds to the centre pixel
+        ],
+    )
+    def test_point_stays_dead_centre_through_the_zero_pad(self, col, row, size):
+        da = make_da(bands=2, height=200, width=300, dtype="int32")
+        (p,) = list(patches_at(da, [(col, row)], size))
+        arr = p.values
+        assert arr.shape == (2, size, size)
+        c, r = int(round(col)), int(round(row))
+        numpy.testing.assert_array_equal(
+            arr[:, size // 2, size // 2], da.to_numpy()[:, r, c]
+        )
+        # padded-out region reads as zero, real data does not (arange starts at 0
+        # on band 0, so check band 1 which is strictly positive)
+        assert arr[1, size // 2, size // 2] != 0
+
     def test_batched(self):
         points = [(x, x) for x in range(10, 100, 10)]  # 9 points
         groups = list(patches_at(make_da(), points, 32, batch=4))

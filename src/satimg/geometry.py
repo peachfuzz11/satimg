@@ -193,9 +193,16 @@ def windows_at(
     ``size`` is a single int (square) or a ``(width, height)`` pair. Points may
     lie anywhere: a window that overhangs the image (or sits partly at negative
     indices) is zero-filled by the reader, so every window is exactly ``size``.
+
+    The point always lands on pixel ``(size // 2, size // 2)`` of the window --
+    i.e. of every patch read from it, zero-padded edges included. Anchoring the
+    offset (``round(col) - sw // 2``) rather than rounding ``col - sw / 2`` as a
+    whole keeps that true for odd sizes, where half-to-even rounding of the
+    combined expression would otherwise shift the centre by a pixel for every
+    other point.
     """
     sw, sh = size if isinstance(size, tuple) else (size, size)
     if sw <= 0 or sh <= 0:
         raise ValueError("size must be positive")
     for col, row in points:
-        yield Window(round(col - sw / 2), round(row - sh / 2), sw, sh)
+        yield Window(round(col) - sw // 2, round(row) - sh // 2, sw, sh)

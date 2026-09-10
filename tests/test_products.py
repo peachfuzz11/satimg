@@ -110,6 +110,26 @@ class TestPatches:
             patch.values, read_window(product.raw, win).values
         )
 
+    def test_patches_at_keeps_the_point_centred_including_at_a_padded_edge(self, product):
+        # a point one pixel in from the top-left: raw and visual must still be
+        # full-size (left/top zero-padded) with the point on the centre pixel.
+        col, row = 1, 1
+        p = next(product.patches_at([(col, row)], 128))
+        assert p.raw.shape == (product.bands, 128, 128)
+        assert p.visual.shape[1:] == (128, 128)
+        assert p.window.col + 64 == col and p.window.row + 64 == row
+        numpy.testing.assert_array_equal(
+            p.raw.values, read_window(product.raw, p.window).values
+        )
+        numpy.testing.assert_array_equal(
+            p.visual.values, read_window(product.visual, p.window).values
+        )
+        # the geo-centre of the patch is the requested pixel, not some rounded
+        # window centre drifting off it
+        want = product.transformer.rowcol_to_latlon((row, col))
+        got = p.center_latlon
+        assert got == pytest.approx((float(want[0, 0]), float(want[0, 1])), abs=1e-9)
+
     def test_patch_exposes_raw_visual_and_meta(self, product):
         p = next(product.patches_at([(600, 600)], 256))
         assert p.raw.dims == ("band", "y", "x")
