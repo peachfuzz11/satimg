@@ -119,7 +119,7 @@ class Sentinel1Product(Product):
             if m:
                 pols[os.path.join(measurement, f)] = m.group(1)
         files = sorted(pols, key=lambda f: _POL_ORDER[pols[f]])
-        da = as_band_yx(merge_bands(files))
+        da = as_band_yx(merge_bands(files, sources=self._sources))
         return label_bands(da, [pols[f].upper() for f in files])
 
     def _render_visual(self) -> xarray.DataArray:

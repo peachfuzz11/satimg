@@ -14,12 +14,19 @@ it offers the same two views on the pixels --
         lat, lon = patch.center_latlon
 
 ``for patch in product`` is shorthand for ``product.patches()``.
+
+Before a long loop -- especially over the whole image in patches -- call
+``product.persist()`` to read ``raw`` and ``visual`` into memory once and drop
+the open rasters; every window is then an in-memory slice. A product also closes
+its rasters on ``close()`` / ``__exit__``, so ``with satimg.open(path) as product``
+and :func:`satimg.open_zip` never leak file handles across iterations.
 """
 
 from __future__ import annotations
 
 import abc
 import datetime
+import logging
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
@@ -35,10 +42,13 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from satimg.transform import Transformer
 
+logger = logging.getLogger(__name__)
+
 
 class Product(abc.ABC):
     def __init__(self, path: str):
         self._path = str(path)
+        self._sources: list = []  # open GDAL datasets backing raw / visual
 
     @property
     def path(self) -> str:
@@ -46,6 +56,65 @@ class Product(abc.ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._path!r})"
+
+    # -- resources ------------------------------------------------
+    def close(self) -> None:
+        """Close every raster opened for this product and drop the cached
+        :attr:`raw` / :attr:`visual` views.
+
+        Safe to call repeatedly. A later :attr:`raw` / :attr:`visual` access
+        rebuilds lazily, provided the files still exist -- which they do not
+        after :func:`satimg.open_zip` has cleaned up, so persist anything you
+        still need first.
+        """
+        sources, self._sources = getattr(self, "_sources", []), []
+        for src in sources:
+            try:
+                src.close()
+            except Exception:  # pragma: no cover - best effort
+                logger.debug("error closing raster source", exc_info=True)
+        for name in ("raw", "visual"):
+            self.__dict__.pop(name, None)
+
+    def persist(self, *views: str) -> "Product":
+        """Read the named pixel views into memory and release the source rasters.
+
+        A following patch loop then reads in-memory slices instead of re-opening
+        GDAL for every window -- call this before iterating, especially when
+        tiling the whole image::
+
+            product = satimg.open(path).persist()
+            for patch in product.patches(512):
+                ...
+
+        With no arguments both :attr:`raw` and :attr:`visual` are persisted;
+        pass ``"raw"`` / ``"visual"`` to pick. A view already in memory, or one
+        pulled in as a dependency (``visual`` is built from ``raw`` for Landsat
+        and Sentinel-1), is persisted too rather than left lazy over closed
+        rasters. Returns ``self``.
+        """
+        for name in views or ("raw", "visual"):
+            getattr(self, name)  # build it; may cache another view as a dependency
+        loaded = {
+            name: self.__dict__[name].load()
+            for name in ("raw", "visual")
+            if name in self.__dict__
+        }
+        self.close()
+        self.__dict__.update(loaded)
+        return self
+
+    def __enter__(self) -> "Product":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:  # pragma: no cover - interpreter shutdown
+            pass
 
     # -- pixel views ------------------------------------------------
     @property
@@ -64,6 +133,22 @@ class Product(abc.ABC):
         """Build the visualisation array (sensor-specific)."""
 
     # -- iteration ------------------------------------------------
+    def _align_view_chunks(self, size: int | tuple[int, int]) -> None:
+        """Rechunk the built :attr:`raw` / :attr:`visual` views so each ``size``
+        window is exactly one dask chunk -- the fast granularity for the patch
+        loop about to run, and the reason a window read decodes one tile per
+        band instead of the whole band.
+
+        Runs once per ``patches`` / ``patches_at`` call, before iteration. A
+        no-op for a view :meth:`persist` has already pulled into memory (those
+        are plain slices, no chunking to align).
+        """
+        sw, sh = (size, size) if isinstance(size, int) else size
+        for name in ("raw", "visual"):
+            da = getattr(self, name)  # builds it lazily; no pixels read yet
+            if getattr(da, "chunks", None) is not None:  # skip persisted (in-RAM) views
+                self.__dict__[name] = da.chunk({"band": -1, "y": sh, "x": sw})
+
     def patches(
         self,
         size: int | tuple[int, int] = 512,
@@ -74,10 +159,12 @@ class Product(abc.ABC):
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
         """Walk :attr:`raw` in windows. See :func:`satimg.tiling.patches`.
 
-        Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
-        product's :attr:`metadata`. To walk another array (``visual``, a derived
-        one) use ``satimg.patches(da, ..., transformer=product.transformer)``.
+        :attr:`raw` and :attr:`visual` are rechunked to ``size`` first, so every
+        ``patch.raw`` / ``patch.visual`` / ``patch.values`` read decodes just the
+        one tile it covers. Patches yielded here carry a lazy :attr:`Patch.meta`
+        bound to this product's :attr:`metadata`.
         """
+        self._align_view_chunks(size)
         return tiling.patches(
             self.raw, size, overlap=overlap, edge=edge, batch=batch,
             transformer=self.transformer, product=self,
@@ -93,9 +180,11 @@ class Product(abc.ABC):
         """Walk :attr:`raw` at caller-supplied ``(col, row)`` points. See
         :func:`satimg.tiling.patches_at`.
 
-        Patches yielded here carry a lazy :attr:`Patch.meta` bound to this
-        product's :attr:`metadata`.
+        :attr:`raw` and :attr:`visual` are rechunked to ``size`` first (see
+        :meth:`patches`). Patches yielded here carry a lazy :attr:`Patch.meta`
+        bound to this product's :attr:`metadata`.
         """
+        self._align_view_chunks(size)
         return tiling.patches_at(
             self.raw, points, size, batch=batch,
             transformer=self.transformer, product=self,

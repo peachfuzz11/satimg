@@ -67,7 +67,8 @@ class LandsatProduct(Product):
     @cached_property
     def raw(self) -> xarray.DataArray:
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        return label_bands(as_band_yx(merge_bands(paths, match=_PAN)), BANDS)
+        merged = merge_bands(paths, match=_PAN, sources=self._sources)
+        return label_bands(as_band_yx(merged), BANDS)
 
     def _render_visual(self) -> xarray.DataArray:
         a = self.raw.drop_vars("band")  # positional indexing below; relabel at the end

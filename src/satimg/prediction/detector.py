@@ -45,6 +45,12 @@ class Detector:
         self._land = LandMask()
         self._config = DetectorConfig(**overrides)
 
+    def __enter__(self) -> "Detector":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._product.close()
+
     def detect(self, **overrides) -> list[Detection]:
         cfg = DetectorConfig(**{**self._config.__dict__, **overrides})
         logger.info(

@@ -149,14 +149,14 @@ class Sentinel2L1CProduct(Product):
 
     @cached_property
     def raw(self) -> xarray.DataArray:
-        da = label_bands(
-            as_band_yx(merge_bands(self._meta["reflectance"], match=1)),
-            self._meta["band_names"],
-        )
+        merged = merge_bands(self._meta["reflectance"], match=1, sources=self._sources)
+        da = label_bands(as_band_yx(merged), self._meta["band_names"])
         return da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
 
     def _render_visual(self) -> xarray.DataArray:
-        tci = as_band_yx(open_band(self._meta["tci"]).astype("uint8"))
+        tci = as_band_yx(
+            open_band(self._meta["tci"], sources=self._sources).astype("uint8")
+        )
         return label_bands(tci, ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
