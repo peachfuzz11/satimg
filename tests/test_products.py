@@ -8,6 +8,7 @@ import numpy
 import pytest
 import xarray
 
+from satimg import doppler
 from satimg.geometry import Window
 from satimg.products.landsat import BANDS as _LS_BANDS
 from satimg.tiling import read_window
@@ -172,17 +173,22 @@ def test_sentinel1_mode(sentinel1_iw):
     assert sentinel1_iw.mode == "IW"
 
 
+def _local_platform_heading(product, rowcol):
+    lat = product.transformer.rowcol_to_latlon(rowcol)[:, 0]
+    ascending = product.metadata.attrs["pass"].lower() == "ascending"
+    return doppler.ground_track_heading(lat, product.metadata.attrs["orbit_inclination"], ascending)[0]
+
+
 def test_sentinel1_heading_to_los(sentinel1_iw):
-    platform_heading = sentinel1_iw.metadata.attrs["platform_heading"]
-    look_direction = (platform_heading + 90.0) % 360.0
-    assert sentinel1_iw.heading_to_los(look_direction) == pytest.approx(0.0)
-    assert sentinel1_iw.heading_to_los((look_direction + 180.0) % 360.0) == pytest.approx(-180.0)
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+    assert sentinel1_iw.heading_to_los(rowcol, look_direction) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_to_los(rowcol, (look_direction + 180.0) % 360.0) == pytest.approx(-180.0)
 
 
 def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
-    platform_heading = sentinel1_iw.metadata.attrs["platform_heading"]
-    look_direction = (platform_heading + 90.0) % 360.0
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
 
     away = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
     toward = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 180.0) % 360.0)

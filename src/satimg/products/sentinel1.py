@@ -71,18 +71,20 @@ def _annotation_file(path: str) -> str:
     return os.path.join(ann, files[0])
 
 
-def _nearest_orbit_velocity(root, at: datetime.datetime) -> float:
-    """Platform speed (m/s) from the ``<orbit>`` state vector closest to ``at``.
-    Sentinel-1's orbit is near-circular, so a single vector's speed is
-    representative of the whole (~25s) scene -- no need to interpolate."""
-    best_dt, best_velocity = None, None
+def _nearest_orbit_vector(root, at: datetime.datetime) -> tuple[numpy.ndarray, numpy.ndarray]:
+    """``(position_m, velocity_mps)`` ECEF vectors from the ``<orbit>`` state
+    vector closest to ``at``. Sentinel-1's orbit is near-circular, so a single
+    vector's speed/geometry is representative of the whole (~25s) scene -- no
+    need to interpolate between vectors."""
+    best_dt, best = None, None
     for orb in root.findall(".//orbit"):
         t = datetime.datetime.fromisoformat(orb.findtext("time"))
         dt = abs((t - at).total_seconds())
         if best_dt is None or dt < best_dt:
+            position = numpy.array([float(orb.findtext(f"position/{c}")) for c in "xyz"])
             velocity = numpy.array([float(orb.findtext(f"velocity/{c}")) for c in "xyz"])
-            best_dt, best_velocity = dt, velocity
-    return float(numpy.linalg.norm(best_velocity))
+            best_dt, best = dt, (position, velocity)
+    return best
 
 
 def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict], dict]:
@@ -93,11 +95,13 @@ def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict],
         for name, (tag, _units) in _GEOLOC_FIELDS.items():
             pt[name] = float(gp.findtext(tag))
         points.append(pt)
+    position, velocity = _nearest_orbit_vector(root, at)
     attrs = {
         "incidence_angle_mid_swath": float(root.findtext(".//incidenceAngleMidSwath")),
         "platform_heading": float(root.findtext(".//platformHeading")),
         "pass": root.findtext(".//pass"),
-        "platform_velocity": _nearest_orbit_velocity(root, at),
+        "platform_velocity": float(numpy.linalg.norm(velocity)),
+        "orbit_inclination": doppler.orbit_inclination(position, velocity),
         "azimuth_pixel_spacing": float(root.findtext(".//azimuthPixelSpacing")),
     }
     return points, attrs
@@ -180,12 +184,29 @@ class Sentinel1Product(Product):
                 return PIL.Image.open(p)
         raise FileNotFoundError(f"no preview image under {self._path}")
 
-    def heading_to_los(self, heading_deg):
+    def _local_platform_heading(self, rowcol):
+        """Satellite ground-track heading at ``rowcol``'s own latitude (rather
+        than the single scene-wide ``platform_heading`` attr), via
+        :func:`satimg.doppler.ground_track_heading`."""
+        lat = self.transformer.rowcol_to_latlon(rowcol)[:, 0]
+        ascending = self.metadata.attrs["pass"].lower() == "ascending"
+        heading = doppler.ground_track_heading(
+            lat, self.metadata.attrs["orbit_inclination"], ascending
+        )
+        return float(heading[0]) if numpy.ndim(rowcol) == 1 else heading
+
+    def heading_to_los(self, rowcol, heading_deg):
         """Convert a compass heading (degrees clockwise from true north) into the
-        object's bearing relative to this scene's radar line of sight. See
-        :func:`satimg.doppler.heading_to_los` for the convention and equations."""
-        rel = doppler.heading_to_los(heading_deg, self.metadata.attrs["platform_heading"])
-        return float(rel) if numpy.ndim(heading_deg) == 0 else numpy.asarray(rel)
+        object's bearing relative to the radar line of sight at ``rowcol``.
+
+        ``rowcol`` is a ``(row, col)`` pixel pair (or a list of pairs / an
+        ``(N, 2)`` array, matching :meth:`~satimg.metadata.Field.at`) -- needed
+        because the local satellite heading varies (slightly) with latitude across
+        a scene. See :func:`satimg.doppler.heading_to_los` for the convention and
+        equations.
+        """
+        rel = doppler.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
+        return float(rel) if numpy.ndim(rowcol) == 1 else numpy.asarray(rel)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
         """Azimuth-direction pixel displacement of a moving object at ``rowcol``.
@@ -203,7 +224,7 @@ class Sentinel1Product(Product):
         incidence = m.incidence_angle.at(rowcol)
         slant_range_m = m.slant_range_time.at(rowcol) * doppler.SPEED_OF_LIGHT / 2
         shift_m = doppler.azimuth_shift_m(
-            speed, heading_deg, attrs["platform_heading"], incidence,
+            speed, heading_deg, self._local_platform_heading(rowcol), incidence,
             slant_range_m, attrs["platform_velocity"],
         )
         shift_px = shift_m / attrs["azimuth_pixel_spacing"]

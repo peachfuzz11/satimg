@@ -5,7 +5,46 @@ conventions."""
 import numpy
 import pytest
 
-from satimg.doppler import azimuth_shift_m, heading_to_los
+from satimg.doppler import azimuth_shift_m, ground_track_heading, heading_to_los, orbit_inclination
+
+
+class TestOrbitInclination:
+    # a real Sentinel-1 ECEF orbit state vector, from the annotation XML fixture
+    position = [-2_334_804.377925, 6_643_679.620354, 692_079.344575]
+    velocity = [1252.593868, 1220.454302, -7393.997674]
+
+    def test_matches_sentinel1_known_inclination(self):
+        assert orbit_inclination(self.position, self.velocity) == pytest.approx(98.18, abs=0.05)
+
+    def test_earth_rotation_correction_matters(self):
+        # regression guard: without correcting the ECEF velocity to inertial, the
+        # naive h_z/|h| from the raw vectors alone is off by several degrees
+        h = numpy.cross(self.position, self.velocity)
+        naive = numpy.rad2deg(numpy.arccos(h[2] / numpy.linalg.norm(h)))
+        assert abs(naive - 98.18) > 2.0
+
+
+class TestGroundTrackHeading:
+    inclination = 98.18  # Sentinel-1's sun-synchronous orbit
+
+    def test_ascending_and_descending_are_supplementary(self):
+        lat = 45.0
+        asc = ground_track_heading(lat, self.inclination, True)
+        desc = ground_track_heading(lat, self.inclination, False)
+        expected_desc = ((180.0 - asc) + 180.0) % 360.0 - 180.0
+        assert desc == pytest.approx(expected_desc)
+
+    def test_ascending_heading_is_west_of_north(self):
+        # Sentinel-1's retrograde sun-synchronous orbit gives an ascending heading
+        # a little west of due north, matching known operational values (roughly
+        # -10 to -15 degrees at mid-latitudes)
+        heading = ground_track_heading(45.0, self.inclination, True)
+        assert -20.0 < heading < 0.0
+
+    def test_vectorised_over_latitude(self):
+        lats = numpy.array([0.0, 30.0, 60.0])
+        got = ground_track_heading(lats, self.inclination, True)
+        assert got.shape == (3,)
 
 
 class TestHeadingToLos:
