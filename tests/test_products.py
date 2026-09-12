@@ -172,6 +172,28 @@ def test_sentinel1_mode(sentinel1_iw):
     assert sentinel1_iw.mode == "IW"
 
 
+def test_sentinel1_heading_to_los(sentinel1_iw):
+    platform_heading = sentinel1_iw.metadata.attrs["platform_heading"]
+    look_direction = (platform_heading + 90.0) % 360.0
+    assert sentinel1_iw.heading_to_los(look_direction) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_to_los((look_direction + 180.0) % 360.0) == pytest.approx(-180.0)
+
+
+def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    platform_heading = sentinel1_iw.metadata.attrs["platform_heading"]
+    look_direction = (platform_heading + 90.0) % 360.0
+
+    away = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
+    toward = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 180.0) % 360.0)
+    along_track = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 90.0) % 360.0)
+
+    assert away > 0
+    assert toward < 0
+    assert along_track == pytest.approx(0.0, abs=1e-6)
+    assert away == pytest.approx(-toward)
+
+
 def test_thumbnail_opens(product):
     thumb = product.thumbnail()
     assert thumb.size[0] > 0 and thumb.size[1] > 0
