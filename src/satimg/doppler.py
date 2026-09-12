@@ -17,6 +17,50 @@ import numpy
 #: metres/second
 SPEED_OF_LIGHT = 299_792_458.0
 
+#: Earth's mean rotation rate, radians/second (IERS/WGS84 value).
+EARTH_ROTATION_RATE = 7.292_115e-5
+
+
+def orbit_inclination(position_m, velocity_ecef_mps) -> float:
+    """Orbital inclination (degrees) from a single Earth-fixed (ECEF) position and
+    velocity state vector, such as the ``<orbit>`` entries in a Sentinel-1
+    annotation file.
+
+    Inclination is a property of the orbital plane in *inertial* space, so the
+    ECEF velocity must first be converted to inertial by adding back Earth's
+    rotation (``v_inertial = v_ecef + omega x r``) before computing the specific
+    angular momentum ``h = r x v`` and ``i = arccos(h_z / |h|)``. Skipping that
+    correction is a several-degree-sized error -- Earth's rotation contributes
+    roughly 7% of a low-Earth-orbit satellite's own speed.
+    """
+    r = numpy.asarray(position_m, dtype=float)
+    v_ecef = numpy.asarray(velocity_ecef_mps, dtype=float)
+    omega = numpy.array([0.0, 0.0, EARTH_ROTATION_RATE])
+    v_inertial = v_ecef + numpy.cross(omega, r)
+    h = numpy.cross(r, v_inertial)
+    return float(numpy.rad2deg(numpy.arccos(h[2] / numpy.linalg.norm(h))))
+
+
+def ground_track_heading(latitude_deg, inclination_deg, ascending):
+    """Satellite ground-track heading (degrees clockwise from true north) at a
+    given geodetic latitude, for a circular orbit of the given inclination.
+
+    Standard spherical-triangle result at the ascending node:
+    ``sin(Az) = cos(inclination) / cos(latitude)`` on the ascending arc; the
+    descending arc's heading is the supplementary angle, ``180 - Az``. Returns
+    degrees wrapped to ``[-180, 180)``.
+
+    ``ascending`` is truthy for the ascending pass, falsy for descending (a plain
+    bool, or a boolean array matching the broadcast shape of ``latitude_deg``).
+    Undefined (``nan``) wherever ``|cos(inclination)| > cos(latitude)`` -- a
+    latitude beyond the orbit's reach.
+    """
+    lat = numpy.deg2rad(numpy.asarray(latitude_deg, dtype=float))
+    inc = numpy.deg2rad(numpy.asarray(inclination_deg, dtype=float))
+    az_ascending = numpy.rad2deg(numpy.arcsin(numpy.cos(inc) / numpy.cos(lat)))
+    az = numpy.where(numpy.asarray(ascending), az_ascending, 180.0 - az_ascending)
+    return (az + 180.0) % 360.0 - 180.0
+
 
 def heading_to_los(heading_deg, platform_heading_deg):
     """Convert a compass heading (degrees clockwise from true north) into the

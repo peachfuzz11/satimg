@@ -78,7 +78,8 @@ class TestSentinel1:
 
     def test_orbit_attrs(self, sentinel1_iw):
         attrs = sentinel1_iw.metadata.attrs
-        assert 7000 < attrs["platform_velocity"] < 7700          # LEO orbital speed, m/s
+        assert 7000 < attrs["platform_velocity"] < 7700           # LEO orbital speed, m/s
+        assert attrs["orbit_inclination"] == pytest.approx(98.18, abs=0.5)  # sun-synchronous
         assert attrs["azimuth_pixel_spacing"] > 0
 
     def test_units(self, sentinel1_iw):
