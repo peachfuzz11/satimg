@@ -76,6 +76,11 @@ class TestSentinel1:
     def test_attrs(self, sentinel1_iw):
         assert sentinel1_iw.metadata.attrs["pass"].lower() in {"ascending", "descending"}
 
+    def test_orbit_attrs(self, sentinel1_iw):
+        attrs = sentinel1_iw.metadata.attrs
+        assert 7000 < attrs["platform_velocity"] < 7700          # LEO orbital speed, m/s
+        assert attrs["azimuth_pixel_spacing"] > 0
+
     def test_units(self, sentinel1_iw):
         m = sentinel1_iw.metadata
         assert m.incidence_angle.units == "degrees"
