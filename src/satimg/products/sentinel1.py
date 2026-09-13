@@ -10,7 +10,6 @@ from xml.etree import ElementTree
 
 import numpy
 import PIL.Image
-import rasterio
 import xarray
 
 from satimg.metadata import Metadata, grid_from_points
@@ -29,6 +28,10 @@ _GEOLOC_FIELDS = {
     "slant_range_time": ("slantRangeTime", "seconds"),
     "height": ("height", "metres"),
 }
+
+#: extra per-point fields kept alongside :data:`_GEOLOC_FIELDS`, used to build the
+#: :class:`~satimg.transform.GCPTransformer` rather than as :class:`Metadata` fields.
+_GEOLOC_LATLON = {"latitude": "latitude", "longitude": "longitude"}
 
 _NS = {
     "safe": "http://www.esa.int/safe/sentinel-1.0",
@@ -77,6 +80,8 @@ def _read_geolocation(xml_path: str) -> tuple[list[dict], dict]:
         pt = {"row": int(gp.findtext("line")), "col": int(gp.findtext("pixel"))}
         for name, (tag, _units) in _GEOLOC_FIELDS.items():
             pt[name] = float(gp.findtext(tag))
+        for name, tag in _GEOLOC_LATLON.items():
+            pt[name] = float(gp.findtext(tag))
         points.append(pt)
     attrs = {
         "incidence_angle_mid_swath": float(root.findtext(".//incidenceAngleMidSwath")),
@@ -101,9 +106,11 @@ class Sentinel1Product(Product):
         meta = _read_manifest(path)
         self._timestamp = meta["timestamp"]
         self._footprint = meta["footprint"]
-        with rasterio.open(path) as src:
-            gcps, crs = src.gcps
-        self._transformer = GCPTransformer(gcps, crs)
+        self._geoloc_points, self._geoloc_attrs = _read_geolocation(_annotation_file(path))
+        grid = grid_from_points(self._geoloc_points, ("latitude", "longitude"))
+        self._transformer = GCPTransformer(
+            grid["rows"], grid["cols"], grid["latitude"], grid["longitude"]
+        )
 
     @property
     def mode(self) -> str:
@@ -130,9 +137,8 @@ class Sentinel1Product(Product):
         return label_bands(as_band_yx(u8), ("amplitude",))
 
     def _read_metadata(self) -> Metadata:
-        points, attrs = _read_geolocation(_annotation_file(self._path))
         keys = tuple(_GEOLOC_FIELDS)
-        grid = grid_from_points(points, keys)
+        grid = grid_from_points(self._geoloc_points, keys)
         fields = {
             name: self._field(
                 grid["rows"], grid["cols"], grid[name],
@@ -140,7 +146,7 @@ class Sentinel1Product(Product):
             )
             for name in keys
         }
-        return Metadata(fields, attrs)
+        return Metadata(fields, self._geoloc_attrs)
 
     @property
     def transformer(self) -> GCPTransformer:

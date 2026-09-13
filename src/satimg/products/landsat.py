@@ -8,9 +8,10 @@ import os
 from functools import cached_property
 
 import numpy
+import pyproj
 import rasterio
 import xarray
-from rasterio.transform import Affine
+from affine import Affine
 
 from satimg.metadata import Metadata
 from satimg.product import Product
@@ -61,8 +62,16 @@ class LandsatProduct(Product):
             "type": "Feature",
             "geometry": {"type": "Polygon", "coordinates": [ring]},
         }
-        with rasterio.open(os.path.join(path, "pan.TIF")) as src:
-            self._transformer = Transformer(src.transform, src.crs)
+        cell = float(proj["GRID_CELL_SIZE_PANCHROMATIC"])
+        # CORNER_UL_PROJECTION_X/Y_PRODUCT is the *centre* of pixel (0, 0), not
+        # the outer pixel corner our affine's origin needs (confirmed against
+        # PANCHROMATIC_LINES/SAMPLES: corner-to-corner distance is (N-1)*cell).
+        ulx = float(proj["CORNER_UL_PROJECTION_X_PRODUCT"]) - cell / 2
+        uly = float(proj["CORNER_UL_PROJECTION_Y_PRODUCT"]) + cell / 2
+        zone = int(proj["UTM_ZONE"])
+        epsg = 32600 + zone if float(proj["CORNER_UL_LAT_PRODUCT"]) > 0 else 32700 + zone
+        transform = Affine(cell, 0, ulx, 0, -cell, uly)
+        self._transformer = Transformer(transform, pyproj.CRS.from_epsg(epsg))
 
     @cached_property
     def raw(self) -> xarray.DataArray:

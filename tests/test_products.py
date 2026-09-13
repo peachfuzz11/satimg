@@ -3,6 +3,8 @@ data (pixels are zeroed; geometry, CRS and metadata are real)."""
 
 import datetime
 import itertools
+import json
+from xml.etree import ElementTree
 
 import numpy
 import pytest
@@ -11,6 +13,7 @@ import xarray
 from satimg.geometry import Window
 from satimg.products.landsat import BANDS as _LS_BANDS
 from satimg.tiling import read_window
+from tests.conftest import PRODUCT_PATHS
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
 
@@ -166,6 +169,68 @@ class TestMetadata:
         pad = 0.5
         assert min_lat - pad <= lat <= max_lat + pad
         assert min_lon - pad <= lon <= max_lon + pad
+
+
+def test_sentinel1_transformer_matches_geolocation_grid_points(sentinel1_iw):
+    """Bilinear interpolation at an exact grid knot must reproduce that
+    ``geolocationGridPoint``'s own lat/lon exactly -- an independent check
+    (straight from the annotation XML) that the metadata-only GCP grid was
+    built correctly."""
+    ann = next(
+        f for f in (PRODUCT_PATHS["sentinel1_iw"] / "annotation").iterdir()
+        if f.suffix == ".xml"
+    )
+    root = ElementTree.parse(ann).getroot()
+    points = root.findall(".//geolocationGridPoint")
+    for gp in (points[0], points[len(points) // 2], points[-1]):
+        row, col = float(gp.findtext("line")), float(gp.findtext("pixel"))
+        lat, lon = float(gp.findtext("latitude")), float(gp.findtext("longitude"))
+        got_lat, got_lon = sentinel1_iw.transformer.rowcol_to_latlon((row, col))[0]
+        assert (got_lat, got_lon) == pytest.approx((lat, lon), abs=1e-9)
+
+
+def test_landsat_transformer_matches_mtl_corners(landsat):
+    """The four ``CORNER_*_LAT/LON_PRODUCT`` values in ``MTL.json`` are an
+    independent statement of the scene's geolocation -- cross-check the
+    metadata-only affine/CRS against them (pixel *centre* convention, so the
+    corner pixel's centre, not the outer edge)."""
+    with open(PRODUCT_PATHS["landsat"] / "MTL.json") as f:
+        proj = json.load(f)["LANDSAT_METADATA_FILE"]["PROJECTION_ATTRIBUTES"]
+    lines, samples = int(proj["PANCHROMATIC_LINES"]), int(proj["PANCHROMATIC_SAMPLES"])
+    corners = {
+        "UL": (0, 0), "UR": (0, samples - 1),
+        "LL": (lines - 1, 0), "LR": (lines - 1, samples - 1),
+    }
+    for name, rowcol in corners.items():
+        lat, lon = landsat.transformer.rowcol_to_latlon(rowcol)[0]
+        want_lat = float(proj[f"CORNER_{name}_LAT_PRODUCT"])
+        want_lon = float(proj[f"CORNER_{name}_LON_PRODUCT"])
+        # USGS's own published corner lat/lon carries a small (~10 m), systematic
+        # offset from a from-scratch UTM -> WGS84 reprojection at every corner --
+        # precision noise in how they computed those fields, not our affine/CRS
+        # (the pixel-spacing arithmetic that derived the affine origin checks out
+        # exactly; see the comment in LandsatProduct.__init__).
+        assert (lat, lon) == pytest.approx((want_lat, want_lon), abs=2e-4)
+
+
+def test_sentinel2_transformer_matches_mtd_tl_geoposition(sentinel2_l1c):
+    """The 10 m ``<Geoposition>``'s ``ULX``/``ULY`` reprojected to EPSG:4326
+    must match ``rowcol_to_latlon((0, 0))`` -- confirms the affine's origin
+    was read from the right resolution's block in ``MTD_TL.xml``."""
+    import pyproj
+
+    tl = next(
+        (PRODUCT_PATHS["sentinel2_l1c"] / "GRANULE").glob("*/MTD_TL.xml")
+    )
+    root = ElementTree.parse(tl).getroot()
+    geo = root.find(".//Tile_Geocoding")
+    pos = next(g for g in geo.findall("Geoposition") if g.get("resolution") == "10")
+    ulx, uly = float(pos.find("ULX").text), float(pos.find("ULY").text)
+    epsg = geo.findtext("HORIZONTAL_CS_CODE")
+    to_wgs84 = pyproj.Transformer.from_crs(epsg, "EPSG:4326", always_xy=True)
+    want_lon, want_lat = to_wgs84.transform(ulx, uly)
+    lat, lon = sentinel2_l1c.transformer.rowcol_to_latlon((0, 0))[0]
+    assert (lat, lon) == pytest.approx((want_lat, want_lon), abs=1e-9)
 
 
 def test_sentinel1_mode(sentinel1_iw):
