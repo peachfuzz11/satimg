@@ -36,6 +36,12 @@ _NS = {
     "gml": "http://www.opengis.net/gml",
 }
 
+#: Sentinel-1's sun-synchronous orbit inclination, degrees -- actively maintained,
+#: so effectively constant across the whole constellation and mission (ESA mission
+#: documentation). Used to derive the local ground-track heading at a target's own
+#: latitude; see :func:`satimg.doppler.ground_track_heading`.
+_ORBIT_INCLINATION_DEG = 98.1813
+
 
 def _read_manifest(path: str) -> dict:
     manifest = find_file(path, "manifest.safe")
@@ -71,20 +77,18 @@ def _annotation_file(path: str) -> str:
     return os.path.join(ann, files[0])
 
 
-def _nearest_orbit_vector(root, at: datetime.datetime) -> tuple[numpy.ndarray, numpy.ndarray]:
-    """``(position_m, velocity_mps)`` ECEF vectors from the ``<orbit>`` state
-    vector closest to ``at``. Sentinel-1's orbit is near-circular, so a single
-    vector's speed/geometry is representative of the whole (~25s) scene -- no
-    need to interpolate between vectors."""
-    best_dt, best = None, None
+def _nearest_orbit_velocity(root, at: datetime.datetime) -> float:
+    """Platform speed (m/s) from the ``<orbit>`` state vector closest to ``at``.
+    Sentinel-1's orbit is near-circular, so a single vector's speed is
+    representative of the whole (~25s) scene -- no need to interpolate."""
+    best_dt, best_velocity = None, None
     for orb in root.findall(".//orbit"):
         t = datetime.datetime.fromisoformat(orb.findtext("time"))
         dt = abs((t - at).total_seconds())
         if best_dt is None or dt < best_dt:
-            position = numpy.array([float(orb.findtext(f"position/{c}")) for c in "xyz"])
             velocity = numpy.array([float(orb.findtext(f"velocity/{c}")) for c in "xyz"])
-            best_dt, best = dt, (position, velocity)
-    return best
+            best_dt, best_velocity = dt, velocity
+    return float(numpy.linalg.norm(best_velocity))
 
 
 def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict], dict]:
@@ -95,13 +99,12 @@ def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict],
         for name, (tag, _units) in _GEOLOC_FIELDS.items():
             pt[name] = float(gp.findtext(tag))
         points.append(pt)
-    position, velocity = _nearest_orbit_vector(root, at)
     attrs = {
         "incidence_angle_mid_swath": float(root.findtext(".//incidenceAngleMidSwath")),
         "platform_heading": float(root.findtext(".//platformHeading")),
         "pass": root.findtext(".//pass"),
-        "platform_velocity": float(numpy.linalg.norm(velocity)),
-        "orbit_inclination": doppler.orbit_inclination(position, velocity),
+        "platform_velocity": _nearest_orbit_velocity(root, at),
+        "orbit_inclination": _ORBIT_INCLINATION_DEG,
         "azimuth_pixel_spacing": float(root.findtext(".//azimuthPixelSpacing")),
     }
     return points, attrs
@@ -116,7 +119,8 @@ class Sentinel1Product(Product):
     ``metadata`` carries the ``geolocationGridPoint`` fields (``incidence_angle``,
     ``elevation_angle``, ``slant_range_time``, ``height``). :meth:`heading_to_los`
     and :meth:`doppler_azimuth_shift` estimate the SAR moving-target azimuth-shift
-    effect for an object detected in the image.
+    effect for an object detected in the image; :meth:`heading_in_image` re-expresses
+    a compass heading in this GRD product's own (rotated) pixel frame.
     """
 
     def __init__(self, path: str):
@@ -207,6 +211,26 @@ class Sentinel1Product(Product):
         """
         rel = doppler.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
         return float(rel) if numpy.ndim(rowcol) == 1 else numpy.asarray(rel)
+
+    def heading_in_image(self, rowcol, heading_deg):
+        """Convert a compass heading (degrees clockwise from true north) into
+        this GRD product's own pixel frame, at pixel ``rowcol``.
+
+        Unlike an orthorectified product, GRD imagery is still in native
+        sensor geometry: row increases with azimuth time, i.e. towards the
+        direction the platform is heading (see the sign convention in
+        :func:`satimg.doppler.azimuth_shift_m`), so the image's "up"
+        (decreasing row) points the *opposite* way -- the local platform
+        heading plus 180 degrees. This is why an ascending-pass Sentinel-1
+        GRD scene looks upside-down (south-up) relative to a map, and a
+        descending-pass one looks right-side up.
+
+        See :meth:`satimg.product.Product.heading_in_image` for the general
+        contract.
+        """
+        up_heading = (self._local_platform_heading(rowcol) + 180.0) % 360.0
+        result = doppler.heading_in_image(heading_deg, up_heading)
+        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
         """Azimuth-direction pixel displacement of a moving object at ``rowcol``.
