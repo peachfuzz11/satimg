@@ -899,10 +899,12 @@ name = "satimg"
 version = "0.10.0"
 source = { editable = "." }
 dependencies = [
+    { name = "affine" },
     { name = "beautifulsoup4" },
     { name = "dask", extra = ["array"] },
     { name = "onnxruntime" },
     { name = "pillow" },
+    { name = "pyproj" },
     { name = "pystac-client" },
     { name = "rasterio" },
     { name = "rioxarray" },
@@ -917,10 +919,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "affine", specifier = ">=2.4.0" },
     { name = "beautifulsoup4", specifier = ">=4.14.2" },
     { name = "dask", extras = ["array"], specifier = ">=2025.10.0" },
     { name = "onnxruntime", specifier = ">=1.23.2" },
     { name = "pillow", specifier = ">=12.0.0" },
+    { name = "pyproj", specifier = ">=3.7.2" },
     { name = "pystac-client", specifier = ">=0.9.0" },
     { name = "rasterio", specifier = ">=1.4.3" },
     { name = "rioxarray", specifier = ">=0.19.0" },
