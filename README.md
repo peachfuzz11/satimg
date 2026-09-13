@@ -11,13 +11,67 @@ Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1.
 
 | Object | What it is |
 | --- | --- |
-| `Product` | A product directory. Exposes `.raw`, `.visual` (DataArrays), `.patches(...)`, `.width/.height/.bands`, metadata. |
+| `Product` | A product directory or zip archive. Exposes `.raw`, `.visual` (DataArrays), `.patches(...)`, `.width/.height/.bands`, metadata. |
 | `Window` | An immutable pixel rectangle (`col`, `row`, `width`, `height`). Pure geometry. |
 | `Grid` | Lays `Window`s over an image with a step and an edge policy. |
 | `Patch` | A `Window` bound to the `DataArray` it came from. `.array` (lazy) / `.values` (numpy) + geo helpers. |
 
 `.raw` and `.visual` are plain lazy `xarray.DataArray`s, dims `(band, y, x)` —
 use them with the full xarray API directly.
+
+## Opening a product
+
+`satimg.open` takes a product directory or a zip archive — detected by
+content, not by extension — and returns the matching `Product` either way.
+
+A **directory** gives you full access, same as ever:
+
+```python
+import satimg
+
+product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE")
+
+product.raw                    # -> xarray.DataArray
+for patch in product.patches(512):
+    ...
+```
+
+A **zip archive** is read zip-native, straight off the archive — nothing is
+ever extracted to disk:
+
+```python
+product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE.zip")
+
+product.timestamp
+product.footprint
+product.transformer
+product.metadata               # all sensors except Landsat's per-pixel angles
+product.thumbnail()
+
+product.raw                    # raises ZipNativeUnsupportedError -- no
+                                # pixels without extracting
+```
+
+For pixel access (`raw` / `visual` / `patches` / `patches_at`) from a zip,
+extract it first with `satimg.open_zip`:
+
+```python
+with satimg.open_zip("/data/scene.zip") as product:   # extract=True, the default
+    for patch in product.patches(512):
+        ...
+```
+
+This returns a fully capable, directory-backed product exactly like
+`satimg.open` on a directory would. It extracts to a temp dir that is
+removed — along with the product's open rasters — when the block exits; read
+what you need inside the block, since a lazy view can't be rebuilt
+afterwards. Pass `dest=` to control where that temp dir is created, or
+`extract=False` for the same zip-native product `satimg.open` gives a zip by
+default, spelled out explicitly.
+
+A product's open rasters are released when its `with` block exits, so use
+`with satimg.open(path) as product:` — zipped or not — if you loop over many
+products, to avoid leaking file handles.
 
 ### Two views on the pixels
 
@@ -218,38 +272,11 @@ items = connector.search(geojson=aoi, start_datetime=start, stop_datetime=stop)
 connector = get_connector("sentinel-2-l1c",
                           username="me@example.com", password="...")
 connector.download(items[0], "/data/scene.zip")
-
-with satimg.open("/data/scene.zip") as product:
-    product.timestamp
-    product.footprint
-    product.transformer
-    product.metadata          # all sensors except Landsat's per-pixel angles
-    product.thumbnail()
-
-    product.raw                # raises ZipNativeUnsupportedError
 ```
 
-`satimg.open` takes either a product directory or a zip archive — detected by
-content, not by extension. A zip is read zip-native, straight off the
-archive, with nothing ever extracted to disk: `timestamp` / `footprint` /
-`transformer` / `thumbnail()` / `metadata` (all sensors except Landsat's
-per-pixel angles, which ship only as full-resolution rasters) work as usual,
-but `raw` / `visual` / `patches` / `patches_at` need real pixel data and
-raise `satimg.ZipNativeUnsupportedError`.
-
-For that, extract the archive first with `satimg.open_zip`:
-
-```python
-with satimg.open_zip("/data/scene.zip") as product:   # extract=True, the default
-    for patch in product.patches(512):
-        ...
-```
-
-This returns a fully capable, directory-backed product exactly like
-`satimg.open` on a directory would. It extracts to a temp dir that is
-removed — along with the product's open rasters — when the block exits; read
-what you need inside the block, since a lazy view can't be rebuilt
-afterwards. Pass `dest=` to control where that temp dir is created.
+`download` always gives you a zip archive — see
+[Opening a product](#opening-a-product) for reading its metadata straight
+off the archive, or extracting it for pixel access.
 
 ## Deep Zoom
 
