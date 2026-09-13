@@ -228,6 +228,27 @@ with satimg.open_zip("/data/scene.zip") as product:
 open rasters — when the block exits. Read what you need inside the block; a
 lazy view can't be rebuilt afterwards.
 
+If you only need a scene's metadata — say, to check its footprint or
+timestamp before deciding whether it's worth extracting — `extract=False`
+reads it straight off the zip, with nothing written to disk:
+
+```python
+with satimg.open_zip("/data/scene.zip", extract=False) as product:
+    product.timestamp
+    product.footprint
+    product.transformer
+    product.metadata          # all sensors except Landsat's per-pixel angles
+    product.thumbnail()
+
+    product.raw                # raises ZipNativeUnsupportedError
+```
+
+`raw` / `visual` / `patches` / `patches_at` need real pixel data, so they
+still require `extract=True` (the default) and raise
+`satimg.ZipNativeUnsupportedError` under `extract=False`. Landsat's per-pixel
+sun/view angle `metadata` is the one exception — it ships only as
+full-resolution rasters, so it's extraction-only too.
+
 ## Deep Zoom
 
 ```python
