@@ -7,6 +7,10 @@ JSON manifests, thumbnails) -- raster paths are always built directly against
 ``rioxarray``, which need a real file on disk and so are never routed through
 a :class:`Source`. Every path a :class:`Source` method takes or returns is
 relative to the product's own root, ``"/"``-separated regardless of platform.
+
+:func:`open_source` is the factory :meth:`~satimg.product.Product.from_path`
+uses to pick a :class:`DirSource` or a zip-native :class:`ZipSource` for a
+given path.
 """
 
 from __future__ import annotations
@@ -56,6 +60,11 @@ class Source(abc.ABC):
     @abc.abstractmethod
     def exists(self, relpath: str) -> bool:
         """Whether ``relpath`` names a file under the root."""
+
+    def close(self) -> None:
+        """Release whatever this source itself opened (nothing, for a plain
+        directory). Called by :meth:`~satimg.product.Product._close`;
+        idempotent."""
 
 
 class DirSource(Source):
@@ -171,3 +180,42 @@ class ZipSource(Source):
 
     def exists(self, relpath: str) -> bool:
         return self._full(relpath) in self._members
+
+    def close(self) -> None:
+        self._archive.close()
+
+
+def zip_source(zip_path: str) -> ZipSource:
+    """A zip-native :class:`ZipSource` for the archive at ``zip_path``.
+
+    Opens the ``zipfile.ZipFile`` itself (not handed one already open) and
+    detects the product's inner root the same way :func:`open_zip` does: the
+    single top-level directory the archive extracts to, or -- for a flat
+    archive, multiple top-level entries -- the archive's own top level.
+    Released by the returned :class:`ZipSource`'s :meth:`~Source.close`.
+    """
+    archive = zipfile.ZipFile(zip_path)
+    try:
+        names = archive.namelist()
+        top = {n.split("/", 1)[0] for n in names if n.strip("/")}
+        if not top:
+            raise ValueError(f"{zip_path} contains nothing")
+        only = next(iter(top)) if len(top) == 1 else None
+        root = only if only is not None and any(
+            n.startswith(only + "/") for n in names
+        ) else ""
+        display_name = root or os.path.splitext(os.path.basename(zip_path))[0]
+    except Exception:
+        archive.close()
+        raise
+    return ZipSource(archive, root, display_name)
+
+
+def open_source(path: str) -> Source:
+    """The :class:`Source` for ``path`` -- a :class:`DirSource` for a
+    directory, or a zip-native :class:`ZipSource` (see :func:`zip_source`,
+    nothing extracted) for a zip archive. A zip is detected by content
+    (:func:`zipfile.is_zipfile`), not by extension."""
+    if zipfile.is_zipfile(path):
+        return zip_source(path)
+    return DirSource(path)

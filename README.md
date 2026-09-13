@@ -220,23 +220,6 @@ connector = get_connector("sentinel-2-l1c",
 connector.download(items[0], "/data/scene.zip")
 
 with satimg.open("/data/scene.zip") as product:
-    for patch in product.patches(512):
-        ...
-```
-
-`satimg.open` takes either a product directory or a zip archive — detected by
-content, not by extension. A zip is extracted to a temp dir that is removed —
-along with the product's open rasters — when the block exits. Read what you
-need inside the block; a lazy view can't be rebuilt afterwards.
-
-For finer control — a specific temp dir, or reading a scene's metadata with
-nothing extracted at all — use `satimg.open_zip` directly. If you only need a
-scene's metadata — say, to check its footprint or timestamp before deciding
-whether it's worth extracting — `extract=False` reads it straight off the
-zip, with nothing written to disk:
-
-```python
-with satimg.open_zip("/data/scene.zip", extract=False) as product:
     product.timestamp
     product.footprint
     product.transformer
@@ -246,11 +229,27 @@ with satimg.open_zip("/data/scene.zip", extract=False) as product:
     product.raw                # raises ZipNativeUnsupportedError
 ```
 
-`raw` / `visual` / `patches` / `patches_at` need real pixel data, so they
-still require `extract=True` (the default) and raise
-`satimg.ZipNativeUnsupportedError` under `extract=False`. Landsat's per-pixel
-sun/view angle `metadata` is the one exception — it ships only as
-full-resolution rasters, so it's extraction-only too.
+`satimg.open` takes either a product directory or a zip archive — detected by
+content, not by extension. A zip is read zip-native, straight off the
+archive, with nothing ever extracted to disk: `timestamp` / `footprint` /
+`transformer` / `thumbnail()` / `metadata` (all sensors except Landsat's
+per-pixel angles, which ship only as full-resolution rasters) work as usual,
+but `raw` / `visual` / `patches` / `patches_at` need real pixel data and
+raise `satimg.ZipNativeUnsupportedError`.
+
+For that, extract the archive first with `satimg.open_zip`:
+
+```python
+with satimg.open_zip("/data/scene.zip") as product:   # extract=True, the default
+    for patch in product.patches(512):
+        ...
+```
+
+This returns a fully capable, directory-backed product exactly like
+`satimg.open` on a directory would. It extracts to a temp dir that is
+removed — along with the product's open rasters — when the block exits; read
+what you need inside the block, since a lazy view can't be rebuilt
+afterwards. Pass `dest=` to control where that temp dir is created.
 
 ## Deep Zoom
 
