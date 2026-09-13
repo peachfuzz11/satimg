@@ -10,12 +10,14 @@ from functools import cached_property
 import numpy
 import rasterio
 import xarray
+from rasterio.crs import CRS
 from rasterio.transform import Affine
 
 from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import keep_open, merge_bands
 from satimg.registry import register
+from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
 
@@ -42,9 +44,9 @@ class LandsatProduct(Product):
     angle rasters (``sun_zenith``, ``sun_azimuth``, ``view_zenith``,
     ``view_azimuth``), read decimated to a coarse grid."""
 
-    def __init__(self, path: str):
-        super().__init__(path)
-        with open(os.path.join(path, "MTL.json")) as f:
+    def __init__(self, source: Source):
+        super().__init__(source)
+        with self._source.open("MTL.json") as f:
             mtl = json.load(f)["LANDSAT_METADATA_FILE"]
 
         attrs = mtl["IMAGE_ATTRIBUTES"]
@@ -61,10 +63,22 @@ class LandsatProduct(Product):
             "type": "Feature",
             "geometry": {"type": "Polygon", "coordinates": [ring]},
         }
-        with rasterio.open(os.path.join(path, "pan.TIF")) as src:
-            self._transformer = Transformer(src.transform, src.crs)
+        if proj.get("MAP_PROJECTION") != "UTM":
+            raise NotImplementedError(
+                f"unsupported MAP_PROJECTION {proj.get('MAP_PROJECTION')!r}"
+            )
+        zone = int(proj["UTM_ZONE"])
+        epsg = 32600 + zone if float(proj["CORNER_UL_LAT_PRODUCT"]) >= 0 else 32700 + zone
+        gsd = float(proj["GRID_CELL_SIZE_PANCHROMATIC"])
+        # MTL's CORNER_UL_PROJECTION_*_PRODUCT is the UL pixel's *centre*; a
+        # geotransform origin is that pixel's corner, half a pixel out.
+        ul_x = float(proj["CORNER_UL_PROJECTION_X_PRODUCT"]) - gsd / 2
+        ul_y = float(proj["CORNER_UL_PROJECTION_Y_PRODUCT"]) + gsd / 2
+        transform = Affine(gsd, 0, ul_x, 0, -gsd, ul_y)
+        self._transformer = Transformer(transform, CRS.from_epsg(epsg))
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+        self._require_extracted("raw")
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
         merged = merge_bands(paths, match=_PAN, tile=tile)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
@@ -72,6 +86,7 @@ class LandsatProduct(Product):
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
+        self._require_extracted("visual")
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
         rgb = a.isel(band=list(_RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
@@ -83,6 +98,8 @@ class LandsatProduct(Product):
                            ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
+        # no XML/JSON equivalent ships for these -- only ever as full rasters.
+        self._require_extracted("metadata")
         pan = self._transformer._transform
         rows = cols = None
         fields = {}
@@ -122,8 +139,12 @@ class LandsatProduct(Product):
     def thumbnail(self):
         import PIL.Image
 
+        entries = self._source.listdir()
         for suffix in ("_small.jpeg", "thumbnail.jpeg", ".jpeg"):
-            match = next((o for o in os.listdir(self._path) if o.endswith(suffix)), None)
+            match = next((o for o in entries if o.endswith(suffix)), None)
             if match:
-                return PIL.Image.open(os.path.join(self._path, match))
-        raise FileNotFoundError(f"no thumbnail under {self._path}")
+                with self._source.open(match) as f:
+                    img = PIL.Image.open(f)
+                    img.load()
+                    return img
+        raise FileNotFoundError(f"no thumbnail under {self._source.name}")

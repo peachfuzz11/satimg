@@ -17,6 +17,7 @@ from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
 from satimg.readers import CHUNK_PX
+from satimg.source import DirSource
 from satimg.tiling import read_window
 
 
@@ -249,7 +250,7 @@ def test_product_without_reader_has_empty_metadata():
         def thumbnail(self):  # pragma: no cover
             raise NotImplementedError
 
-    meta = Bare("/nowhere").metadata
+    meta = Bare(DirSource("/nowhere")).metadata
     assert isinstance(meta, Metadata)
     assert meta.fields == []
     assert repr(meta) == "Metadata(empty)"

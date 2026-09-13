@@ -10,19 +10,31 @@ from functools import cached_property
 from xml.etree import ElementTree
 
 import numpy
-import rasterio
 import rioxarray
 import xarray
+from rasterio.crs import CRS
+from rasterio.transform import Affine
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
-from satimg.readers import find_file, keep_open, merge_bands
+from satimg.readers import keep_open, merge_bands
 from satimg.registry import register
+from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
 
 #: spacing of the MTD_TL.xml angle grids, metres.
 _ANGLE_STEP_M = 5000.0
+
+#: Sentinel-2 L1C per-band native ground sample distance, metres -- picks the
+#: ``Tile_Geocoding/Geoposition`` (and matching ``Size``) that
+#: ``band_names[1]`` (the :func:`~satimg.readers.merge_bands` ``match=``
+#: target) was actually shot at, so the zip-native transformer/grid-shape
+#: agree exactly with opening that band's own JP2.
+_BAND_GSD_M = {
+    "B01": 60, "B02": 10, "B03": 10, "B04": 10, "B05": 20, "B06": 20,
+    "B07": 20, "B08": 10, "B8A": 20, "B09": 60, "B10": 60, "B11": 20, "B12": 20,
+}
 
 
 def _pad_band(name: str) -> str:
@@ -30,11 +42,16 @@ def _pad_band(name: str) -> str:
     return re.sub(r"^B(\d)$", r"B0\1", name)
 
 
-def _parse_mtd(path: str) -> dict:
-    mtd = find_file(path, "MTD_MSIL1C.xml")
+def _parse_mtd(source: Source, path: str) -> dict:
+    """``path`` (a real filesystem path, unlike ``source``) is only used to
+    build ``reflectance``/``tci``'s raster paths -- raster-only, so still a
+    plain path even when ``source`` is zip-native (where those two entries
+    are then unused, since ``raw``/``visual`` are guarded off)."""
+    mtd = source.find_file("MTD_MSIL1C.xml")
     if mtd is None:
-        raise FileNotFoundError(f"no MTD_MSIL1C.xml under {path}")
-    root = ElementTree.parse(mtd).getroot()
+        raise FileNotFoundError(f"no MTD_MSIL1C.xml under {source.name}")
+    with source.open(mtd) as f:
+        root = ElementTree.parse(f).getroot()
 
     physical, wavelengths = {}, {}
     for info in root.findall(".//Spectral_Information"):
@@ -92,21 +109,36 @@ def _mean_grids(grids: list[numpy.ndarray], *, circular: bool) -> numpy.ndarray:
     return fill_nan_nearest(merged)
 
 
-def _parse_tl(path: str) -> dict:
-    """Acquisition time + the sun / viewing angle grids from ``MTD_TL.xml``."""
-    tl = find_file(path, "MTD_TL.xml")
+def _parse_tl(source: Source) -> dict:
+    """Acquisition time, the sun / viewing angle grids, and the
+    ``Tile_Geocoding`` CRS + per-resolution affine transform / pixel-grid
+    shape (for the zip-native transformer/metadata-grid-shape, in place of
+    opening a band's own JP2), all from ``MTD_TL.xml``."""
+    tl = source.find_file("MTD_TL.xml")
     if tl is None:
-        raise FileNotFoundError(f"no MTD_TL.xml under {path}")
-    root = ElementTree.parse(tl).getroot()
+        raise FileNotFoundError(f"no MTD_TL.xml under {source.name}")
+    with source.open(tl) as f:
+        root = ElementTree.parse(f).getroot()
 
     timestamp = datetime.datetime.strptime(
         root.find(".//SENSING_TIME").text, "%Y-%m-%dT%H:%M:%S.%fZ"
     )
 
-    pixel_m = min(
-        abs(float(g.find("XDIM").text))
-        for g in root.iter("Geoposition")
-    )
+    geocoding = root.find(".//Tile_Geocoding")
+    crs = CRS.from_string(geocoding.find("HORIZONTAL_CS_CODE").text)
+    transforms = {
+        int(g.get("resolution")): Affine(
+            float(g.find("XDIM").text), 0, float(g.find("ULX").text),
+            0, float(g.find("YDIM").text), float(g.find("ULY").text),
+        )
+        for g in geocoding.findall("Geoposition")
+    }
+    pixel_shapes = {
+        int(s.get("resolution")): (int(s.find("NROWS").text), int(s.find("NCOLS").text))
+        for s in geocoding.findall("Size")
+    }
+
+    pixel_m = min(transforms)
     step_px = _ANGLE_STEP_M / pixel_m
 
     sun = root.find(".//Sun_Angles_Grid")
@@ -130,7 +162,10 @@ def _parse_tl(path: str) -> dict:
         "mean_sun_zenith": float(mean_sun.find("ZENITH_ANGLE").text),
         "mean_sun_azimuth": float(mean_sun.find("AZIMUTH_ANGLE").text),
     }
-    return {"timestamp": timestamp, "axes": axes, "grids": grids, "attrs": attrs}
+    return {
+        "timestamp": timestamp, "axes": axes, "grids": grids, "attrs": attrs,
+        "crs": crs, "transforms": transforms, "pixel_shapes": pixel_shapes,
+    }
 
 
 @register(r"^S2[ABCD]_MSIL1C_\d{8}T\d{6}_.*_\d{8}T\d{6}\.SAFE$")
@@ -140,15 +175,16 @@ class Sentinel2L1CProduct(Product):
     angle grids (``sun_zenith``, ``sun_azimuth``, ``view_zenith``, ``view_azimuth``);
     the viewing grids are the per-detector grids merged."""
 
-    def __init__(self, path: str):
-        super().__init__(path)
-        self._meta = _parse_mtd(path)
-        self._tl = _parse_tl(path)
+    def __init__(self, source: Source):
+        super().__init__(source)
+        self._meta = _parse_mtd(self._source, self._path)
+        self._tl = _parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]
-        with rasterio.open(self._meta["reflectance"][1]) as src:
-            self._transformer = Transformer(src.transform, src.crs)
+        self._gsd = _BAND_GSD_M[self._meta["band_names"][1]]
+        self._transformer = Transformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+        self._require_extracted("raw")
         merged = merge_bands(self._meta["reflectance"], match=1, tile=tile)
         da = label_bands(as_band_yx(merged), self._meta["band_names"])
         da = da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
@@ -157,6 +193,7 @@ class Sentinel2L1CProduct(Product):
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
+        self._require_extracted("visual")
         src = rioxarray.open_rasterio(self._meta["tci"])
         tw, th = (tile, tile) if isinstance(tile, int) else tile
         # a plain (unchunked) DataArray's .astype() computes eagerly -- chunk
@@ -173,6 +210,20 @@ class Sentinel2L1CProduct(Product):
         return Metadata(fields, self._tl["attrs"])
 
     @property
+    def height(self) -> int:
+        """From ``MTD_TL.xml``'s ``Tile_Geocoding/Size`` at ``band_names[1]``'s
+        resolution (matches ``raw`` exactly) rather than the base
+        ``int(self.raw.sizes["y"])`` -- so ``metadata``'s fields get a real
+        ``.grid`` / ``.corners()`` even zip-native, with no ``raw`` open
+        needed."""
+        return self._tl["pixel_shapes"][self._gsd][0]
+
+    @property
+    def width(self) -> int:
+        """See :attr:`height`."""
+        return self._tl["pixel_shapes"][self._gsd][1]
+
+    @property
     def transformer(self) -> Transformer:
         return self._transformer
 
@@ -187,5 +238,8 @@ class Sentinel2L1CProduct(Product):
     def thumbnail(self):
         import PIL.Image
 
-        name = next(o for o in os.listdir(self._path) if o.endswith("-ql.jpg"))
-        return PIL.Image.open(os.path.join(self._path, name))
+        name = next(o for o in self._source.listdir() if o.endswith("-ql.jpg"))
+        with self._source.open(name) as f:
+            img = PIL.Image.open(f)
+            img.load()
+            return img

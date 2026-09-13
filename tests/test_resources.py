@@ -8,6 +8,7 @@ fd counting is Linux-only (``/proc/self/fd``); ``psutil`` is not a dependency.
 import gc
 import os
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -82,9 +83,8 @@ def test_loop_over_products_does_not_leak(key):
     assert _open_fds() - base <= 1
 
 
-@pytest.fixture(scope="module")
-def landsat_zip(tmp_path_factory):
-    src = Path(PRODUCT_PATHS["landsat"])
+def _build_zip(key: str, tmp_path_factory) -> str:
+    src = Path(PRODUCT_PATHS[key])
     if not src.exists():
         pytest.skip(f"test product missing: {src}")
     out = tmp_path_factory.mktemp("zips") / (src.name + ".zip")
@@ -93,6 +93,11 @@ def landsat_zip(tmp_path_factory):
             if f.is_file():
                 z.write(f, arcname=str(Path(src.name) / f.relative_to(src)))
     return str(out)
+
+
+@pytest.fixture(scope="module")
+def landsat_zip(tmp_path_factory):
+    return _build_zip("landsat", tmp_path_factory)
 
 
 def test_open_zip_releases_handles_and_cleans_tempdir(landsat_zip, tmp_path):
@@ -119,6 +124,45 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
     gc.collect()
     assert os.listdir(tmp_path) == [], "temp dirs left behind"
     assert _open_fds() - base <= 1
+
+
+def test_open_detects_a_zip_and_reads_it_zip_native(landsat_zip):
+    # satimg.open() auto-detects a zip archive (by content, not extension)
+    # and reads it zip-native -- nothing extracted, raster raises.
+    base = _open_fds()
+
+    with satimg.open(landsat_zip) as p:
+        assert p.timestamp
+        with pytest.raises(satimg.ZipNativeUnsupportedError):
+            p.raw
+
+    gc.collect()
+    assert _open_fds() - base <= 1, "file descriptors leaked past open()"
+
+
+def test_open_zip_native_never_writes_to_disk(landsat_zip):
+    tmp_root = tempfile.gettempdir()
+    before = set(os.listdir(tmp_root))
+
+    with satimg.open(landsat_zip) as p:
+        _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
+
+    assert set(os.listdir(tmp_root)) == before, "satimg.open on a zip must never extract"
+
+
+def test_open_zip_native_needs_no_with_block(landsat_zip):
+    # a one-off metadata read needs no with -- there's no temp dir to
+    # release, and the archive handle it did open releases via GC once the
+    # product goes out of scope.
+    base = _open_fds()
+
+    p = satimg.open(landsat_zip)
+    assert p.timestamp
+    assert _open_fds() > base, "the zip archive should be open"
+
+    del p
+    gc.collect()
+    assert _open_fds() - base <= 1, "file descriptor leaked without a with block"
 
 
 @pytest.mark.parametrize("key", ALL)
