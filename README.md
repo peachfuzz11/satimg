@@ -14,7 +14,7 @@ Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1.
 | `Product` | A product directory. Exposes `.raw`, `.visual` (DataArrays), `.patches(...)`, `.width/.height/.bands`, metadata. |
 | `Window` | An immutable pixel rectangle (`col`, `row`, `width`, `height`). Pure geometry. |
 | `Grid` | Lays `Window`s over an image with a step and an edge policy. |
-| `Patch` | A `Window` bound to the `DataArray` it came from. `.array` (lazy) / `.values` (numpy) + geo helpers. |
+| `Patch` | One window's `raw` / `visual` / `meta`, already sliced (lazy `DataArray`s / `PatchMeta`). |
 
 `.raw` and `.visual` are plain lazy `xarray.DataArray`s, dims `(band, y, x)` —
 use them with the full xarray API directly.
@@ -45,23 +45,22 @@ product.raw.wavelength_nm          # Sentinel-2 only: central wavelength per ban
 
 ```python
 for patch in product.patches(512, overlap=64):
-    tile = patch.values            # np.ndarray, (band, 512, 512), native dtype
+    tile = patch.raw.values        # np.ndarray, (band, 512, 512), native dtype
     x0, y0 = patch.col, patch.row  # exact offset in the full image
-    lat, lon = patch.center_latlon # where the patch sits on Earth
     ...
 ```
 
 `for patch in product` is shorthand for `product.patches()` (raw bands,
-512 px, no overlap). Patches from `product.patches()` walk `raw` and expose
-`.raw` / `.visual` / `.meta` for that window (see
-[Reading raw + visual + metadata together](#reading-raw--visual--metadata-together));
-to walk any *other* array (a derived index) use
-`satimg.patches(da, 512, transformer=product.transformer)`.
+512 px, no overlap). Every patch from `product.patches()` / `patches_at()`
+already carries `.raw` / `.visual` / `.meta` for that window (see
+[Reading raw + visual + metadata together](#reading-raw--visual--metadata-together)) --
+`product.patches()` / `patches_at()` are the only iterators in the library.
 
 `batch=n` yields lists of `n` patches instead of one at a time.
 
-`product.patches()` / `patches_at()` rechunk `raw` and `visual` to the window
-size before iterating, so each patch read decodes just the one tile it covers.
+`product.patches()` / `patches_at()` open `raw` and `visual` chunked to
+exactly the window size before iterating, so each patch read decodes just the
+one tile it covers.
 
 A product releases its rasters when its `with` block exits, so looping over
 many products never leaks file handles:
@@ -94,8 +93,7 @@ exactly `size` (overhang zero-filled, so points near an edge still work):
 ```python
 points = [(4096, 2048), (10500, 512), (0, 0)]
 for patch in product.patches_at(points, 512):
-    tile = patch.values             # (band, 512, 512), centred on the point
-    lat, lon = patch.center_latlon  # ~ the point you asked for
+    tile = patch.raw.values         # (band, 512, 512), centred on the point
 ```
 
 `batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
@@ -103,8 +101,8 @@ gives the bare `Window`s if you don't need a patch bound.
 
 ### Reading raw + visual + metadata together
 
-A patch from `product.patches()` / `product.patches_at()` is **product-bound**:
-one window, every view, plus metadata at three levels.
+Every patch from `product.patches()` / `product.patches_at()` already carries
+its own window's raw, visual and metadata -- one window, every view.
 
 ```python
 scene = product.metadata.attrs                 # scene-level scalars, constant per product
@@ -119,18 +117,13 @@ for p in product.patches_at(points, 512):
     angles = p.meta.sample()                    # {"sun_zenith": 78.1, "view_zenith": 4.9, ...}
                                                #   -> per-pixel fields, bilinear at the patch centre
     sza_grid = p.meta["sun_zenith"].values      # np.ndarray (512, 512) — the field over the patch
-
-    lat, lon = p.center_latlon                  # where the patch sits on Earth
 ```
-
-`.raw` / `.visual` / `.meta` need the patch to come from `product.patches*()`;
-a bare `satimg.patches(da, ...)` patch only has `.array` / `.values`.
 
 ### Mapping results back
 
 ```python
-patch = next(satimg.patches(product.visual, 1024, transformer=product.transformer))
-boxes = detect(patch.values)            # boxes in patch pixels
+patch = next(iter(product.patches(1024)))
+boxes = detect(patch.visual.values)     # boxes in patch pixels
 boxes[:, [0, 2]] += patch.window.col    # -> full-image pixels
 boxes[:, [1, 3]] += patch.window.row
 latlon = product.transformer.rowcol_to_latlon(boxes[:, [1, 0]])
@@ -144,19 +137,6 @@ from satimg import Window
 win = Window(col=4096, row=2048, width=1024, height=1024)
 chip = satimg.read_window(product.raw, win)   # lazy xarray.DataArray, (band, y, x)
 chip.values                                   # numpy, zero-padded if the window overhangs
-```
-
-## Views compose
-
-`.raw` / `.visual` are xarray, so derive new arrays with the xarray API and tile
-them the same way — a bare `(y, x)` array is fine:
-
-```python
-b = product.raw                                  # Sentinel-2
-green, nir = b.sel(band="B03"), b.sel(band="B08")
-ndwi = (green - nir) / (green + nir)
-for patch in satimg.patches(ndwi, 512):
-    ...
 ```
 
 ## Per-pixel metadata
@@ -238,11 +218,12 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 
 ## Adding a product
 
-Subclass `Product`, implement the abstract hooks (`raw`, `_render_visual` — both
-return an `xarray.DataArray`; normalise dims with `satimg.as_band_yx(...)` and
-name the band axis with `satimg.label_bands(da, [...])` — `transformer`,
-`timestamp`, `footprint`, `thumbnail`), optionally override `_read_metadata` to
-expose per-pixel metadata, and register a filename pattern:
+Subclass `Product`, implement the abstract hooks (`_open_raw(tile)`,
+`_render_visual(raw, tile)` — both return an `xarray.DataArray` dask-chunked to
+`tile`; normalise dims with `satimg.as_band_yx(...)` and name the band axis
+with `satimg.label_bands(da, [...])` — `transformer`, `timestamp`,
+`footprint`, `thumbnail`), optionally override `_read_metadata` to expose
+per-pixel metadata, and register a filename pattern:
 
 ```python
 from satimg.registry import register

@@ -55,16 +55,19 @@ def test_sentinel2_reindexed_bands_stay_tile_chunked(sentinel2_l1c):
 
 
 @pytest.mark.parametrize("name", PRODUCTS)
-def test_patches_opens_its_own_raw_at_the_loops_tile_size(name):
-    # a loop's own raw is a separate object from product.raw, opened chunked
-    # to exactly the size argument -- not product.raw's own (unrelated,
+def test_open_raw_chunks_to_the_given_tile_size(name):
+    # _open_raw(tile) -- what patches()/patches_at() call -- opens chunked to
+    # exactly the tile argument, not product.raw's own (unrelated,
     # CHUNK_PX-chunked) default.
     product = _fresh(name)
-    patch = next(iter(product.patches_at([(600, 600)], 256)))
-    y_chunks, x_chunks = patch.data.chunks[-2], patch.data.chunks[-1]
-    assert max(y_chunks) <= 256
-    assert max(x_chunks) <= 256
-    assert "raw" not in product.__dict__, "patches_at must not touch product.raw"
+    raw = product._open_raw(256)
+    try:
+        y_chunks, x_chunks = raw.chunks[-2], raw.chunks[-1]
+        assert max(y_chunks) <= 256
+        assert max(x_chunks) <= 256
+    finally:
+        raw.close()
+    assert "raw" not in product.__dict__, "_open_raw must not touch product.raw"
     product._close()
 
 
@@ -83,22 +86,9 @@ def test_visual_builds_once_per_loop_at_the_tile_size(name):
     try:
         patches = list(product.patches_at([(600, 600), (700, 700)], 256))
         assert calls == [256], "visual should build once, for this loop's own tile"
-
-        v0 = patches[0].visual
-        y_chunks, x_chunks = v0.chunks[-2], v0.chunks[-1]
-        assert max(y_chunks) <= 256
-        assert max(x_chunks) <= 256
-
+        _ = patches[0].visual
         _ = patches[1].visual  # second patch of the same loop: no rebuild
         assert calls == [256]
     finally:
         cls._render_visual = original
         product._close()
-
-
-@pytest.mark.parametrize("name", PRODUCTS)
-def test_patch_raw_is_the_loops_own_array(name):
-    product = _fresh(name)
-    patch = next(iter(product.patches_at([(600, 600)], 256)))
-    assert patch.raw.equals(patch.array)
-    product._close()

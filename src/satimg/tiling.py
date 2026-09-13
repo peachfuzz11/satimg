@@ -1,27 +1,18 @@
-"""Windowed iteration over lazy image data.
+"""Array/band helpers shared by the product readers and by windowed reads.
 
-Free functions plus :class:`Patch` that turn an :class:`xarray.DataArray` --
-normalised to ``(band, y, x)`` by :func:`as_band_yx`, or a bare ``(y, x)``
-metadata grid -- into a stream of :class:`Patch` objects: a :class:`Window` bound
-to the data it covers, so ``for p in patches(da, 512): ...`` reads the array in
-tiles without ever losing track of where each tile came from.
+:func:`as_band_yx` / :func:`label_bands` normalise a raster's dims and band
+labels; :func:`read_window` cuts a lazy, zero-padded sub-array for a
+:class:`~satimg.geometry.Window` out of any ``(band, y, x)`` or bare ``(y, x)``
+array. Windowed *iteration* itself lives on :class:`~satimg.product.Product`
+(``patches()`` / ``patches_at()``), which is the only place a
+:class:`~satimg.product.Patch` is built.
 """
 
 from __future__ import annotations
 
-from itertools import batched
-from typing import TYPE_CHECKING, Iterable, Iterator
-
-import numpy
 import xarray
 
-from satimg.geometry import EdgeMode, Grid, Window, windows_at
-
-if TYPE_CHECKING:  # pragma: no cover
-    import PIL.Image
-
-    from satimg.product import Product
-    from satimg.transform import Transformer
+from satimg.geometry import Window
 
 
 def as_band_yx(data: xarray.DataArray) -> xarray.DataArray:
@@ -46,15 +37,6 @@ def label_bands(da: xarray.DataArray, names) -> xarray.DataArray:
     return da.assign_coords(band=names)
 
 
-def _chunk_to(da: xarray.DataArray, size: int | tuple[int, int]) -> xarray.DataArray:
-    """Chunk ``da`` so each ``size`` window is a single chunk (``.chunk()`` drops
-    the ``_close`` hook, so carry it over)."""
-    sw, sh = (size, size) if isinstance(size, int) else size
-    tiled = da.chunk({"y": sh, "x": sw})
-    tiled.set_close(da._close)
-    return tiled
-
-
 def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:
     """Lazy sub-array of ``da`` for ``window``.
 
@@ -72,207 +54,3 @@ def read_window(da: xarray.DataArray, window: Window) -> xarray.DataArray:
     if any(pad_x) or any(pad_y):
         sub = sub.pad(x=pad_x, y=pad_y, constant_values=0)
     return sub.assign_attrs(col=window.col, row=window.row)
-
-
-def patches(
-    da: xarray.DataArray,
-    size: int | tuple[int, int] = 512,
-    *,
-    overlap: int | tuple[int, int] = 0,
-    edge: EdgeMode = "pad",
-    batch: int | None = None,
-    transformer: "Transformer | None" = None,
-    product: "Product | None" = None,
-    visual: "xarray.DataArray | None" = None,
-) -> Iterator["Patch"] | Iterator[list["Patch"]]:
-    """Iterate ``da`` in windows of ``size``.
-
-    ``edge`` defaults to ``"pad"`` so every patch is exactly ``size`` (the border
-    overhang is zero-filled); pass ``edge="trim"`` for lossless re-assembly or
-    ``"skip"`` to keep only full interior tiles. With ``batch=n`` the patches
-    arrive in lists of up to ``n`` instead of one at a time.
-
-    ``da`` is rechunked to ``size`` first, so each window read pulls a single
-    tile rather than decoding a whole band.
-
-    ``transformer`` lets the yielded patches resolve ``.center_latlon``;
-    ``product`` binds ``.meta``; ``visual`` binds ``.visual``, read from that
-    array at each patch's window. :meth:`~satimg.product.Product.patches`
-    passes all three.
-    """
-    da = _chunk_to(da, size)
-    grid = Grid(int(da.sizes["x"]), int(da.sizes["y"]), size, overlap, edge)
-    if batch is None:
-        for win in grid:
-            yield Patch(da, win, transformer, product, visual)
-    else:
-        for group in grid.batched(batch):
-            yield [Patch(da, win, transformer, product, visual) for win in group]
-
-
-def patches_at(
-    da: xarray.DataArray,
-    points: Iterable[tuple[float, float]],
-    size: int | tuple[int, int] = 512,
-    *,
-    batch: int | None = None,
-    transformer: "Transformer | None" = None,
-    product: "Product | None" = None,
-    visual: "xarray.DataArray | None" = None,
-) -> Iterator["Patch"] | Iterator[list["Patch"]]:
-    """Iterate patches centred on caller-supplied ``(col, row)`` pixel points.
-
-    Where :func:`patches` sweeps a regular grid over the whole array, this visits
-    only ``points`` -- one patch per point, in order. Each patch is exactly
-    ``size``; any part lying outside the array is zero-filled, so a point near
-    (or past) an edge still yields a full-size patch. With ``batch=n`` the
-    patches arrive in lists of up to ``n``.
-
-    ``da`` is rechunked to ``size`` first, so each window read pulls a single
-    tile rather than decoding a whole band. See :func:`patches` for ``visual``.
-    """
-    da = _chunk_to(da, size)
-    windows = windows_at(points, size)
-    if batch is None:
-        for win in windows:
-            yield Patch(da, win, transformer, product, visual)
-    else:
-        for group in batched(windows, batch):
-            yield [Patch(da, win, transformer, product, visual) for win in group]
-
-
-class Patch:
-    """A :class:`Window` bound to the :class:`xarray.DataArray` it was cut from.
-
-    Cheap to create and pass around; reads happen only when ``.array`` is
-    computed or ``.values`` is accessed.
-
-    A patch from ``product.patches()`` / ``product.patches_at()`` is
-    *product-bound*: it reads every view and the metadata at its own window::
-
-        for p in product.patches_at(points, 512):
-            p.raw                 # (band, y, x) DataArray for this window, band-labelled
-            p.raw.sel(band="red") # ("B04" for Sentinel-2, "VV" for Sentinel-1)
-            p.visual              # uint8 DataArray, same window
-            p.meta.sample()       # {field: value} per-pixel angles at the patch centre
-            p.center_latlon       # where the patch sits on Earth
-
-    A bare ``satimg.patches(da, ...)`` patch only has ``.array`` / ``.values``
-    (and ``.center_latlon`` if a ``transformer=`` was passed).
-    """
-
-    __slots__ = ("data", "window", "_transformer", "_product", "_visual")
-
-    def __init__(
-        self,
-        data: xarray.DataArray,
-        window: Window,
-        transformer: "Transformer | None" = None,
-        product: "Product | None" = None,
-        visual: "xarray.DataArray | None" = None,
-    ):
-        self.data = data
-        self.window = window
-        self._transformer = transformer
-        self._product = product
-        self._visual = visual
-
-    # -- index passthrough ---------------------------------------
-    @property
-    def col(self) -> int:
-        return self.window.col
-
-    @property
-    def row(self) -> int:
-        return self.window.row
-
-    @property
-    def bounds(self) -> tuple[int, int, int, int]:
-        return self.window.bounds
-
-    @property
-    def center(self) -> tuple[float, float]:
-        """``(col, row)`` of the patch centre in full-image pixels."""
-        return self.window.center
-
-    # -- data ---------------------------------------------------
-    @property
-    def array(self) -> xarray.DataArray:
-        """Lazy sub-array for this window (same dims as the source)."""
-        return read_window(self.data, self.window)
-
-    @property
-    def values(self) -> numpy.ndarray:
-        """Materialised array for this window (shorthand for ``.raw.values``)."""
-        return numpy.asarray(self.array.data)
-
-    @property
-    def raw(self) -> xarray.DataArray:
-        """This window, band-labelled -- an alias for :attr:`array` on patches
-        from ``product.patches()`` / ``product.patches_at()``, which is what
-        :attr:`data` already is there. Only available on those patches."""
-        if self._product is None:
-            raise AttributeError(
-                "patch has no product -- iterate product.patches() or "
-                "product.patches_at()"
-            )
-        return self.array
-
-    @property
-    def visual(self) -> xarray.DataArray:
-        """This window read from the loop's visual view (uint8, band-labelled).
-        Only available on patches from ``product.patches()`` /
-        ``product.patches_at()``."""
-        if self._visual is None:
-            raise AttributeError(
-                "patch has no visual -- iterate product.patches() or "
-                "product.patches_at()"
-            )
-        return read_window(self._visual, self.window)
-
-    @property
-    def meta(self) -> "PatchMeta":
-        """Lazy per-pixel metadata for this window (see
-        :class:`~satimg.metadata.PatchMeta`). Only available on patches from
-        ``product.patches()`` / ``iter(product)``."""
-        from satimg.metadata import PatchMeta
-
-        return PatchMeta(self._product.metadata, self.window)
-
-    def image(self) -> "PIL.Image.Image":
-        """Render as a PIL image (only meaningful for ``uint8`` data)."""
-        import PIL.Image
-
-        arr = self.array
-        if "band" in arr.dims:
-            arr = arr.transpose("y", "x", "band")
-            if arr.sizes["band"] == 1:
-                arr = arr.isel(band=0)
-        return PIL.Image.fromarray(numpy.asarray(arr.data))
-
-    # -- geo --------------------------------------------------
-    def _xf(self) -> "Transformer":
-        if self._transformer is None:
-            raise AttributeError(
-                "patch has no transformer -- iterate product.patches() or pass "
-                "transformer= to satimg.patches()"
-            )
-        return self._transformer
-
-    @property
-    def center_latlon(self) -> tuple[float, float]:
-        col, row = self.window.center
-        latlon = self._xf().rowcol_to_latlon((row, col))
-        return float(latlon[0, 0]), float(latlon[0, 1])
-
-    @property
-    def latlon_bounds(self) -> tuple[float, float, float, float]:
-        """``(min_lon, min_lat, max_lon, max_lat)`` of the patch corners."""
-        c0, r0, c1, r1 = self.window.bounds
-        corners = [(r0, c0), (r0, c1), (r1, c0), (r1, c1)]
-        latlon = self._xf().rowcol_to_latlon(corners)
-        lats, lons = latlon[:, 0], latlon[:, 1]
-        return float(lons.min()), float(lats.min()), float(lons.max()), float(lats.max())
-
-    def __repr__(self) -> str:
-        return f"Patch({self.window})"
