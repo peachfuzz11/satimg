@@ -16,6 +16,7 @@ import satimg
 from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
+from satimg.readers import CHUNK_PX
 from satimg.tiling import Patch, read_window
 
 
@@ -152,6 +153,15 @@ def test_field_grid_is_lazy_full_grid(sentinel1_iw):
     assert float(sub.values[0, 0]) == pytest.approx(field.at((0, 0)), abs=1e-6)
 
 
+def test_field_grid_is_tile_chunked(sentinel1_iw):
+    # chunked at the shared default (satimg.readers.CHUNK_PX) instead of a
+    # much larger (or unbounded) block regardless of the patch size read.
+    grid = sentinel1_iw.metadata.incidence_angle.grid
+    y_chunks, x_chunks = grid.chunks
+    assert max(y_chunks) <= CHUNK_PX
+    assert max(x_chunks) <= CHUNK_PX
+
+
 def test_field_patches_carry_transform(sentinel1_iw):
     field = sentinel1_iw.metadata.incidence_angle
     patch = next(iter(field.patches(512)))
@@ -239,12 +249,14 @@ def test_bare_patch_has_no_meta():
 
 def test_product_without_reader_has_empty_metadata():
     class Bare(Product):
-        raw = property(lambda self: None)
         transformer = property(lambda self: None)
         timestamp = property(lambda self: None)
         footprint = property(lambda self: None)
 
-        def _render_visual(self):  # pragma: no cover - not exercised
+        def _open_raw(self, tile):  # pragma: no cover - not exercised
+            raise NotImplementedError
+
+        def _render_visual(self, raw, tile):  # pragma: no cover - not exercised
             raise NotImplementedError
 
         def thumbnail(self):  # pragma: no cover

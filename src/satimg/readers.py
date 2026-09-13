@@ -29,32 +29,65 @@ def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataAr
     return view
 
 
-#: dask chunk size (pixels) each band gets on open. A single whole-array chunk
-#: (``.chunk()`` with no arguments) would still make ``xarray.concat`` lazy,
-#: but dask can't read *part* of an unsplit chunk -- so any later windowed
-#: read (directly, or through a ``reindex_like`` onto another band's grid
-#: below) would decode the entire band first. Tiling it here keeps every
-#: downstream read -- including :meth:`~satimg.product.Product.patches`'s
-#: rechunk to the window size -- properly lazy and windowed.
+#: The one default dask chunk size (pixels) satimg falls back to wherever it
+#: needs *some* chunking but has no caller-given window size to use instead:
+#: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
+#: opened outside a ``patches()`` / ``patches_at()`` loop,
+#: :attr:`~satimg.metadata.Field.grid`, and the fixed granularity
+#: ``merge_bands`` aligns bands at internally before a ``match=`` reindex (see
+#: the note in ``merge_bands`` for why that one can't just use the caller's
+#: own tile).
 CHUNK_PX = 1024
 
 
 def merge_bands(
-    paths: Iterable[str], *, match: int | None = None
+    paths: Iterable[str],
+    *,
+    match: int | None = None,
+    tile: int | tuple[int, int] = CHUNK_PX,
 ) -> xarray.DataArray:
     """Open each path lazily and stack them along ``band``.
 
     With ``match`` (an index into ``paths``) the other bands are
-    nearest-neighbour reindexed onto that band's grid first.
+    nearest-neighbour reindexed onto that band's grid first. Either way, the
+    returned array is dask-chunked to ``tile`` (all bands in one chunk) --
+    ``Product.patches()`` / ``patches_at()`` pass the loop's own window size,
+    so bands read chunked to precisely what will be read.
+
+    A bare ``.chunk()`` with no size hint would collapse each band to a
+    *single* whole-band chunk. Dask can't read part of an unsplit chunk, so
+    any later windowed read -- direct, or through a ``reindex_like`` onto
+    another band's grid -- would decode the *entire* band first, regardless
+    of any rechunk downstream (rechunking a single chunk into tiles still
+    depends on the one task that reads all of it).
+
+    With ``match=``, bands are chunked at the fixed :data:`CHUNK_PX` --
+    not ``tile`` -- before the reindex: ``reindex_like``'s nearest-neighbour
+    lookup builds a dask task per output chunk, so aligning directly at a
+    small ``tile`` (e.g. a 64px patch loop) can turn one array into hundreds
+    of thousands of chunks and take *minutes* just to build the graph, before
+    any pixel is read. The reindexed, concatenated result is then rechunked
+    to ``tile`` in one final step instead -- splitting an
+    already-reasonably-chunked array into smaller pieces is cheap (no data
+    read to redraw chunk boundaries), unlike the reindex itself. Without
+    ``match=`` every band already shares one grid, so there is no such
+    penalty and bands chunk straight to ``tile``.
 
     ``concat`` drops the per-band ``_close``, so it is wired back on: the
     returned array's ``close()`` shuts every band it opened.
     """
+    tw, th = (tile, tile) if isinstance(tile, int) else tile
     opened = [rioxarray.open_rasterio(p) for p in paths]
-    bands = [b.chunk({"x": CHUNK_PX, "y": CHUNK_PX}) for b in opened]
-    if match is not None:
+    if match is None:
+        bands = [b.chunk({"x": tw, "y": th}) for b in opened]
+        merged = bands[0] if len(bands) == 1 else xarray.concat(bands, dim="band")
+    else:
+        # deliberately CHUNK_PX here, not tw/th: reindex_like must never see
+        # the caller's own (possibly small) tile -- see the docstring.
+        bands = [b.chunk({"x": CHUNK_PX, "y": CHUNK_PX}) for b in opened]
         target = bands[match]
         bands = [b.reindex_like(target, method="nearest") for b in bands]
-    merged = bands[0] if len(bands) == 1 else xarray.concat(bands, dim="band")
+        merged = xarray.concat(bands, dim="band")
+        merged = merged.chunk({"band": -1, "x": tw, "y": th})
     merged.set_close(lambda: [band.close() for band in opened])
     return merged

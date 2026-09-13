@@ -64,14 +64,15 @@ class LandsatProduct(Product):
         with rasterio.open(os.path.join(path, "pan.TIF")) as src:
             self._transformer = Transformer(src.transform, src.crs)
 
-    @cached_property
-    def raw(self) -> xarray.DataArray:
+    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        merged = merge_bands(paths, match=_PAN)
+        merged = merge_bands(paths, match=_PAN, tile=tile)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
 
-    def _render_visual(self) -> xarray.DataArray:
-        a = self.raw.drop_vars("band")  # positional indexing below; relabel at the end
+    def _render_visual(
+        self, raw: xarray.DataArray, tile: int | tuple[int, int]
+    ) -> xarray.DataArray:
+        a = raw.drop_vars("band")  # positional indexing below; relabel at the end
         rgb = a.isel(band=list(_RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
         rgb = rgb * weights[:, None, None]

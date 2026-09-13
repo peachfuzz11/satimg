@@ -119,3 +119,41 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
     gc.collect()
     assert os.listdir(tmp_path) == [], "temp dirs left behind"
     assert _open_fds() - base <= 1
+
+
+@pytest.mark.parametrize("key", ALL)
+def test_patches_closes_its_own_raster_when_the_loop_is_exhausted(key):
+    # patches()/patches_at() open a raw/visual view of their own, separate
+    # from product.raw/.visual, and must close it themselves when the loop
+    # ends -- with no product._close() / `with product:` involved at all.
+    p = _fresh(key)
+    base = _open_fds()
+
+    for patch in p.patches_at([(64, 64)], 64):
+        _ = patch.raw.values
+        _ = patch.visual.values
+        assert _open_fds() > base, "the loop's own rasters should be open"
+
+    assert _open_fds() - base <= 1, "exhausting the loop should close them"
+    assert "raw" not in p.__dict__ and "visual" not in p.__dict__, (
+        "patches_at must never touch product.raw / product.visual"
+    )
+
+
+@pytest.mark.parametrize("key", ALL)
+def test_patches_closes_its_own_raster_on_early_close(key):
+    # breaking out of (or otherwise abandoning) a patches() loop must still
+    # release its rasters -- generator.close() is what a `for ... break`
+    # triggers once the generator is garbage-collected; call it directly here
+    # so the test isn't timing-dependent on when that GC happens.
+    p = _fresh(key)
+    base = _open_fds()
+
+    gen = p.patches(64)
+    patch = next(gen)
+    _ = patch.raw.values
+    _ = patch.visual.values
+    assert _open_fds() > base
+
+    gen.close()
+    assert _open_fds() - base <= 1, "closing the generator early should release it"

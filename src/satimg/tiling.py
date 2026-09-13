@@ -83,6 +83,7 @@ def patches(
     batch: int | None = None,
     transformer: "Transformer | None" = None,
     product: "Product | None" = None,
+    visual: "xarray.DataArray | None" = None,
 ) -> Iterator["Patch"] | Iterator[list["Patch"]]:
     """Iterate ``da`` in windows of ``size``.
 
@@ -95,17 +96,18 @@ def patches(
     tile rather than decoding a whole band.
 
     ``transformer`` lets the yielded patches resolve ``.center_latlon``;
-    ``product`` binds ``.meta``. :meth:`~satimg.product.Product.patches` passes
-    both.
+    ``product`` binds ``.meta``; ``visual`` binds ``.visual``, read from that
+    array at each patch's window. :meth:`~satimg.product.Product.patches`
+    passes all three.
     """
     da = _chunk_to(da, size)
     grid = Grid(int(da.sizes["x"]), int(da.sizes["y"]), size, overlap, edge)
     if batch is None:
         for win in grid:
-            yield Patch(da, win, transformer, product)
+            yield Patch(da, win, transformer, product, visual)
     else:
         for group in grid.batched(batch):
-            yield [Patch(da, win, transformer, product) for win in group]
+            yield [Patch(da, win, transformer, product, visual) for win in group]
 
 
 def patches_at(
@@ -116,6 +118,7 @@ def patches_at(
     batch: int | None = None,
     transformer: "Transformer | None" = None,
     product: "Product | None" = None,
+    visual: "xarray.DataArray | None" = None,
 ) -> Iterator["Patch"] | Iterator[list["Patch"]]:
     """Iterate patches centred on caller-supplied ``(col, row)`` pixel points.
 
@@ -126,16 +129,16 @@ def patches_at(
     patches arrive in lists of up to ``n``.
 
     ``da`` is rechunked to ``size`` first, so each window read pulls a single
-    tile rather than decoding a whole band.
+    tile rather than decoding a whole band. See :func:`patches` for ``visual``.
     """
     da = _chunk_to(da, size)
     windows = windows_at(points, size)
     if batch is None:
         for win in windows:
-            yield Patch(da, win, transformer, product)
+            yield Patch(da, win, transformer, product, visual)
     else:
         for group in batched(windows, batch):
-            yield [Patch(da, win, transformer, product) for win in group]
+            yield [Patch(da, win, transformer, product, visual) for win in group]
 
 
 class Patch:
@@ -158,7 +161,7 @@ class Patch:
     (and ``.center_latlon`` if a ``transformer=`` was passed).
     """
 
-    __slots__ = ("data", "window", "_transformer", "_product")
+    __slots__ = ("data", "window", "_transformer", "_product", "_visual")
 
     def __init__(
         self,
@@ -166,11 +169,13 @@ class Patch:
         window: Window,
         transformer: "Transformer | None" = None,
         product: "Product | None" = None,
+        visual: "xarray.DataArray | None" = None,
     ):
         self.data = data
         self.window = window
         self._transformer = transformer
         self._product = product
+        self._visual = visual
 
     # -- index passthrough ---------------------------------------
     @property
@@ -203,16 +208,27 @@ class Patch:
 
     @property
     def raw(self) -> xarray.DataArray:
-        """This window read from ``product.raw`` (band-labelled). Only available
-        on patches from ``product.patches()`` / ``product.patches_at()``."""
-        return read_window(self._product.raw, self.window)
+        """This window, band-labelled -- an alias for :attr:`array` on patches
+        from ``product.patches()`` / ``product.patches_at()``, which is what
+        :attr:`data` already is there. Only available on those patches."""
+        if self._product is None:
+            raise AttributeError(
+                "patch has no product -- iterate product.patches() or "
+                "product.patches_at()"
+            )
+        return self.array
 
     @property
     def visual(self) -> xarray.DataArray:
-        """This window read from ``product.visual`` (uint8, band-labelled). Only
-        available on patches from ``product.patches()`` /
+        """This window read from the loop's visual view (uint8, band-labelled).
+        Only available on patches from ``product.patches()`` /
         ``product.patches_at()``."""
-        return read_window(self._product.visual, self.window)
+        if self._visual is None:
+            raise AttributeError(
+                "patch has no visual -- iterate product.patches() or "
+                "product.patches_at()"
+            )
+        return read_window(self._visual, self.window)
 
     @property
     def meta(self) -> "PatchMeta":

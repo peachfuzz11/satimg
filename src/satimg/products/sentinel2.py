@@ -16,7 +16,7 @@ import xarray
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
-from satimg.readers import CHUNK_PX, find_file, keep_open, merge_bands
+from satimg.readers import find_file, keep_open, merge_bands
 from satimg.registry import register
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
@@ -148,18 +148,20 @@ class Sentinel2L1CProduct(Product):
         with rasterio.open(self._meta["reflectance"][1]) as src:
             self._transformer = Transformer(src.transform, src.crs)
 
-    @cached_property
-    def raw(self) -> xarray.DataArray:
-        merged = merge_bands(self._meta["reflectance"], match=1)
+    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+        merged = merge_bands(self._meta["reflectance"], match=1, tile=tile)
         da = label_bands(as_band_yx(merged), self._meta["band_names"])
         da = da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
         return keep_open(da, merged)
 
-    def _render_visual(self) -> xarray.DataArray:
+    def _render_visual(
+        self, raw: xarray.DataArray, tile: int | tuple[int, int]
+    ) -> xarray.DataArray:
         src = rioxarray.open_rasterio(self._meta["tci"])
-        # unlike a dask array, a plain (unchunked) DataArray's .astype() computes
-        # eagerly -- chunk first so this stays lazy like every other view.
-        tci = as_band_yx(src.chunk({"x": CHUNK_PX, "y": CHUNK_PX}).astype("uint8"))
+        tw, th = (tile, tile) if isinstance(tile, int) else tile
+        # a plain (unchunked) DataArray's .astype() computes eagerly -- chunk
+        # first so this stays lazy and windowed like every other view.
+        tci = as_band_yx(src.chunk({"x": tw, "y": th}).astype("uint8"))
         return keep_open(label_bands(tci, ("red", "green", "blue")), src)
 
     def _read_metadata(self) -> Metadata:
