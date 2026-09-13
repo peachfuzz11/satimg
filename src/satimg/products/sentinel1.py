@@ -119,8 +119,10 @@ class Sentinel1Product(Product):
     ``metadata`` carries the ``geolocationGridPoint`` fields (``incidence_angle``,
     ``elevation_angle``, ``slant_range_time``, ``height``). :meth:`heading_to_los`
     and :meth:`doppler_azimuth_shift` estimate the SAR moving-target azimuth-shift
-    effect for an object detected in the image; :meth:`heading_in_image` re-expresses
-    a compass heading in this GRD product's own (rotated) pixel frame.
+    effect for an object detected in the image, in pixels; :meth:`heading_in_image`
+    re-expresses a compass heading in this GRD product's own (rotated) pixel frame;
+    :meth:`correct_position` combines both to recover a moving target's true
+    lat/lon from its as-detected position.
     """
 
     def __init__(self, path: str):
@@ -225,8 +227,11 @@ class Sentinel1Product(Product):
         GRD scene looks upside-down (south-up) relative to a map, and a
         descending-pass one looks right-side up.
 
-        See :meth:`satimg.product.Product.heading_in_image` for the general
-        contract.
+        ``0``/``360`` means the object points towards the top of the image
+        (decreasing row), ``90`` towards the right -- handy for e.g. drawing a
+        detected ship's heading as an arrow directly on the raster. This is a
+        SAR-only concern: a map-projected, north-up optical product needs no
+        such conversion at all.
         """
         up_heading = (self._local_platform_heading(rowcol) + 180.0) % 360.0
         result = sar_utils.heading_in_image(heading_deg, up_heading)
@@ -253,3 +258,20 @@ class Sentinel1Product(Product):
         )
         shift_px = shift_m / attrs["azimuth_pixel_spacing"]
         return float(shift_px) if numpy.ndim(rowcol) == 1 else numpy.asarray(shift_px)
+
+    def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
+        """Recover a moving target's true ``(lat, lon)`` from its as-detected
+        position in this GRD product.
+
+        ``lat``/``lon`` is where the target was read off the image, and ``speed``
+        (m/s) / ``heading_deg`` (degrees clockwise from true north) are the same
+        inputs as :meth:`doppler_azimuth_shift`. The target's own motion displaces
+        it along the azimuth (row) axis of the focused image by
+        :meth:`doppler_azimuth_shift`'s pixel shift; this undoes that displacement
+        to recover the position the target actually occupied at acquisition time.
+        """
+        rowcol = self.transformer.latlon_to_rowcol((lat, lon))[0]
+        shift_px = self.doppler_azimuth_shift(rowcol, speed, heading_deg)
+        corrected_rowcol = (rowcol[0] - shift_px, rowcol[1])
+        corrected_lat, corrected_lon = self.transformer.rowcol_to_latlon(corrected_rowcol)[0]
+        return float(corrected_lat), float(corrected_lon)

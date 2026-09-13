@@ -198,22 +198,6 @@ class Product(abc.ABC):
         """GeoJSON-ish ``{"type": "Feature", "geometry": {...}}`` outline."""
 
     @abc.abstractmethod
-    def heading_in_image(self, rowcol, heading_deg):
-        """Convert a compass heading (degrees clockwise from true north) into
-        this product's own pixel frame, at pixel ``rowcol``.
-
-        ``0``/``360`` means the object points towards the top of the image
-        (decreasing row), ``90`` towards the right -- handy for e.g. drawing a
-        detected ship's heading as an arrow directly on the raster.
-
-        Every concrete product implements this using its own data: a
-        map-projected, north-up raster (Sentinel-2, Landsat) needs no
-        rotation at all; :class:`~satimg.products.sentinel1.Sentinel1Product`
-        derives one from its own platform heading, since GRD imagery is
-        still in native sensor geometry.
-        """
-
-    @abc.abstractmethod
     def thumbnail(self) -> "PIL.Image.Image":
         """The product's shipped quick-look image."""
 

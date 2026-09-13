@@ -216,12 +216,25 @@ def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
     assert got < 20.0 or got > 340.0
 
 
-@pytest.mark.parametrize("name", ["sentinel2_l1c", "landsat"])
-def test_heading_in_image_is_identity_for_map_projected_products(request, name):
-    product = request.getfixturevalue(name)
-    rowcol = (product.height // 2, product.width // 2)
-    for heading in (0.0, 45.0, 190.0, 350.0):
-        assert product.heading_in_image(rowcol, heading) == pytest.approx(heading % 360.0)
+def test_sentinel1_correct_position(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    lat, lon = sentinel1_iw.transformer.rowcol_to_latlon(rowcol)[0]
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+
+    shift_px = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
+    corrected_lat, corrected_lon = sentinel1_iw.correct_position(lat, lon, 10.0, look_direction)
+    corrected_rowcol = sentinel1_iw.transformer.latlon_to_rowcol((corrected_lat, corrected_lon))[0]
+
+    # GCPTransformer's polynomial GCP fit isn't an exact sub-pixel round-trip,
+    # so check against a 1-pixel tolerance rather than the raw float shift.
+    assert corrected_rowcol[0] == pytest.approx(rowcol[0] - shift_px, abs=1.0)
+    assert corrected_rowcol[1] == pytest.approx(rowcol[1], abs=1.0)
+
+    # along-track motion produces no azimuth shift, so no correction either
+    along_track = (look_direction + 90.0) % 360.0
+    unmoved_lat, unmoved_lon = sentinel1_iw.correct_position(lat, lon, 10.0, along_track)
+    assert unmoved_lat == pytest.approx(lat, abs=1e-6)
+    assert unmoved_lon == pytest.approx(lon, abs=1e-6)
 
 
 def test_thumbnail_opens(product):

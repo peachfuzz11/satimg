@@ -250,9 +250,6 @@ def test_product_without_reader_has_empty_metadata():
         def thumbnail(self):  # pragma: no cover
             raise NotImplementedError
 
-        def heading_in_image(self, rowcol, heading_deg):  # pragma: no cover
-            raise NotImplementedError
-
     meta = Bare("/nowhere").metadata
     assert isinstance(meta, Metadata)
     assert meta.fields == []

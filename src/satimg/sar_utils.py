@@ -4,13 +4,14 @@ image-frame heading, and the moving-target Doppler azimuth-shift effect.
 A ground target with a non-zero velocity relative to the radar's line of sight (LOS)
 is displaced from its true position along the *azimuth* axis of a focused SAR image
 -- the effect behind a ship appearing offset from its own wake. ``heading_in_image``
-re-expresses a compass heading in the image's own (rotated, native-sensor-geometry)
-pixel frame -- see :mod:`satimg.eo_utils` for the map-projected, north-up
-equivalent used by optical products. The functions here are pure geometry, taking
-already-extracted scalars, so they're reusable and testable independently of any
-product class; see :meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`,
-:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_to_los` and
-:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image` for the
+re-expresses a compass heading in the image's own rotated, native-sensor-geometry
+pixel frame -- a SAR-only concern, since a map-projected optical raster is already
+north-up. The functions here are pure geometry, taking already-extracted scalars,
+so they're reusable and testable independently of any product class; see
+:meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`,
+:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_to_los`,
+:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image` and
+:meth:`~satimg.products.sentinel1.Sentinel1Product.correct_position` for the
 product-facing entry points.
 """
 
