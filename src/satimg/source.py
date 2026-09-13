@@ -8,9 +8,8 @@ JSON manifests, thumbnails) -- raster paths are always built directly against
 a :class:`Source`. Every path a :class:`Source` method takes or returns is
 relative to the product's own root, ``"/"``-separated regardless of platform.
 
-:func:`open_source` is the factory :meth:`~satimg.product.Product.from_path`
-uses to pick a :class:`DirSource` or a zip-native :class:`ZipSource` for a
-given path.
+:func:`open_source` is the factory :func:`~satimg.product.open` uses to pick
+a :class:`DirSource` or a zip-native :class:`ZipSource` for a given path.
 """
 
 from __future__ import annotations

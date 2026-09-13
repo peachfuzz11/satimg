@@ -24,8 +24,8 @@ product and released when its ``with`` block exits, so use ``with
 satimg.open(path) as product`` if you use those directly across many
 products, to avoid leaking handles.
 
-``satimg.open(path)`` (:meth:`Product.from_path`) takes either a product
-directory or a zip archive -- detected by content, not by extension -- via a
+``satimg.open(path)`` takes either a product directory or a zip archive --
+detected by content, not by extension -- via a
 :class:`~satimg.source.Source` factory (:func:`~satimg.source.open_source`).
 A zip is read zip-native, straight off the archive with nothing ever
 extracted: ``timestamp`` / ``footprint`` / ``transformer`` / ``thumbnail()``
@@ -70,10 +70,10 @@ class ZipNativeUnsupportedError(NotImplementedError):
     """Raised by ``raw`` / ``visual`` / ``patches`` / ``patches_at`` -- and by
     Landsat's per-pixel angle ``metadata``, the one metadata piece with no
     XML/JSON equivalent -- on a zip-native product: one opened from a zip
-    archive via :func:`open` (:meth:`Product.from_path`), or via
-    :func:`open_zip`\\ ``(zip_path, extract=False)``. Those need real pixel
-    data, which only exists once the archive is extracted --
-    :func:`open_zip`\\ ``(zip_path, extract=True)`` (the default).
+    archive via :func:`open`, or via :func:`open_zip`\\
+    ``(zip_path, extract=False)``. Those need real pixel data, which only
+    exists once the archive is extracted -- :func:`open_zip`\\
+    ``(zip_path, extract=True)`` (the default).
     """
 
 
@@ -81,28 +81,6 @@ class Product(abc.ABC):
     def __init__(self, source: Source):
         self._source = source
         self._path = source.path
-
-    @classmethod
-    def from_path(cls, path: str) -> "Product":
-        """Open ``path``, returning the matching :class:`Product`.
-
-        ``path`` may be a product directory or a zip archive -- resolved to a
-        :class:`~satimg.source.Source` by the
-        :func:`~satimg.source.open_source` factory (detected by content, not
-        extension); the :class:`Product` subclass is then resolved by
-        :func:`~satimg.registry.resolve` against the source's own identity
-        name. A zip archive resolves to a zip-native source -- see the module
-        docstring. Call on :class:`Product` itself (``Product.from_path``,
-        or the ``satimg.open`` alias); the subclass this is called on is not
-        consulted.
-        """
-        from satimg.registry import resolve  # deferred: registry imports Product
-        from satimg.source import open_source
-
-        source = open_source(path)
-        resolved = resolve(source.name)
-        logger.debug("opened %s as %s", path, resolved.__name__)
-        return resolved(source)
 
     @property
     def path(self) -> str:
@@ -114,9 +92,9 @@ class Product(abc.ABC):
     def _require_extracted(self, what: str) -> None:
         """Guard for a raster-only code path: raise
         :class:`ZipNativeUnsupportedError` if this product is zip-native --
-        opened from a zip archive (:func:`open` / :func:`Product.from_path`,
-        or :func:`open_zip`\\ ``(..., extract=False)``) -- where no pixel
-        data was ever written to disk."""
+        opened from a zip archive (:func:`open`, or
+        :func:`open_zip`\\ ``(..., extract=False)``) -- where no pixel data
+        was ever written to disk."""
         if not self._source.is_directory:
             raise ZipNativeUnsupportedError(
                 f"{what} needs the product extracted to disk -- extract the "
@@ -343,9 +321,23 @@ class Product(abc.ABC):
 
 
 def open(path: str) -> Product:
-    """Open a product, returning the matching :class:`Product`. See
-    :meth:`Product.from_path`."""
-    return Product.from_path(path)
+    """Open ``path``, returning the matching :class:`Product`.
+
+    ``path`` may be a product directory or a zip archive -- resolved to a
+    :class:`~satimg.source.Source` by the
+    :func:`~satimg.source.open_source` factory (detected by content, not
+    extension); the concrete :class:`Product` subclass is then resolved by
+    :func:`~satimg.registry.resolve` against the source's own identity name.
+    A zip archive resolves to a zip-native source -- see the module
+    docstring.
+    """
+    from satimg.registry import resolve  # deferred: registry imports Product
+    from satimg.source import open_source
+
+    source = open_source(path)
+    cls = resolve(source.name)
+    logger.debug("opened %s as %s", path, cls.__name__)
+    return cls(source)
 
 
 @contextmanager
@@ -363,13 +355,13 @@ def open_zip(
     dir is gone.
 
     With ``extract=False``, nothing is ever written to disk (``dest`` is
-    unused) -- same as plain ``satimg.open(zip_path)``
-    (:meth:`Product.from_path`), which resolves a zip archive to this same
-    zip-native mode. The returned product's ``timestamp`` / ``footprint`` /
-    ``transformer`` / ``thumbnail()`` (and, except for Landsat, ``metadata``)
-    work straight off the zip; ``raw`` / ``visual`` / ``patches`` /
-    ``patches_at`` (and Landsat's ``metadata``) raise
-    :class:`ZipNativeUnsupportedError` -- use ``extract=True`` for those.
+    unused) -- same as plain :func:`open`\\ ``(zip_path)``, which resolves a
+    zip archive to this same zip-native mode. The returned product's
+    ``timestamp`` / ``footprint`` / ``transformer`` / ``thumbnail()`` (and,
+    except for Landsat, ``metadata``) work straight off the zip; ``raw`` /
+    ``visual`` / ``patches`` / ``patches_at`` (and Landsat's ``metadata``)
+    raise :class:`ZipNativeUnsupportedError` -- use ``extract=True`` for
+    those.
     """
     if not extract:
         from satimg.registry import resolve  # deferred: registry imports Product
