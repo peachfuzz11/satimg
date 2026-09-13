@@ -219,18 +219,21 @@ connector = get_connector("sentinel-2-l1c",
                           username="me@example.com", password="...")
 connector.download(items[0], "/data/scene.zip")
 
-with satimg.open_zip("/data/scene.zip") as product:
+with satimg.open("/data/scene.zip") as product:
     for patch in product.patches(512):
         ...
 ```
 
-`open_zip` extracts to a temp dir that is removed — along with the product's
-open rasters — when the block exits. Read what you need inside the block; a
-lazy view can't be rebuilt afterwards.
+`satimg.open` takes either a product directory or a zip archive — detected by
+content, not by extension. A zip is extracted to a temp dir that is removed —
+along with the product's open rasters — when the block exits. Read what you
+need inside the block; a lazy view can't be rebuilt afterwards.
 
-If you only need a scene's metadata — say, to check its footprint or
-timestamp before deciding whether it's worth extracting — `extract=False`
-reads it straight off the zip, with nothing written to disk:
+For finer control — a specific temp dir, or reading a scene's metadata with
+nothing extracted at all — use `satimg.open_zip` directly. If you only need a
+scene's metadata — say, to check its footprint or timestamp before deciding
+whether it's worth extracting — `extract=False` reads it straight off the
+zip, with nothing written to disk:
 
 ```python
 with satimg.open_zip("/data/scene.zip", extract=False) as product:

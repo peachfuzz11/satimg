@@ -125,6 +125,21 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
     assert _open_fds() - base <= 1
 
 
+def test_open_detects_a_zip_and_cleans_up_like_open_zip(landsat_zip):
+    # satimg.open() auto-detects a zip archive (by content, not extension)
+    # and extracts it just like satimg.open_zip(path, extract=True) would.
+    base = _open_fds()
+
+    with satimg.open(landsat_zip) as p:
+        temp_root = os.path.dirname(p.path)
+        assert os.path.isdir(temp_root), "should have extracted to a temp dir"
+        _ = p.visual
+
+    gc.collect()
+    assert not os.path.exists(temp_root), "temp dir not cleaned up"
+    assert _open_fds() - base <= 1, "file descriptors leaked past open()"
+
+
 def test_open_zip_extract_false_never_writes_to_disk_and_releases_handles(
     landsat_zip, tmp_path
 ):

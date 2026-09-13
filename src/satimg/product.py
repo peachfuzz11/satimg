@@ -21,16 +21,19 @@ loop's window size -- so each patch read pulls a single tile -- and close it
 when the loop ends (return, break, or an exception). ``product.raw`` /
 ``product.visual`` accessed directly (outside a loop) are cached on the
 product and released when its ``with`` block exits, so use ``with
-satimg.open(path) as product`` (and :func:`satimg.open_zip`) if you use those
-directly across many products, to avoid leaking handles.
+satimg.open(path) as product`` if you use those directly across many
+products, to avoid leaking handles.
 
-A zipped product's metadata -- ``timestamp`` / ``footprint`` /
-``transformer`` / ``thumbnail()`` / ``metadata`` (all but Landsat's, which
-ships only as full rasters) -- can be read straight off the archive, with
-nothing extracted to disk: ``satimg.open_zip(zip_path, extract=False)``. Pixel
-access (``raw`` / ``visual`` / ``patches`` / ``patches_at``) still needs the
-archive extracted -- ``extract=True``, the default -- and raises
-:class:`ZipNativeUnsupportedError` otherwise.
+``satimg.open(path)`` takes either a product directory or a zip archive --
+detected by content, not by extension. A zip is fully extracted to a temp
+dir, released (along with the product's rasters) on the same ``with``-exit as
+above. For zip-native metadata access with nothing extracted to disk, or to
+control where the temp dir lands, use :func:`open_zip` directly:
+``satimg.open_zip(zip_path, extract=False)`` reads ``timestamp`` /
+``footprint`` / ``transformer`` / ``thumbnail()`` / ``metadata`` (all but
+Landsat's, which ships only as full rasters) straight off the archive; pixel
+access (``raw`` / ``visual`` / ``patches`` / ``patches_at``) always needs the
+archive extracted and raises :class:`ZipNativeUnsupportedError` otherwise.
 """
 
 from __future__ import annotations
@@ -76,6 +79,11 @@ class Product(abc.ABC):
     def __init__(self, source: Source):
         self._source = source
         self._path = source.path
+        #: set by :func:`_extract_and_open` for a product opened from a zip
+        #: (via :func:`open` or :func:`open_zip`\\ ``(..., extract=True)``) --
+        #: the temp dir backing :attr:`_source`, released by :meth:`_close`
+        #: alongside the rasters.
+        self._temp_dir: "tempfile.TemporaryDirectory | None" = None
 
     @property
     def path(self) -> str:
@@ -104,8 +112,9 @@ class Product(abc.ABC):
         self._close()
 
     def _close(self) -> None:
-        """Close the rasters behind the cached :attr:`raw` / :attr:`visual` and
-        drop them.
+        """Close the rasters behind the cached :attr:`raw` / :attr:`visual`,
+        drop them, and -- for a product opened from a zip (:func:`open` or
+        :func:`open_zip`\\ ``(..., extract=True)``) -- remove its temp dir.
 
         Each view carries a ``_close`` that shuts every band it opened -- wired
         on in :func:`satimg.readers.merge_bands`, kept across the product's
@@ -113,8 +122,9 @@ class Product(abc.ABC):
         views is all the product needs to track. Does not touch a raw/visual
         view opened by an in-flight :meth:`patches` / :meth:`patches_at` call
         -- those close themselves when their own loop ends. Called on ``with``
-        exit and by :func:`satimg.open_zip`; idempotent, and a later access
-        rebuilds.
+        exit; idempotent. A later access rebuilds :attr:`raw` / :attr:`visual`
+        for a directory-backed product, but not one whose temp dir was just
+        removed here -- read what you need before the ``with`` block ends.
         """
         for name in ("raw", "visual"):
             da = self.__dict__.pop(name, None)
@@ -123,6 +133,9 @@ class Product(abc.ABC):
                     da.close()
                 except Exception:  # pragma: no cover - best effort
                     logger.debug("error closing %s raster(s)", name, exc_info=True)
+        if self._temp_dir is not None:
+            self._temp_dir.cleanup()
+            self._temp_dir = None
 
     # -- pixel views ------------------------------------------------
     @abc.abstractmethod
@@ -311,7 +324,19 @@ class Product(abc.ABC):
 
 
 def open(path: str) -> Product:
-    """Open a product directory, returning the matching :class:`Product`."""
+    """Open a product, returning the matching :class:`Product`.
+
+    ``path`` may be a product directory or a zip archive -- detected by
+    content (:func:`zipfile.is_zipfile`), not by extension. A zip is fully
+    extracted to a temp dir first; use the ``with`` form either way (``with
+    satimg.open(path) as product:``) so it -- and the product's open rasters
+    -- are released once you're done. For zip-native metadata access without
+    extracting, or to control the temp dir's location, use :func:`open_zip`
+    directly.
+    """
+    if zipfile.is_zipfile(path):
+        return _extract_and_open(path, dest=None)
+
     from satimg.registry import resolve  # deferred: registry imports Product
 
     cls = resolve(path)
@@ -319,11 +344,39 @@ def open(path: str) -> Product:
     return cls(DirSource(path))
 
 
+def _extract_and_open(zip_path: str, dest: str | None) -> Product:
+    """Extract ``zip_path`` to a fresh temp dir (under ``dest``, or the system
+    default) and return the matching :class:`Product`, with its
+    ``_temp_dir`` set so :meth:`Product._close` removes the temp dir
+    alongside the product's rasters."""
+    from satimg.registry import resolve  # deferred: registry imports Product
+
+    tmp_dir = tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True)
+    try:
+        logger.debug("extracting %s to %s", zip_path, tmp_dir.name)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(tmp_dir.name)
+        entries = [os.path.join(tmp_dir.name, e) for e in os.listdir(tmp_dir.name)]
+        if not entries:
+            raise ValueError(f"{zip_path} extracted to nothing")
+        root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp_dir.name
+        logger.debug("extracted product root: %s", root)
+        cls = resolve(root)
+        product = cls(DirSource(root))
+    except Exception:
+        tmp_dir.cleanup()
+        raise
+    product._temp_dir = tmp_dir
+    return product
+
+
 @contextmanager
 def open_zip(
     zip_path: str, dest: str | None = None, extract: bool = True
 ) -> Iterator[Product]:
-    """Open a zipped product. Use the ``with`` form either way.
+    """Open a zipped product. Prefer plain :func:`open` (which auto-detects a
+    zip) unless you need ``dest`` or ``extract=False``. Use the ``with`` form
+    either way.
 
     With ``extract=True`` (the default), the archive is fully extracted to a
     temp dir (under ``dest``, or the system default) and the returned
@@ -362,14 +415,8 @@ def open_zip(
                 yield product
         return
 
-    with tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True) as tmp:
-        logger.debug("extracting %s to %s", zip_path, tmp)
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(tmp)
-        entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
-        if not entries:
-            raise ValueError(f"{zip_path} extracted to nothing")
-        root = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else tmp
-        logger.debug("extracted product root: %s", root)
-        with open(root) as product:
-            yield product
+    product = _extract_and_open(zip_path, dest)
+    try:
+        yield product
+    finally:
+        product._close()
