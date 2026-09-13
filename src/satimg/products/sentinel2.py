@@ -10,9 +10,10 @@ from functools import cached_property
 from xml.etree import ElementTree
 
 import numpy
-import rasterio
+import pyproj
 import rioxarray
 import xarray
+from affine import Affine
 
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
@@ -70,6 +71,17 @@ def _parse_mtd(path: str) -> dict:
     }
 
 
+def _geo_transform(root: ElementTree.Element, resolution: str = "10") -> tuple[Affine, pyproj.CRS]:
+    """Affine transform + CRS of the ``resolution`` m grid, from ``MTD_TL.xml``'s
+    ``<Tile_Geocoding>`` block -- no raster file needs to be opened."""
+    geo = root.find(".//Tile_Geocoding")
+    pos = next(g for g in geo.findall("Geoposition") if g.get("resolution") == resolution)
+    ulx, uly = float(pos.find("ULX").text), float(pos.find("ULY").text)
+    xdim, ydim = float(pos.find("XDIM").text), float(pos.find("YDIM").text)
+    epsg = geo.findtext("HORIZONTAL_CS_CODE")
+    return Affine(xdim, 0, ulx, 0, ydim, uly), pyproj.CRS.from_user_input(epsg)
+
+
 def _angle_grid(node: ElementTree.Element) -> numpy.ndarray:
     """The ``Values_List`` of a Zenith/Azimuth node as a 2-D array (``NaN`` ok)."""
     rows = node.find("Values_List").findall("VALUES")
@@ -102,6 +114,7 @@ def _parse_tl(path: str) -> dict:
     timestamp = datetime.datetime.strptime(
         root.find(".//SENSING_TIME").text, "%Y-%m-%dT%H:%M:%S.%fZ"
     )
+    transform, crs = _geo_transform(root)
 
     pixel_m = min(
         abs(float(g.find("XDIM").text))
@@ -130,7 +143,10 @@ def _parse_tl(path: str) -> dict:
         "mean_sun_zenith": float(mean_sun.find("ZENITH_ANGLE").text),
         "mean_sun_azimuth": float(mean_sun.find("AZIMUTH_ANGLE").text),
     }
-    return {"timestamp": timestamp, "axes": axes, "grids": grids, "attrs": attrs}
+    return {
+        "timestamp": timestamp, "transform": transform, "crs": crs,
+        "axes": axes, "grids": grids, "attrs": attrs,
+    }
 
 
 @register(r"^S2[ABCD]_MSIL1C_\d{8}T\d{6}_.*_\d{8}T\d{6}\.SAFE$")
@@ -145,8 +161,7 @@ class Sentinel2L1CProduct(Product):
         self._meta = _parse_mtd(path)
         self._tl = _parse_tl(path)
         self._timestamp = self._tl["timestamp"]
-        with rasterio.open(self._meta["reflectance"][1]) as src:
-            self._transformer = Transformer(src.transform, src.crs)
+        self._transformer = Transformer(self._tl["transform"], self._tl["crs"])
 
     @cached_property
     def raw(self) -> xarray.DataArray:
