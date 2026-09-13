@@ -8,6 +8,7 @@ import numpy
 import pytest
 import xarray
 
+from satimg import sar_utils
 from satimg.geometry import Window
 from satimg.products.landsat import BANDS as _LS_BANDS
 from satimg.tiling import read_window
@@ -170,6 +171,70 @@ class TestMetadata:
 
 def test_sentinel1_mode(sentinel1_iw):
     assert sentinel1_iw.mode == "IW"
+
+
+def _local_platform_heading(product, rowcol):
+    lat = product.transformer.rowcol_to_latlon(rowcol)[:, 0]
+    ascending = product.metadata.attrs["pass"].lower() == "ascending"
+    return sar_utils.ground_track_heading(lat, product.metadata.attrs["orbit_inclination"], ascending)[0]
+
+
+def test_sentinel1_heading_to_los(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+    assert sentinel1_iw.heading_to_los(rowcol, look_direction) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_to_los(rowcol, (look_direction + 180.0) % 360.0) == pytest.approx(-180.0)
+
+
+def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+
+    away = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
+    toward = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 180.0) % 360.0)
+    along_track = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 90.0) % 360.0)
+
+    assert away > 0
+    assert toward < 0
+    assert along_track == pytest.approx(0.0, abs=1e-6)
+    assert away == pytest.approx(-toward)
+
+
+def test_sentinel1_heading_in_image(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    up_heading = (_local_platform_heading(sentinel1_iw, rowcol) + 180.0) % 360.0
+    assert sentinel1_iw.heading_in_image(rowcol, up_heading) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_in_image(rowcol, (up_heading + 90.0) % 360.0) == pytest.approx(90.0)
+
+
+def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
+    # sanity check against the well-known SAR fact: a descending-pass GRD scene
+    # is displayed close to north-up (ascending passes are the opposite, south-up)
+    assert sentinel1_iw.metadata.attrs["pass"].lower() == "descending"
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    got = sentinel1_iw.heading_in_image(rowcol, 0.0)
+    assert got < 20.0 or got > 340.0
+
+
+def test_sentinel1_correct_position(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    lat, lon = sentinel1_iw.transformer.rowcol_to_latlon(rowcol)[0]
+    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+
+    shift_px = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
+    corrected_lat, corrected_lon = sentinel1_iw.correct_position(lat, lon, 10.0, look_direction)
+    corrected_rowcol = sentinel1_iw.transformer.latlon_to_rowcol((corrected_lat, corrected_lon))[0]
+
+    # GCPTransformer's polynomial GCP fit isn't an exact sub-pixel round-trip,
+    # so check against a 1-pixel tolerance rather than the raw float shift.
+    assert corrected_rowcol[0] == pytest.approx(rowcol[0] - shift_px, abs=1.0)
+    assert corrected_rowcol[1] == pytest.approx(rowcol[1], abs=1.0)
+
+    # along-track motion produces no azimuth shift, so no correction either
+    along_track = (look_direction + 90.0) % 360.0
+    unmoved_lat, unmoved_lon = sentinel1_iw.correct_position(lat, lon, 10.0, along_track)
+    assert unmoved_lat == pytest.approx(lat, abs=1e-6)
+    assert unmoved_lon == pytest.approx(lon, abs=1e-6)
 
 
 def test_thumbnail_opens(product):
