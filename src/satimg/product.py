@@ -290,22 +290,8 @@ class Product(abc.ABC):
             name=name,
             units=units,
             transform=self.transformer,
-            shape=self._metadata_grid_shape(),
+            shape=(self.height, self.width),
         )
-
-    def _metadata_grid_shape(self) -> tuple[int, int]:
-        """``(height, width)`` of the full product grid, backing a
-        :class:`~satimg.metadata.Field`'s ``.grid`` / ``.corners()``.
-
-        Default: the real raster shape, i.e. ``self.height, self.width`` --
-        which forces ``raw`` open, so raises :class:`ZipNativeUnsupportedError`
-        in zip-native mode. Override with a value already known from parsed
-        metadata (no raster access) to keep this working zip-native too --
-        Sentinel-1/-2 do, from their manifest/annotation XML; Landsat's
-        per-pixel metadata is itself extraction-only (see
-        :meth:`_require_extracted`), so it never needs to.
-        """
-        return self.height, self.width
 
     def bounds(self) -> tuple[float, float, float, float]:
         """``(min_lon, min_lat, max_lon, max_lat)`` of the footprint."""

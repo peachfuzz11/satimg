@@ -209,8 +209,19 @@ class Sentinel2L1CProduct(Product):
         }
         return Metadata(fields, self._tl["attrs"])
 
-    def _metadata_grid_shape(self) -> tuple[int, int]:
-        return self._tl["pixel_shapes"][self._gsd]
+    @property
+    def height(self) -> int:
+        """From ``MTD_TL.xml``'s ``Tile_Geocoding/Size`` at ``band_names[1]``'s
+        resolution (matches ``raw`` exactly) rather than the base
+        ``int(self.raw.sizes["y"])`` -- so ``metadata``'s fields get a real
+        ``.grid`` / ``.corners()`` even zip-native, with no ``raw`` open
+        needed."""
+        return self._tl["pixel_shapes"][self._gsd][0]
+
+    @property
+    def width(self) -> int:
+        """See :attr:`height`."""
+        return self._tl["pixel_shapes"][self._gsd][1]
 
     @property
     def transformer(self) -> Transformer:

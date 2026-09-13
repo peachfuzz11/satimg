@@ -204,8 +204,18 @@ class Sentinel1Product(Product):
         }
         return Metadata(fields, self._geoloc_attrs)
 
-    def _metadata_grid_shape(self) -> tuple[int, int]:
-        return self._geoloc_shape
+    @property
+    def height(self) -> int:
+        """From the annotation XML's ``numberOfLines`` (matches ``raw``
+        exactly) rather than the base ``int(self.raw.sizes["y"])`` -- so
+        ``metadata``'s fields get a real ``.grid`` / ``.corners()`` even
+        zip-native, with no ``raw`` open needed."""
+        return self._geoloc_shape[0]
+
+    @property
+    def width(self) -> int:
+        """See :attr:`height`; from ``numberOfSamples``."""
+        return self._geoloc_shape[1]
 
     @property
     def transformer(self) -> GCPTransformer:
