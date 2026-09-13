@@ -8,6 +8,13 @@ from typing import Iterable
 import rioxarray
 import xarray
 
+#: dask chunk size (in pixels) each band is opened with, all bands in one
+#: chunk. Matches the default patch size used throughout :mod:`satimg.tiling`
+#: / :mod:`satimg.product`, so a loop that never overrides the default patch
+#: size rechunks for free; any other size still only touches the handful of
+#: :data:`_TILE` tiles a window overlaps, never the whole band.
+_TILE = 512
+
 
 def find_file(directory: str, filename: str) -> str | None:
     """Return the full path of the first ``filename`` found under ``directory``."""
@@ -35,16 +42,24 @@ def merge_bands(
     """Open each path lazily and stack them along ``band``.
 
     With ``match`` (an index into ``paths``) the other bands are
-    nearest-neighbour reindexed onto that band's grid first. Each band gets one
-    dask chunk so ``xarray.concat`` stays lazy -- concatenating plain arrays
-    would read every scene into memory; the real tiling happens later, when
-    :meth:`~satimg.product.Product.patches` chunks the view to the window size.
+    nearest-neighbour reindexed onto that band's grid first. Each band is
+    opened dask-chunked into :data:`_TILE`-square tiles -- a bare ``.chunk()``
+    with no size hint collapses each band to a *single* whole-band chunk, and
+    once a band is one chunk, no later rechunk (e.g.
+    :meth:`~satimg.product.Product._align_view_chunks`, which resizes to the
+    loop's window size) can split it into tiles without depending on a task
+    that reads the entire band; every windowed patch read would then re-decode
+    the whole scene. Chunking here instead means that later rechunk only ever
+    depends on the handful of tiles a window overlaps.
 
     ``concat`` drops the per-band ``_close``, so it is wired back on: the
     returned array's ``close()`` shuts every band it opened.
     """
-    opened = [rioxarray.open_rasterio(p) for p in paths]
-    bands = [b.chunk() for b in opened]  # one chunk each -> concat stays lazy
+    opened = [
+        rioxarray.open_rasterio(p, chunks={"band": -1, "x": _TILE, "y": _TILE}, lock=False)
+        for p in paths
+    ]
+    bands = opened
     if match is not None:
         target = bands[match]
         bands = [b.reindex_like(target, method="nearest") for b in bands]

@@ -150,6 +150,16 @@ def test_field_grid_is_lazy_full_grid(sentinel1_iw):
     assert float(sub.values[0, 0]) == pytest.approx(field.at((0, 0)), abs=1e-6)
 
 
+def test_field_grid_is_tile_chunked(sentinel1_iw):
+    # matches product.patches()'s default patch size, so a patch.meta access
+    # on a default-size patch computes close to exactly the pixels it needs
+    # instead of a much larger block regardless of how small the patch is.
+    grid = sentinel1_iw.metadata.incidence_angle.grid
+    y_chunks, x_chunks = grid.chunks
+    assert max(y_chunks) <= 512
+    assert max(x_chunks) <= 512
+
+
 def test_field_patches_carry_transform(sentinel1_iw):
     field = sentinel1_iw.metadata.incidence_angle
     patch = next(iter(field.patches(512)))

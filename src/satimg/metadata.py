@@ -38,6 +38,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window
     from satimg.transform import Transformer
 
+#: dask chunk size (in pixels) :attr:`Field.grid` is built with, matching the
+#: default patch size in :mod:`satimg.tiling` / :mod:`satimg.product` -- a
+#: ``patch.meta`` access on a default-size patch then computes close to
+#: exactly the pixels it needs, instead of a much larger block regardless of
+#: how small the patch actually is.
+_TILE = 512
+
 
 def bilinear(
     rows: numpy.ndarray,
@@ -144,9 +151,9 @@ class Field:
         block = darray.blockwise(
             lambda br, bc: bilinear(rows, cols, values, br[:, None], bc[None, :]),
             "yx",
-            darray.arange(height, chunks=2048),
+            darray.arange(height, chunks=_TILE),
             "y",
-            darray.arange(width, chunks=2048),
+            darray.arange(width, chunks=_TILE),
             "x",
             dtype=float,
         )
