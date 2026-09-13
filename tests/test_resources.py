@@ -82,9 +82,8 @@ def test_loop_over_products_does_not_leak(key):
     assert _open_fds() - base <= 1
 
 
-@pytest.fixture(scope="module")
-def landsat_zip(tmp_path_factory):
-    src = Path(PRODUCT_PATHS["landsat"])
+def _build_zip(key: str, tmp_path_factory) -> str:
+    src = Path(PRODUCT_PATHS[key])
     if not src.exists():
         pytest.skip(f"test product missing: {src}")
     out = tmp_path_factory.mktemp("zips") / (src.name + ".zip")
@@ -93,6 +92,11 @@ def landsat_zip(tmp_path_factory):
             if f.is_file():
                 z.write(f, arcname=str(Path(src.name) / f.relative_to(src)))
     return str(out)
+
+
+@pytest.fixture(scope="module")
+def landsat_zip(tmp_path_factory):
+    return _build_zip("landsat", tmp_path_factory)
 
 
 def test_open_zip_releases_handles_and_cleans_tempdir(landsat_zip, tmp_path):
@@ -118,6 +122,29 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
             next(iter(p.patches(128)))
     gc.collect()
     assert os.listdir(tmp_path) == [], "temp dirs left behind"
+    assert _open_fds() - base <= 1
+
+
+def test_open_zip_extract_false_never_writes_to_disk_and_releases_handles(
+    landsat_zip, tmp_path
+):
+    base = _open_fds()
+    before = set(os.listdir(tmp_path))
+
+    with satimg.open_zip(landsat_zip, dest=str(tmp_path), extract=False) as p:
+        _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
+        assert set(os.listdir(tmp_path)) == before, "extract=False must never write to dest"
+
+    gc.collect()
+    assert _open_fds() - base <= 1, "file descriptors leaked past open_zip(extract=False)"
+
+
+def test_open_zip_extract_false_loop_does_not_leak(landsat_zip):
+    base = _open_fds()
+    for _ in range(3):
+        with satimg.open_zip(landsat_zip, extract=False) as p:
+            _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
+    gc.collect()
     assert _open_fds() - base <= 1
 
 

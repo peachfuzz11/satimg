@@ -10,14 +10,16 @@ from xml.etree import ElementTree
 
 import numpy
 import PIL.Image
-import rasterio
 import xarray
+from rasterio.control import GroundControlPoint
+from rasterio.crs import CRS
 
 from satimg import sar_utils
 from satimg.metadata import Metadata, grid_from_points
 from satimg.product import Product
-from satimg.readers import find_file, keep_open, merge_bands
+from satimg.readers import keep_open, merge_bands
 from satimg.registry import register
+from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import GCPTransformer
 
@@ -43,11 +45,12 @@ _NS = {
 _ORBIT_INCLINATION_DEG = 98.1813
 
 
-def _read_manifest(path: str) -> dict:
-    manifest = find_file(path, "manifest.safe")
+def _read_manifest(source: Source) -> dict:
+    manifest = source.find_file("manifest.safe")
     if manifest is None:
-        raise FileNotFoundError(f"no manifest.safe under {path}")
-    root = ElementTree.parse(manifest).getroot()
+        raise FileNotFoundError(f"no manifest.safe under {source.name}")
+    with source.open(manifest) as f:
+        root = ElementTree.parse(f).getroot()
     start = datetime.datetime.strptime(
         root.find(".//safe:startTime", _NS).text, "%Y-%m-%dT%H:%M:%S.%f"
     )
@@ -68,13 +71,13 @@ def _read_manifest(path: str) -> dict:
     }
 
 
-def _annotation_file(path: str) -> str:
-    """First product-annotation XML (the ``calibration/`` ones are excluded)."""
-    ann = os.path.join(path, "annotation")
-    files = sorted(f for f in os.listdir(ann) if f.endswith(".xml"))
+def _annotation_file(source: Source) -> str:
+    """Root-relative path of the first product-annotation XML (the
+    ``calibration/`` ones are excluded)."""
+    files = sorted(f for f in source.listdir("annotation") if f.endswith(".xml"))
     if not files:
-        raise FileNotFoundError(f"no annotation XML under {ann}")
-    return os.path.join(ann, files[0])
+        raise FileNotFoundError(f"no annotation XML under {source.name}/annotation")
+    return f"annotation/{files[0]}"
 
 
 def _nearest_orbit_velocity(root, at: datetime.datetime) -> float:
@@ -91,11 +94,25 @@ def _nearest_orbit_velocity(root, at: datetime.datetime) -> float:
     return float(numpy.linalg.norm(best_velocity))
 
 
-def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict], dict]:
-    root = ElementTree.parse(xml_path).getroot()
+def _read_geolocation(
+    source: Source, relpath: str, at: datetime.datetime
+) -> tuple[list[dict], dict, tuple[int, int]]:
+    """The annotation XML's geolocation grid points (row/col plus each
+    :data:`_GEOLOC_FIELDS` value, and -- for building GCPs, not exposed in
+    :class:`~satimg.metadata.Metadata` -- latitude/longitude/height), the
+    scene-wide attrs, and the full measurement grid's ``(lines, samples)``
+    shape (``imageAnnotation/imageInformation``)."""
+    with source.open(relpath) as f:
+        root = ElementTree.parse(f).getroot()
     points = []
     for gp in root.findall(".//geolocationGridPoint"):
-        pt = {"row": int(gp.findtext("line")), "col": int(gp.findtext("pixel"))}
+        pt = {
+            "row": int(gp.findtext("line")),
+            "col": int(gp.findtext("pixel")),
+            "latitude": float(gp.findtext("latitude")),
+            "longitude": float(gp.findtext("longitude")),
+            "height": float(gp.findtext("height")),
+        }
         for name, (tag, _units) in _GEOLOC_FIELDS.items():
             pt[name] = float(gp.findtext(tag))
         points.append(pt)
@@ -107,7 +124,11 @@ def _read_geolocation(xml_path: str, at: datetime.datetime) -> tuple[list[dict],
         "orbit_inclination": _ORBIT_INCLINATION_DEG,
         "azimuth_pixel_spacing": float(root.findtext(".//azimuthPixelSpacing")),
     }
-    return points, attrs
+    shape = (
+        int(root.findtext(".//numberOfLines")),
+        int(root.findtext(".//numberOfSamples")),
+    )
+    return points, attrs, shape
 
 
 @register(r"^S1[ABCD]_(IW_GRDH|EW_GRDM)_1SD[HV]_\d{8}T\d{6}_\d{8}T\d{6}.*\.SAFE$")
@@ -125,14 +146,25 @@ class Sentinel1Product(Product):
     lat/lon from its as-detected position.
     """
 
-    def __init__(self, path: str):
-        super().__init__(path)
-        meta = _read_manifest(path)
+    def __init__(self, path: str, source: Source | None = None):
+        super().__init__(path, source)
+        meta = _read_manifest(self._source)
         self._timestamp = meta["timestamp"]
         self._footprint = meta["footprint"]
-        with rasterio.open(path) as src:
-            gcps, crs = src.gcps
-        self._transformer = GCPTransformer(gcps, crs)
+        annotation = _annotation_file(self._source)
+        points, attrs, shape = _read_geolocation(
+            self._source, annotation, self._timestamp
+        )
+        self._geoloc_points = points
+        self._geoloc_attrs = attrs
+        self._geoloc_shape = shape
+        gcps = [
+            GroundControlPoint(
+                row=p["row"], col=p["col"], x=p["longitude"], y=p["latitude"], z=p["height"],
+            )
+            for p in points
+        ]
+        self._transformer = GCPTransformer(gcps, CRS.from_epsg(4326))
 
     @property
     def mode(self) -> str:
@@ -140,6 +172,7 @@ class Sentinel1Product(Product):
         return m.group(1) if m else "IW"
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+        self._require_extracted("raw")
         measurement = os.path.join(self._path, "measurement")
         pols = {}
         for f in os.listdir(measurement):
@@ -154,14 +187,14 @@ class Sentinel1Product(Product):
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
+        self._require_extracted("visual")
         db = (10 * numpy.log10(raw.where(raw > 0))).fillna(0).mean("band")
         u8 = (255 / (1 + numpy.exp(-((db - 20) * 0.18)))).clip(0, 255).astype("uint8")
         return label_bands(as_band_yx(u8), ("amplitude",))
 
     def _read_metadata(self) -> Metadata:
-        points, attrs = _read_geolocation(_annotation_file(self._path), self._timestamp)
         keys = tuple(_GEOLOC_FIELDS)
-        grid = grid_from_points(points, keys)
+        grid = grid_from_points(self._geoloc_points, keys)
         fields = {
             name: self._field(
                 grid["rows"], grid["cols"], grid[name],
@@ -169,7 +202,10 @@ class Sentinel1Product(Product):
             )
             for name in keys
         }
-        return Metadata(fields, attrs)
+        return Metadata(fields, self._geoloc_attrs)
+
+    def _metadata_grid_shape(self) -> tuple[int, int]:
+        return self._geoloc_shape
 
     @property
     def transformer(self) -> GCPTransformer:
@@ -185,10 +221,13 @@ class Sentinel1Product(Product):
 
     def thumbnail(self) -> PIL.Image.Image:
         for name in ("thumbnail.png", "quick-look.png"):
-            p = os.path.join(self._path, "preview", name)
-            if os.path.isfile(p):
-                return PIL.Image.open(p)
-        raise FileNotFoundError(f"no preview image under {self._path}")
+            relpath = f"preview/{name}"
+            if self._source.exists(relpath):
+                with self._source.open(relpath) as f:
+                    img = PIL.Image.open(f)
+                    img.load()
+                    return img
+        raise FileNotFoundError(f"no preview image under {self._source.name}")
 
     def _local_platform_heading(self, rowcol):
         """Satellite ground-track heading at ``rowcol``'s own latitude (rather

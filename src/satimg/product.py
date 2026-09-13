@@ -23,6 +23,14 @@ when the loop ends (return, break, or an exception). ``product.raw`` /
 product and released when its ``with`` block exits, so use ``with
 satimg.open(path) as product`` (and :func:`satimg.open_zip`) if you use those
 directly across many products, to avoid leaking handles.
+
+A zipped product's metadata -- ``timestamp`` / ``footprint`` /
+``transformer`` / ``thumbnail()`` / ``metadata`` (all but Landsat's, which
+ships only as full rasters) -- can be read straight off the archive, with
+nothing extracted to disk: ``satimg.open_zip(zip_path, extract=False)``. Pixel
+access (``raw`` / ``visual`` / ``patches`` / ``patches_at``) still needs the
+archive extracted -- ``extract=True``, the default -- and raises
+:class:`ZipNativeUnsupportedError` otherwise.
 """
 
 from __future__ import annotations
@@ -43,6 +51,7 @@ from satimg import tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
 from satimg.readers import CHUNK_PX
+from satimg.source import DirSource, Source
 from satimg.tiling import Patch
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -53,9 +62,20 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
+class ZipNativeUnsupportedError(NotImplementedError):
+    """Raised by ``raw`` / ``visual`` / ``patches`` / ``patches_at`` -- and by
+    Landsat's per-pixel angle ``metadata``, the one metadata piece with no
+    XML/JSON equivalent -- on a product opened via
+    :func:`open_zip`\\ ``(zip_path, extract=False)``. Those need real pixel
+    data, which only exists once the archive is extracted; open with
+    ``extract=True`` (the default) or :func:`open` instead.
+    """
+
+
 class Product(abc.ABC):
-    def __init__(self, path: str):
+    def __init__(self, path: str, source: Source | None = None):
         self._path = str(path)
+        self._source = source if source is not None else DirSource(self._path)
 
     @property
     def path(self) -> str:
@@ -63,6 +83,18 @@ class Product(abc.ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._path!r})"
+
+    def _require_extracted(self, what: str) -> None:
+        """Guard for a raster-only code path: raise
+        :class:`ZipNativeUnsupportedError` if this product was opened
+        zip-native (:func:`open_zip`\\ ``(..., extract=False)``), where no
+        pixel data was ever written to disk."""
+        if not self._source.is_directory:
+            raise ZipNativeUnsupportedError(
+                f"{what} needs the product extracted to disk -- open with "
+                f"satimg.open(...) or satimg.open_zip(zip_path, extract=True) "
+                f"(the default), not extract=False"
+            )
 
     # -- resources ------------------------------------------------
     def __enter__(self) -> "Product":
@@ -252,8 +284,22 @@ class Product(abc.ABC):
             name=name,
             units=units,
             transform=self.transformer,
-            shape=(self.height, self.width),
+            shape=self._metadata_grid_shape(),
         )
+
+    def _metadata_grid_shape(self) -> tuple[int, int]:
+        """``(height, width)`` of the full product grid, backing a
+        :class:`~satimg.metadata.Field`'s ``.grid`` / ``.corners()``.
+
+        Default: the real raster shape, i.e. ``self.height, self.width`` --
+        which forces ``raw`` open, so raises :class:`ZipNativeUnsupportedError`
+        in zip-native mode. Override with a value already known from parsed
+        metadata (no raster access) to keep this working zip-native too --
+        Sentinel-1/-2 do, from their manifest/annotation XML; Landsat's
+        per-pixel metadata is itself extraction-only (see
+        :meth:`_require_extracted`), so it never needs to.
+        """
+        return self.height, self.width
 
     def bounds(self) -> tuple[float, float, float, float]:
         """``(min_lon, min_lat, max_lon, max_lat)`` of the footprint."""
@@ -274,14 +320,48 @@ def open(path: str) -> Product:
 
 
 @contextmanager
-def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
-    """Extract a zipped product to a temp dir and yield it as a :class:`Product`.
+def open_zip(
+    zip_path: str, dest: str | None = None, extract: bool = True
+) -> Iterator[Product]:
+    """Open a zipped product. Use the ``with`` form either way.
 
-    Use the ``with`` form -- the temp dir (under ``dest``, or the system
-    default) and the product's open rasters are both released on exit. Read
-    what you need inside the block; a lazy view cannot be rebuilt once the temp
+    With ``extract=True`` (the default), the archive is fully extracted to a
+    temp dir (under ``dest``, or the system default) and the returned
+    :class:`Product` supports everything a directory-backed one does,
+    including ``raw`` / ``visual`` / ``patches`` / ``patches_at``. Both the
+    temp dir and the product's open rasters are released on exit; read what
+    you need inside the block -- a lazy view cannot be rebuilt once the temp
     dir is gone.
+
+    With ``extract=False``, nothing is ever written to disk (``dest`` is
+    unused) -- the archive is read directly. The returned product's
+    ``timestamp`` / ``footprint`` / ``transformer`` / ``thumbnail()`` (and,
+    except for Landsat, ``metadata``) work straight off the zip; ``raw`` /
+    ``visual`` / ``patches`` / ``patches_at`` (and Landsat's ``metadata``)
+    raise :class:`ZipNativeUnsupportedError` -- use ``extract=True`` for
+    those.
     """
+    if not extract:
+        from satimg.registry import resolve  # deferred: registry imports Product
+        from satimg.source import ZipSource
+
+        with zipfile.ZipFile(zip_path) as archive:
+            names = archive.namelist()
+            top = {n.split("/", 1)[0] for n in names if n.strip("/")}
+            if not top:
+                raise ValueError(f"{zip_path} contains nothing")
+            only = next(iter(top)) if len(top) == 1 else None
+            root = only if only is not None and any(
+                n.startswith(only + "/") for n in names
+            ) else ""
+            display_name = root or os.path.splitext(os.path.basename(zip_path))[0]
+            logger.debug("zip-native product root: %r", root or "(flat)")
+            cls = resolve(display_name)
+            source = ZipSource(archive, root, display_name)
+            with cls(display_name, source=source) as product:
+                yield product
+        return
+
     with tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True) as tmp:
         logger.debug("extracting %s to %s", zip_path, tmp)
         with zipfile.ZipFile(zip_path) as archive:
