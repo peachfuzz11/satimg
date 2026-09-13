@@ -10,19 +10,20 @@ it offers the same two views on the pixels --
 -- and one way to walk them::
 
     for patch in product.patches(512, overlap=64):
-        tile = patch.values          # (band, y, x), origin at patch.col / patch.row
-        lat, lon = patch.center_latlon
+        tile = patch.raw.values      # (band, y, x), origin at patch.col / patch.row
 
 ``for patch in product`` is shorthand for ``product.patches()``.
 
 ``patches`` / ``patches_at`` open their own raw / visual view, separate from
 :attr:`Product.raw` / :attr:`Product.visual`, dask-chunked to exactly the
 loop's window size -- so each patch read pulls a single tile -- and close it
-when the loop ends (return, break, or an exception). ``product.raw`` /
-``product.visual`` accessed directly (outside a loop) are cached on the
-product and released when its ``with`` block exits, so use ``with
-satimg.open(path) as product`` if you use those directly across many
-products, to avoid leaking handles.
+when the loop ends (return, break, or an exception). Each yielded
+:class:`Patch` already carries its own window's ``raw`` / ``visual`` / ``meta``
+sliced out (still lazy -- only ``.values`` on ``raw``/``visual`` triggers real
+computation). ``product.raw`` / ``product.visual`` accessed directly (outside
+a loop) are cached on the product and released when its ``with`` block exits,
+so use ``with satimg.open(path) as product`` if you use those directly across
+many products, to avoid leaking handles.
 
 ``satimg.open(path)`` takes either a product directory or a zip archive --
 detected by content, not by extension -- via a
@@ -44,6 +45,7 @@ import datetime
 import logging
 import os
 import tempfile
+import weakref
 import zipfile
 from contextlib import contextmanager
 from functools import cached_property
@@ -51,12 +53,12 @@ from typing import TYPE_CHECKING, Iterable, Iterator
 
 import xarray
 
-from satimg import tiling
-from satimg.geometry import EdgeMode
-from satimg.metadata import Field, Metadata
+from satimg.geometry import EdgeMode, Grid, Window, windows_at
+from satimg.metadata import Field, Metadata, PatchMeta
+from satimg.patch import Patch
 from satimg.readers import CHUNK_PX
 from satimg.source import Source
-from satimg.tiling import Patch
+from satimg.tiling import read_window
 
 if TYPE_CHECKING:  # pragma: no cover
     import PIL.Image
@@ -166,32 +168,41 @@ class Product(abc.ABC):
         rather than deriving from ``raw``, so it can be chunked to match."""
 
     # -- iteration ------------------------------------------------
+    def _read_patch(
+        self, raw: xarray.DataArray, visual: xarray.DataArray, window: Window
+    ) -> Patch:
+        """Slice ``raw`` / ``visual`` / :attr:`metadata` to ``window`` and
+        bundle the result into a :class:`Patch`. The only place a ``Patch`` is
+        ever built."""
+        return Patch(
+            window=window,
+            raw=read_window(raw, window),
+            visual=read_window(visual, window),
+            meta=PatchMeta(self.metadata, window),
+        )
+
     def patches(
         self,
         size: int | tuple[int, int] = 512,
         *,
         overlap: int | tuple[int, int] = 0,
         edge: EdgeMode = "pad",
-        batch: int | None = None,
-    ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk the product in windows of ``size``. See
-        :func:`satimg.tiling.patches`.
+    ) -> Iterator[Patch]:
+        """Walk the product in windows of ``size``.
 
         Opens its own raw and visual view -- separate from :attr:`raw` /
-        :attr:`visual` -- both dask-chunked to exactly ``size``, so every
-        ``patch.raw`` / ``patch.visual`` / ``patch.values`` read decodes just
-        the one tile it covers. Both close when the loop ends (return, break,
-        or an exception), whichever comes first -- no explicit
-        ``with``/``close()`` needed for this view. Patches yielded here carry
-        a lazy :attr:`Patch.meta` bound to this product's :attr:`metadata`.
+        :attr:`visual` -- both dask-chunked to exactly ``size``, and closes
+        them when the loop ends (return, break, or an exception), whichever
+        comes first -- no explicit ``with``/``close()`` needed for this view.
+        ``edge`` decides what happens to windows that run past the border (see
+        :class:`~satimg.geometry.Grid`).
         """
         raw = self._open_raw(size)
         visual = self._render_visual(raw, size)
         try:
-            yield from tiling.patches(
-                raw, size, overlap=overlap, edge=edge, batch=batch,
-                transformer=self.transformer, product=self, visual=visual,
-            )
+            grid = Grid(int(raw.sizes["x"]), int(raw.sizes["y"]), size, overlap, edge)
+            for win in grid:
+                yield self._read_patch(raw, visual, win)
         finally:
             raw.close()
             visual.close()
@@ -200,24 +211,18 @@ class Product(abc.ABC):
         self,
         points: Iterable[tuple[float, float]],
         size: int | tuple[int, int] = 512,
-        *,
-        batch: int | None = None,
-    ) -> Iterator[Patch] | Iterator[list[Patch]]:
+    ) -> Iterator[Patch]:
         """Walk the product at caller-supplied ``(col, row)`` points. See
-        :func:`satimg.tiling.patches_at`.
+        :func:`~satimg.geometry.windows_at`.
 
         Opens its own raw / visual dask-chunked to exactly ``size`` and closes
-        them when the loop ends -- see :meth:`patches`. Patches yielded here
-        carry a lazy :attr:`Patch.meta` bound to this product's
-        :attr:`metadata`.
+        them when the loop ends -- see :meth:`patches`.
         """
         raw = self._open_raw(size)
         visual = self._render_visual(raw, size)
         try:
-            yield from tiling.patches_at(
-                raw, points, size, batch=batch,
-                transformer=self.transformer, product=self, visual=visual,
-            )
+            for win in windows_at(points, size):
+                yield self._read_patch(raw, visual, win)
         finally:
             raw.close()
             visual.close()
@@ -282,15 +287,30 @@ class Product(abc.ABC):
 
     def _field(self, rows, cols, values, *, name: str, units: str = "") -> Field:
         """Helper for :meth:`_read_metadata`: a :class:`~satimg.metadata.Field` on
-        a coarse grid in this product's pixel coordinates."""
+        a coarse grid in this product's pixel coordinates.
+
+        ``shape`` is passed as a callable, not ``(self.height, self.width)``
+        directly -- those read :attr:`raw`, and evaluating them eagerly here
+        would force every band open just to build a ``Field``, even if
+        nothing ever reads its ``.grid`` / ``.corners()``. It closes over a
+        ``weakref`` rather than ``self`` directly: :attr:`metadata` caches the
+        ``Field``s it returns onto the product, so a plain closure would tie
+        the product into a reference cycle through its own cached metadata.
+        """
+        product_ref = weakref.ref(self)
+
+        def shape() -> tuple[int, int]:
+            product = product_ref()
+            assert product is not None, "product went away before its Field was read"
+            return product.height, product.width
+
         return Field(
             rows,
             cols,
             values,
             name=name,
             units=units,
-            transform=self.transformer,
-            shape=(self.height, self.width),
+            shape=shape,
         )
 
     def bounds(self) -> tuple[float, float, float, float]:

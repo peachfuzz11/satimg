@@ -896,7 +896,7 @@ wheels = [
 
 [[package]]
 name = "satimg"
-version = "0.11.10"
+version = "0.12.1"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

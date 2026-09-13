@@ -18,7 +18,7 @@ from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
 from satimg.readers import CHUNK_PX
 from satimg.source import DirSource
-from satimg.tiling import Patch, read_window
+from satimg.tiling import read_window
 
 
 # -- the kernel --------------------------------------------------------
@@ -163,12 +163,6 @@ def test_field_grid_is_tile_chunked(sentinel1_iw):
     assert max(x_chunks) <= CHUNK_PX
 
 
-def test_field_patches_carry_transform(sentinel1_iw):
-    field = sentinel1_iw.metadata.incidence_angle
-    patch = next(iter(field.patches(512)))
-    assert patch.center_latlon                                      # transform attached
-
-
 # -- patch.meta --------------------------------------------------
 
 def test_patch_meta_whole_window_and_point(sentinel1_iw):
@@ -237,13 +231,6 @@ def test_field_corners_without_grid_raises():
     bare = Field([0, 1], [0, 1], [[0.0, 1.0], [2.0, 3.0]], name="x")
     with pytest.raises(AttributeError):
         bare.corners()
-
-
-def test_bare_patch_has_no_meta():
-    da = xarray.DataArray(numpy.zeros((1, 8, 8)), dims=("band", "y", "x"))
-    patch = Patch(da, Window(0, 0, 4, 4))
-    with pytest.raises(AttributeError):
-        patch.meta
 
 
 # -- default (no reader) ------------------------------------------

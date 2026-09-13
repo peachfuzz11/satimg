@@ -30,14 +30,12 @@ from typing import TYPE_CHECKING
 import numpy
 import xarray
 
-from satimg import tiling
 from satimg.readers import CHUNK_PX
 from satimg.tiling import read_window
 from satimg.transform import _as_n2
 
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window
-    from satimg.transform import Transformer
 
 
 def bilinear(
@@ -97,8 +95,7 @@ class Field:
         *,
         name: str,
         units: str = "",
-        transform: "Transformer | None" = None,
-        shape: tuple[int, int] | None = None,
+        shape=None,
     ):
         self._rows = numpy.asarray(rows, dtype=float)
         self._cols = numpy.asarray(cols, dtype=float)
@@ -110,8 +107,16 @@ class Field:
             )
         self.name = name
         self.units = units
-        self._transform = transform
-        self._shape = shape  # (height, width) of the full product grid
+        # (height, width) of the full product grid -- a plain tuple, or a
+        # zero-arg callable resolved lazily (see _resolve_shape), so building
+        # a Field never has to eagerly force a product's raw/visual open just
+        # to learn its shape unless .grid/.corners() actually need it.
+        self._shape = shape
+
+    def _resolve_shape(self) -> tuple[int, int] | None:
+        if self._shape is None:
+            return None
+        return self._shape() if callable(self._shape) else self._shape
 
     # -- point lookup ---------------------------------------------------
     def at(self, coords):
@@ -126,9 +131,10 @@ class Field:
         """``{"top_left": v, "top_right": v, "bottom_left": v, "bottom_right": v,
         "center": v}`` -- the field at the four corners and centre of the full
         product grid."""
-        if self._shape is None:
+        shape = self._resolve_shape()
+        if shape is None:
             raise AttributeError(f"field {self.name!r} has no product grid attached")
-        vals = self.at(_corner_center(*self._shape))
+        vals = self.at(_corner_center(*shape))
         return {k: float(v) for k, v in zip(CORNER_KEYS, vals)}
 
     # -- full grid ----------------------------------------------------
@@ -136,11 +142,12 @@ class Field:
     def grid(self) -> xarray.DataArray:
         """The field bilinearly upsampled to the whole product grid, lazy
         ``(y, x)``."""
-        if self._shape is None:
+        shape = self._resolve_shape()
+        if shape is None:
             raise AttributeError(f"field {self.name!r} has no product grid attached")
         import dask.array as darray
 
-        height, width = self._shape
+        height, width = shape
         rows, cols, values = self._rows, self._cols, self._values
         block = darray.blockwise(
             lambda br, bc: bilinear(rows, cols, values, br[:, None], bc[None, :]),
@@ -156,14 +163,6 @@ class Field:
     def read(self, window: "Window") -> xarray.DataArray:
         """Lazy ``(y, x)`` sub-array for ``window``."""
         return read_window(self.grid, window)
-
-    def patches(self, *args, **kwargs):
-        """Walk :attr:`grid` in windows. See :func:`satimg.tiling.patches`."""
-        return tiling.patches(self.grid, *args, transformer=self._transform, **kwargs)
-
-    def patches_at(self, *args, **kwargs):
-        """Walk :attr:`grid` at given points. See :func:`satimg.tiling.patches_at`."""
-        return tiling.patches_at(self.grid, *args, transformer=self._transform, **kwargs)
 
     def __repr__(self) -> str:
         u = f", units={self.units!r}" if self.units else ""

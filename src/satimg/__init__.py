@@ -5,13 +5,9 @@
     product = satimg.open("/data/S2A_MSIL1C_....SAFE")
 
     for patch in product.patches(512, overlap=64):
-        do_something(patch.values)        # (band, y, x) native dtype
+        do_something(patch.raw.values)    # (band, y, x) native dtype
         print(patch.col, patch.row)       # where it sits in the full image
-        print(patch.center_latlon)        # where it sits on Earth
-
-    # any other array -- the uint8 visualisation, a derived index, ...
-    for patch in satimg.patches(product.visual, 512, transformer=product.transformer):
-        ...
+        print(patch.meta.sample())        # {field: value} at the patch centre
 """
 
 import logging
@@ -29,9 +25,10 @@ from satimg import products as _products  # noqa: F401  (populates the registry)
 from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
+from satimg.patch import Patch
 from satimg.product import Product, ZipNativeUnsupportedError, open, open_zip
 from satimg.registry import UnknownProductError
-from satimg.tiling import Patch, as_band_yx, label_bands, patches, patches_at, read_window
+from satimg.tiling import as_band_yx, label_bands, read_window
 
 __all__ = [
     "__version__",
@@ -41,8 +38,6 @@ __all__ = [
     "Product",
     "ZipNativeUnsupportedError",
     "Patch",
-    "patches",
-    "patches_at",
     "read_window",
     "as_band_yx",
     "label_bands",
