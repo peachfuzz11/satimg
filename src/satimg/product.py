@@ -34,10 +34,9 @@ from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
-import numpy
 import xarray
 
-from satimg import doppler, tiling
+from satimg import tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
 from satimg.tiling import Patch
@@ -198,6 +197,7 @@ class Product(abc.ABC):
     def footprint(self) -> dict:
         """GeoJSON-ish ``{"type": "Feature", "geometry": {...}}`` outline."""
 
+    @abc.abstractmethod
     def heading_in_image(self, rowcol, heading_deg):
         """Convert a compass heading (degrees clockwise from true north) into
         this product's own pixel frame, at pixel ``rowcol``.
@@ -206,13 +206,12 @@ class Product(abc.ABC):
         (decreasing row), ``90`` towards the right -- handy for e.g. drawing a
         detected ship's heading as an arrow directly on the raster.
 
-        The default assumes a standard map-projected, north-up raster (true
-        north is "up"), which holds for every orthorectified product
-        (Sentinel-2, Landsat, ...); :class:`~satimg.products.sentinel1.Sentinel1Product`
-        overrides this since GRD imagery is still in native sensor geometry.
+        Every concrete product implements this using its own data: a
+        map-projected, north-up raster (Sentinel-2, Landsat) needs no
+        rotation at all; :class:`~satimg.products.sentinel1.Sentinel1Product`
+        derives one from its own platform heading, since GRD imagery is
+        still in native sensor geometry.
         """
-        result = doppler.heading_in_image(heading_deg, 0.0)
-        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     @abc.abstractmethod
     def thumbnail(self) -> "PIL.Image.Image":

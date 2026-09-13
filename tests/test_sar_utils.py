@@ -1,11 +1,11 @@
-"""SAR moving-target azimuth-shift geometry: heading conversion and the azimuth
-displacement itself. See ``satimg/doppler.py`` for the derivation and sign
-conventions."""
+"""SAR-specific per-pixel geometry: heading conversion and the moving-target
+azimuth-shift displacement itself. See ``satimg/sar_utils.py`` for the
+derivation and sign conventions."""
 
 import numpy
 import pytest
 
-from satimg.doppler import (
+from satimg.sar_utils import (
     azimuth_shift_m,
     ground_track_heading,
     heading_in_image,
