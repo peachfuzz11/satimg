@@ -175,8 +175,8 @@ class Sentinel2L1CProduct(Product):
     angle grids (``sun_zenith``, ``sun_azimuth``, ``view_zenith``, ``view_azimuth``);
     the viewing grids are the per-detector grids merged."""
 
-    def __init__(self, path: str, source: Source | None = None):
-        super().__init__(path, source)
+    def __init__(self, source: Source):
+        super().__init__(source)
         self._meta = _parse_mtd(self._source, self._path)
         self._tl = _parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]

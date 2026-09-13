@@ -44,8 +44,8 @@ class LandsatProduct(Product):
     angle rasters (``sun_zenith``, ``sun_azimuth``, ``view_zenith``,
     ``view_azimuth``), read decimated to a coarse grid."""
 
-    def __init__(self, path: str, source: Source | None = None):
-        super().__init__(path, source)
+    def __init__(self, source: Source):
+        super().__init__(source)
         with self._source.open("MTL.json") as f:
             mtl = json.load(f)["LANDSAT_METADATA_FILE"]
 

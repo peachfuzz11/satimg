@@ -31,6 +31,14 @@ class Source(abc.ABC):
         """The product's own identity string (its directory/root basename),
         for ``__repr__`` and :func:`~satimg.registry.resolve`."""
 
+    @property
+    @abc.abstractmethod
+    def path(self) -> str:
+        """A real filesystem directory, for a raster-only code path (guarded
+        by :meth:`~satimg.product.Product._require_extracted`) to build band
+        file paths against. Just :attr:`name` when :attr:`is_directory` is
+        ``False`` -- there is no real path, and nothing should ever read it."""
+
     @abc.abstractmethod
     def find_file(self, filename: str) -> str | None:
         """Root-relative path of the first ``filename`` found anywhere under
@@ -62,6 +70,10 @@ class DirSource(Source):
     @property
     def name(self) -> str:
         return os.path.basename(os.path.normpath(self._path))
+
+    @property
+    def path(self) -> str:
+        return self._path
 
     def _abs(self, relpath: str) -> str:
         return os.path.join(self._path, *relpath.split("/")) if relpath else self._path
@@ -100,6 +112,10 @@ class ZipSource(Source):
 
     @property
     def name(self) -> str:
+        return self._display_name
+
+    @property
+    def path(self) -> str:
         return self._display_name
 
     def _full(self, relpath: str) -> str:

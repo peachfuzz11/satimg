@@ -146,8 +146,8 @@ class Sentinel1Product(Product):
     lat/lon from its as-detected position.
     """
 
-    def __init__(self, path: str, source: Source | None = None):
-        super().__init__(path, source)
+    def __init__(self, source: Source):
+        super().__init__(source)
         meta = _read_manifest(self._source)
         self._timestamp = meta["timestamp"]
         self._footprint = meta["footprint"]

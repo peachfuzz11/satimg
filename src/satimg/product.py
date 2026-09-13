@@ -73,9 +73,9 @@ class ZipNativeUnsupportedError(NotImplementedError):
 
 
 class Product(abc.ABC):
-    def __init__(self, path: str, source: Source | None = None):
-        self._path = str(path)
-        self._source = source if source is not None else DirSource(self._path)
+    def __init__(self, source: Source):
+        self._source = source
+        self._path = source.path
 
     @property
     def path(self) -> str:
@@ -316,7 +316,7 @@ def open(path: str) -> Product:
 
     cls = resolve(path)
     logger.debug("opened %s as %s", path, cls.__name__)
-    return cls(path)
+    return cls(DirSource(path))
 
 
 @contextmanager
@@ -358,7 +358,7 @@ def open_zip(
             logger.debug("zip-native product root: %r", root or "(flat)")
             cls = resolve(display_name)
             source = ZipSource(archive, root, display_name)
-            with cls(display_name, source=source) as product:
+            with cls(source) as product:
                 yield product
         return
 
