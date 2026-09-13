@@ -31,6 +31,7 @@ import numpy
 import xarray
 
 from satimg import tiling
+from satimg.readers import CHUNK_PX
 from satimg.tiling import read_window
 from satimg.transform import _as_n2
 
@@ -144,9 +145,9 @@ class Field:
         block = darray.blockwise(
             lambda br, bc: bilinear(rows, cols, values, br[:, None], bc[None, :]),
             "yx",
-            darray.arange(height, chunks=2048),
+            darray.arange(height, chunks=CHUNK_PX),
             "y",
-            darray.arange(width, chunks=2048),
+            darray.arange(width, chunks=CHUNK_PX),
             "x",
             dtype=float,
         )

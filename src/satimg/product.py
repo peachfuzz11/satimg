@@ -15,11 +15,14 @@ it offers the same two views on the pixels --
 
 ``for patch in product`` is shorthand for ``product.patches()``.
 
-``patches`` / ``patches_at`` rechunk ``raw`` and ``visual`` to the loop's
-window size, so each patch read pulls a single tile. A product releases its
-rasters when its ``with`` block exits, so use ``with satimg.open(path) as
-product`` (and :func:`satimg.open_zip`) to loop over many without leaking
-handles.
+``patches`` / ``patches_at`` open their own raw / visual view, separate from
+:attr:`Product.raw` / :attr:`Product.visual`, dask-chunked to exactly the
+loop's window size -- so each patch read pulls a single tile -- and close it
+when the loop ends (return, break, or an exception). ``product.raw`` /
+``product.visual`` accessed directly (outside a loop) are cached on the
+product and released when its ``with`` block exits, so use ``with
+satimg.open(path) as product`` (and :func:`satimg.open_zip`) if you use those
+directly across many products, to avoid leaking handles.
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ import xarray
 from satimg import tiling
 from satimg.geometry import EdgeMode
 from satimg.metadata import Field, Metadata
+from satimg.readers import CHUNK_PX
 from satimg.tiling import Patch
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -68,15 +72,17 @@ class Product(abc.ABC):
         self._close()
 
     def _close(self) -> None:
-        """Close the rasters behind :attr:`raw` / :attr:`visual` and drop the
-        cached views.
+        """Close the rasters behind the cached :attr:`raw` / :attr:`visual` and
+        drop them.
 
         Each view carries a ``_close`` that shuts every band it opened -- wired
         on in :func:`satimg.readers.merge_bands`, kept across the product's
-        wrappers by :func:`satimg.readers.keep_open` and across the rechunk by
-        :meth:`_align_view_chunks` -- so closing the two views is all the
-        product needs to track. Called on ``with`` exit and by
-        :func:`satimg.open_zip`; idempotent, and a later access rebuilds.
+        wrappers by :func:`satimg.readers.keep_open` -- so closing the two
+        views is all the product needs to track. Does not touch a raw/visual
+        view opened by an in-flight :meth:`patches` / :meth:`patches_at` call
+        -- those close themselves when their own loop ends. Called on ``with``
+        exit and by :func:`satimg.open_zip`; idempotent, and a later access
+        rebuilds.
         """
         for name in ("raw", "visual"):
             da = self.__dict__.pop(name, None)
@@ -87,35 +93,41 @@ class Product(abc.ABC):
                     logger.debug("error closing %s raster(s)", name, exc_info=True)
 
     # -- pixel views ------------------------------------------------
-    @property
     @abc.abstractmethod
+    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+        """Open + merge every native band onto a common ``(band, y, x)`` grid,
+        dask-chunked to ``tile`` (all bands in one chunk), native dtype, lazy.
+        """
+
+    @cached_property
     def raw(self) -> xarray.DataArray:
-        """All native bands on a common ``(band, y, x)`` grid, native dtype, lazy."""
+        """All native bands on a common ``(band, y, x)`` grid, native dtype,
+        lazy, dask-chunked to a sane default (:data:`~satimg.readers.CHUNK_PX`).
+
+        For a loop's own window size, iterate :meth:`patches` /
+        :meth:`patches_at` instead: they open their own raw chunked to exactly
+        the window size, and close it when the loop ends, rather than reusing
+        (or resizing) this one.
+        """
+        return self._open_raw(CHUNK_PX)
 
     @cached_property
     def visual(self) -> xarray.DataArray:
         """The sensor's ``uint8`` visualisation, lazy: 3-band true colour for
-        optical sensors, 1-band greyscale for SAR."""
-        return self._render_visual()
+        optical sensors, 1-band greyscale for SAR. Built from :attr:`raw`."""
+        return self._render_visual(self.raw, CHUNK_PX)
 
     @abc.abstractmethod
-    def _render_visual(self) -> xarray.DataArray:
-        """Build the visualisation array (sensor-specific)."""
+    def _render_visual(
+        self, raw: xarray.DataArray, tile: int | tuple[int, int]
+    ) -> xarray.DataArray:
+        """Build the visualisation array (sensor-specific) from ``raw``.
+
+        ``tile`` is the same dask chunk size ``raw`` was opened with, for a
+        subclass (e.g. Sentinel-2) whose visual reads an independent file
+        rather than deriving from ``raw``, so it can be chunked to match."""
 
     # -- iteration ------------------------------------------------
-    def _align_view_chunks(self, size: int | tuple[int, int]) -> None:
-        """Chunk the built :attr:`raw` / :attr:`visual` views to ``size`` tiles so
-        a window read decodes one tile per band instead of the whole band. This
-        is where the readers' unchunked opens get their dask tiling; runs once
-        per ``patches`` / ``patches_at`` call, before iteration.
-        """
-        sw, sh = (size, size) if isinstance(size, int) else size
-        for name in ("raw", "visual"):
-            da = getattr(self, name)  # builds it lazily; no pixels read yet
-            tiled = da.chunk({"band": -1, "y": sh, "x": sw})
-            tiled.set_close(da._close)  # .chunk() drops the hook
-            self.__dict__[name] = tiled
-
     def patches(
         self,
         size: int | tuple[int, int] = 512,
@@ -124,18 +136,27 @@ class Product(abc.ABC):
         edge: EdgeMode = "pad",
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk :attr:`raw` in windows. See :func:`satimg.tiling.patches`.
+        """Walk the product in windows of ``size``. See
+        :func:`satimg.tiling.patches`.
 
-        :attr:`raw` and :attr:`visual` are rechunked to ``size`` first, so every
-        ``patch.raw`` / ``patch.visual`` / ``patch.values`` read decodes just the
-        one tile it covers. Patches yielded here carry a lazy :attr:`Patch.meta`
-        bound to this product's :attr:`metadata`.
+        Opens its own raw and visual view -- separate from :attr:`raw` /
+        :attr:`visual` -- both dask-chunked to exactly ``size``, so every
+        ``patch.raw`` / ``patch.visual`` / ``patch.values`` read decodes just
+        the one tile it covers. Both close when the loop ends (return, break,
+        or an exception), whichever comes first -- no explicit
+        ``with``/``close()`` needed for this view. Patches yielded here carry
+        a lazy :attr:`Patch.meta` bound to this product's :attr:`metadata`.
         """
-        self._align_view_chunks(size)
-        return tiling.patches(
-            self.raw, size, overlap=overlap, edge=edge, batch=batch,
-            transformer=self.transformer, product=self,
-        )
+        raw = self._open_raw(size)
+        visual = self._render_visual(raw, size)
+        try:
+            yield from tiling.patches(
+                raw, size, overlap=overlap, edge=edge, batch=batch,
+                transformer=self.transformer, product=self, visual=visual,
+            )
+        finally:
+            raw.close()
+            visual.close()
 
     def patches_at(
         self,
@@ -144,18 +165,24 @@ class Product(abc.ABC):
         *,
         batch: int | None = None,
     ) -> Iterator[Patch] | Iterator[list[Patch]]:
-        """Walk :attr:`raw` at caller-supplied ``(col, row)`` points. See
+        """Walk the product at caller-supplied ``(col, row)`` points. See
         :func:`satimg.tiling.patches_at`.
 
-        :attr:`raw` and :attr:`visual` are rechunked to ``size`` first (see
-        :meth:`patches`). Patches yielded here carry a lazy :attr:`Patch.meta`
-        bound to this product's :attr:`metadata`.
+        Opens its own raw / visual dask-chunked to exactly ``size`` and closes
+        them when the loop ends -- see :meth:`patches`. Patches yielded here
+        carry a lazy :attr:`Patch.meta` bound to this product's
+        :attr:`metadata`.
         """
-        self._align_view_chunks(size)
-        return tiling.patches_at(
-            self.raw, points, size, batch=batch,
-            transformer=self.transformer, product=self,
-        )
+        raw = self._open_raw(size)
+        visual = self._render_visual(raw, size)
+        try:
+            yield from tiling.patches_at(
+                raw, points, size, batch=batch,
+                transformer=self.transformer, product=self, visual=visual,
+            )
+        finally:
+            raw.close()
+            visual.close()
 
     def __iter__(self) -> Iterator[Patch]:
         return iter(self.patches())
