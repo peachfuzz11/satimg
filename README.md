@@ -37,7 +37,8 @@ for patch in product.patches(512):
 ```
 
 A **zip archive** is read zip-native, straight off the archive — nothing is
-ever extracted to disk:
+ever extracted to disk, and there's no temp dir to release, so a `with`
+block isn't needed just for a one-off read:
 
 ```python
 product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE.zip")
@@ -56,7 +57,7 @@ For pixel access (`raw` / `visual` / `patches` / `patches_at`) from a zip,
 extract it first with `satimg.open_zip`:
 
 ```python
-with satimg.open_zip("/data/scene.zip") as product:   # extract=True, the default
+with satimg.open_zip("/data/scene.zip") as product:
     for patch in product.patches(512):
         ...
 ```
@@ -65,13 +66,12 @@ This returns a fully capable, directory-backed product exactly like
 `satimg.open` on a directory would. It extracts to a temp dir that is
 removed — along with the product's open rasters — when the block exits; read
 what you need inside the block, since a lazy view can't be rebuilt
-afterwards. Pass `dest=` to control where that temp dir is created, or
-`extract=False` for the same zip-native product `satimg.open` gives a zip by
-default, spelled out explicitly.
+afterwards. Pass `dest=` to control where that temp dir is created.
 
-A product's open rasters are released when its `with` block exits, so use
-`with satimg.open(path) as product:` — zipped or not — if you loop over many
-products, to avoid leaking file handles.
+A product's open rasters (and, for a zip-native one, its open archive) are
+released when its `with` block exits, so use `with satimg.open(path) as
+product:` — zipped or not — if you loop over many products, to release
+handles promptly rather than waiting on garbage collection.
 
 ### Two views on the pixels
 

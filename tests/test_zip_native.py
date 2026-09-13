@@ -1,7 +1,8 @@
-"""``satimg.open_zip(zip_path, extract=False)`` reads a product's metadata
-straight off the archive, with nothing extracted to disk -- compared here
-against the same product opened normally (directory-backed), not golden
-values. Pixel access stays extraction-only and must raise clearly."""
+"""``satimg.open(zip_path)`` (a zip archive, detected by content) reads a
+product's metadata straight off the archive, with nothing extracted to disk
+-- compared here against the same product opened normally (directory-
+backed), not golden values. Pixel access stays extraction-only (use
+``satimg.open_zip`` instead) and must raise clearly."""
 
 import numpy
 import pytest
@@ -37,7 +38,7 @@ def dir_product(key):
 
 @pytest.fixture(scope="module")
 def zip_product(zip_path):
-    with satimg.open_zip(zip_path, extract=False) as p:
+    with satimg.open(zip_path) as p:
         yield p
 
 
@@ -89,13 +90,3 @@ def test_patches_raises(zip_product):
 def test_patches_at_raises(zip_product):
     with pytest.raises(satimg.ZipNativeUnsupportedError):
         next(iter(zip_product.patches_at([(0, 0)], 64)))
-
-
-def test_open_auto_detects_the_same_zip_native_mode(zip_path, zip_product):
-    # satimg.open(path) auto-detects a zip and resolves it to the same
-    # zip-native mode as open_zip(path, extract=False).
-    with satimg.open(zip_path) as p:
-        assert type(p) is type(zip_product)
-        assert p.timestamp == zip_product.timestamp
-        with pytest.raises(satimg.ZipNativeUnsupportedError):
-            p.raw

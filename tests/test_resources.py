@@ -8,6 +8,7 @@ fd counting is Linux-only (``/proc/self/fd``); ``psutil`` is not a dependency.
 import gc
 import os
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -127,8 +128,7 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
 
 def test_open_detects_a_zip_and_reads_it_zip_native(landsat_zip):
     # satimg.open() auto-detects a zip archive (by content, not extension)
-    # and resolves it to the same zip-native mode as
-    # open_zip(path, extract=False) -- nothing extracted, raster raises.
+    # and reads it zip-native -- nothing extracted, raster raises.
     base = _open_fds()
 
     with satimg.open(landsat_zip) as p:
@@ -140,27 +140,29 @@ def test_open_detects_a_zip_and_reads_it_zip_native(landsat_zip):
     assert _open_fds() - base <= 1, "file descriptors leaked past open()"
 
 
-def test_open_zip_extract_false_never_writes_to_disk_and_releases_handles(
-    landsat_zip, tmp_path
-):
-    base = _open_fds()
-    before = set(os.listdir(tmp_path))
+def test_open_zip_native_never_writes_to_disk(landsat_zip):
+    tmp_root = tempfile.gettempdir()
+    before = set(os.listdir(tmp_root))
 
-    with satimg.open_zip(landsat_zip, dest=str(tmp_path), extract=False) as p:
+    with satimg.open(landsat_zip) as p:
         _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
-        assert set(os.listdir(tmp_path)) == before, "extract=False must never write to dest"
 
-    gc.collect()
-    assert _open_fds() - base <= 1, "file descriptors leaked past open_zip(extract=False)"
+    assert set(os.listdir(tmp_root)) == before, "satimg.open on a zip must never extract"
 
 
-def test_open_zip_extract_false_loop_does_not_leak(landsat_zip):
+def test_open_zip_native_needs_no_with_block(landsat_zip):
+    # a one-off metadata read needs no with -- there's no temp dir to
+    # release, and the archive handle it did open releases via GC once the
+    # product goes out of scope.
     base = _open_fds()
-    for _ in range(3):
-        with satimg.open_zip(landsat_zip, extract=False) as p:
-            _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
+
+    p = satimg.open(landsat_zip)
+    assert p.timestamp
+    assert _open_fds() > base, "the zip archive should be open"
+
+    del p
     gc.collect()
-    assert _open_fds() - base <= 1
+    assert _open_fds() - base <= 1, "file descriptor leaked without a with block"
 
 
 @pytest.mark.parametrize("key", ALL)

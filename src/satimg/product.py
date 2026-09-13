@@ -31,10 +31,10 @@ A zip is read zip-native, straight off the archive with nothing ever
 extracted: ``timestamp`` / ``footprint`` / ``transformer`` / ``thumbnail()``
 / ``metadata`` (all but Landsat's, which ships only as full rasters) work as
 usual, but ``raw`` / ``visual`` / ``patches`` / ``patches_at`` raise
-:class:`ZipNativeUnsupportedError` -- there is no pixel data to read without
-extracting. For that, extract the archive first with :func:`open_zip`
-(``extract=True``, the default), which returns a fully capable, directory-
-backed product exactly like a plain ``satimg.open(directory)`` would.
+:class:`ZipNativeUnsupportedError`, since there is no pixel data to read
+without extracting -- for that, use :func:`open_zip` instead, which extracts
+the archive first and returns a fully capable, directory-backed product
+exactly like a plain ``satimg.open(directory)`` would.
 """
 
 from __future__ import annotations
@@ -70,10 +70,8 @@ class ZipNativeUnsupportedError(NotImplementedError):
     """Raised by ``raw`` / ``visual`` / ``patches`` / ``patches_at`` -- and by
     Landsat's per-pixel angle ``metadata``, the one metadata piece with no
     XML/JSON equivalent -- on a zip-native product: one opened from a zip
-    archive via :func:`open`, or via :func:`open_zip`\\
-    ``(zip_path, extract=False)``. Those need real pixel data, which only
-    exists once the archive is extracted -- :func:`open_zip`\\
-    ``(zip_path, extract=True)`` (the default).
+    archive via :func:`open`. Those need real pixel data, which only exists
+    once the archive is extracted -- use :func:`open_zip` instead.
     """
 
 
@@ -92,14 +90,12 @@ class Product(abc.ABC):
     def _require_extracted(self, what: str) -> None:
         """Guard for a raster-only code path: raise
         :class:`ZipNativeUnsupportedError` if this product is zip-native --
-        opened from a zip archive (:func:`open`, or
-        :func:`open_zip`\\ ``(..., extract=False)``) -- where no pixel data
+        opened from a zip archive via :func:`open` -- where no pixel data
         was ever written to disk."""
         if not self._source.is_directory:
             raise ZipNativeUnsupportedError(
                 f"{what} needs the product extracted to disk -- extract the "
-                f"archive first with satimg.open_zip(zip_path, extract=True) "
-                f"(the default)"
+                f"archive first with satimg.open_zip(zip_path)"
             )
 
     # -- resources ------------------------------------------------
@@ -328,8 +324,12 @@ def open(path: str) -> Product:
     :func:`~satimg.source.open_source` factory (detected by content, not
     extension); the concrete :class:`Product` subclass is then resolved by
     :func:`~satimg.registry.resolve` against the source's own identity name.
-    A zip archive resolves to a zip-native source -- see the module
-    docstring.
+    A zip archive resolves to a zip-native source (see the module
+    docstring) with nothing on disk to release, so -- unlike
+    :func:`open_zip` -- a ``with`` block isn't needed just to read a zip's
+    metadata; use one anyway (``with satimg.open(path) as product:``) when
+    looping over many products, zipped or not, to release rasters/archive
+    handles promptly rather than waiting on garbage collection.
     """
     from satimg.registry import resolve  # deferred: registry imports Product
     from satimg.source import open_source
@@ -341,38 +341,19 @@ def open(path: str) -> Product:
 
 
 @contextmanager
-def open_zip(
-    zip_path: str, dest: str | None = None, extract: bool = True
-) -> Iterator[Product]:
-    """Open a zipped product. Use the ``with`` form either way.
+def open_zip(zip_path: str, dest: str | None = None) -> Iterator[Product]:
+    """Extract a zipped product to a temp dir (under ``dest``, or the system
+    default) and return the matching :class:`Product`, fully capable --
+    ``raw`` / ``visual`` / ``patches`` / ``patches_at`` all work, same as a
+    directory-backed product. Use the ``with`` form -- both the temp dir and
+    the product's open rasters are released on exit; read what you need
+    inside the block, since a lazy view cannot be rebuilt once the temp dir
+    is gone.
 
-    With ``extract=True`` (the default), the archive is fully extracted to a
-    temp dir (under ``dest``, or the system default) and the returned
-    :class:`Product` supports everything a directory-backed one does,
-    including ``raw`` / ``visual`` / ``patches`` / ``patches_at``. Both the
-    temp dir and the product's open rasters are released on exit; read what
-    you need inside the block -- a lazy view cannot be rebuilt once the temp
-    dir is gone.
-
-    With ``extract=False``, nothing is ever written to disk (``dest`` is
-    unused) -- same as plain :func:`open`\\ ``(zip_path)``, which resolves a
-    zip archive to this same zip-native mode. The returned product's
-    ``timestamp`` / ``footprint`` / ``transformer`` / ``thumbnail()`` (and,
-    except for Landsat, ``metadata``) work straight off the zip; ``raw`` /
-    ``visual`` / ``patches`` / ``patches_at`` (and Landsat's ``metadata``)
-    raise :class:`ZipNativeUnsupportedError` -- use ``extract=True`` for
-    those.
+    For metadata without extracting anything to disk, use plain
+    :func:`open`\\ ``(zip_path)`` instead -- no ``with`` needed, since there
+    is no temp dir to release; see the module docstring.
     """
-    if not extract:
-        from satimg.registry import resolve  # deferred: registry imports Product
-        from satimg.source import zip_source
-
-        source = zip_source(zip_path)
-        cls = resolve(source.name)
-        with cls(source) as product:
-            yield product
-        return
-
     with tempfile.TemporaryDirectory(dir=dest, ignore_cleanup_errors=True) as tmp:
         logger.debug("extracting %s to %s", zip_path, tmp)
         with zipfile.ZipFile(zip_path) as archive:
