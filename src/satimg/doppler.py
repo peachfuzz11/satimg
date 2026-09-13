@@ -1,10 +1,15 @@
-"""Geometry for the SAR moving-target azimuth-shift effect.
+"""Geometry for satellite ground-track heading and the SAR moving-target
+azimuth-shift effect.
 
 A ground target with a non-zero velocity relative to the radar's line of sight (LOS)
 is displaced from its true position along the *azimuth* axis of a focused SAR image
--- the effect behind a ship appearing offset from its own wake. The functions here
-are pure geometry, taking already-extracted scalars, so they're reusable and
-testable independently of any product class; see
+-- the effect behind a ship appearing offset from its own wake. ``heading_in_image``
+is the more general, sensor-agnostic sibling: it re-expresses a compass heading in
+an image's own pixel frame, whatever that frame's relationship to true north is
+(identity for a map-projected raster, the platform heading for imagery still in
+native sensor geometry). The functions here are pure geometry, taking
+already-extracted scalars, so they're reusable and testable independently of any
+product class; see :meth:`satimg.product.Product.heading_in_image`,
 :meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift` and
 :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_to_los` for the
 product-facing entry points.
@@ -16,29 +21,6 @@ import numpy
 
 #: metres/second
 SPEED_OF_LIGHT = 299_792_458.0
-
-#: Earth's mean rotation rate, radians/second (IERS/WGS84 value).
-EARTH_ROTATION_RATE = 7.292_115e-5
-
-
-def orbit_inclination(position_m, velocity_ecef_mps) -> float:
-    """Orbital inclination (degrees) from a single Earth-fixed (ECEF) position and
-    velocity state vector, such as the ``<orbit>`` entries in a Sentinel-1
-    annotation file.
-
-    Inclination is a property of the orbital plane in *inertial* space, so the
-    ECEF velocity must first be converted to inertial by adding back Earth's
-    rotation (``v_inertial = v_ecef + omega x r``) before computing the specific
-    angular momentum ``h = r x v`` and ``i = arccos(h_z / |h|)``. Skipping that
-    correction is a several-degree-sized error -- Earth's rotation contributes
-    roughly 7% of a low-Earth-orbit satellite's own speed.
-    """
-    r = numpy.asarray(position_m, dtype=float)
-    v_ecef = numpy.asarray(velocity_ecef_mps, dtype=float)
-    omega = numpy.array([0.0, 0.0, EARTH_ROTATION_RATE])
-    v_inertial = v_ecef + numpy.cross(omega, r)
-    h = numpy.cross(r, v_inertial)
-    return float(numpy.rad2deg(numpy.arccos(h[2] / numpy.linalg.norm(h))))
 
 
 def ground_track_heading(latitude_deg, inclination_deg, ascending):
@@ -78,6 +60,25 @@ def heading_to_los(heading_deg, platform_heading_deg):
     look_direction = (numpy.asarray(platform_heading_deg, dtype=float) + 90.0) % 360.0
     heading = numpy.asarray(heading_deg, dtype=float)
     return (heading - look_direction + 180.0) % 360.0 - 180.0
+
+
+def heading_in_image(heading_deg, up_heading_deg):
+    """Convert a compass heading (degrees clockwise from true north) into the
+    equivalent direction within an image's own pixel frame.
+
+    ``up_heading_deg`` is the true-north compass bearing that the image's own
+    "up" (decreasing row) points towards at this pixel -- ``0`` for a standard
+    map-projected, north-up raster, or a value derived from the local platform
+    heading for imagery still in native sensor geometry (e.g. SAR GRD, where
+    "up" is the reverse of the platform's own direction of travel; see
+    :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image`).
+
+    Returns degrees wrapped to ``[0, 360)``: ``0``/``360`` means the object
+    points towards the top of the image, ``90`` towards the right.
+    """
+    heading = numpy.asarray(heading_deg, dtype=float)
+    up_heading = numpy.asarray(up_heading_deg, dtype=float)
+    return (heading - up_heading) % 360.0
 
 
 def azimuth_shift_m(

@@ -5,23 +5,12 @@ conventions."""
 import numpy
 import pytest
 
-from satimg.doppler import azimuth_shift_m, ground_track_heading, heading_to_los, orbit_inclination
-
-
-class TestOrbitInclination:
-    # a real Sentinel-1 ECEF orbit state vector, from the annotation XML fixture
-    position = [-2_334_804.377925, 6_643_679.620354, 692_079.344575]
-    velocity = [1252.593868, 1220.454302, -7393.997674]
-
-    def test_matches_sentinel1_known_inclination(self):
-        assert orbit_inclination(self.position, self.velocity) == pytest.approx(98.18, abs=0.05)
-
-    def test_earth_rotation_correction_matters(self):
-        # regression guard: without correcting the ECEF velocity to inertial, the
-        # naive h_z/|h| from the raw vectors alone is off by several degrees
-        h = numpy.cross(self.position, self.velocity)
-        naive = numpy.rad2deg(numpy.arccos(h[2] / numpy.linalg.norm(h)))
-        assert abs(naive - 98.18) > 2.0
+from satimg.doppler import (
+    azimuth_shift_m,
+    ground_track_heading,
+    heading_in_image,
+    heading_to_los,
+)
 
 
 class TestGroundTrackHeading:
@@ -74,6 +63,28 @@ class TestHeadingToLos:
     def test_vectorised(self):
         got = heading_to_los(numpy.array([90.0, 270.0, 0.0, 180.0]), 0.0)
         numpy.testing.assert_allclose(got, [0.0, -180.0, -90.0, 90.0])
+
+
+class TestHeadingInImage:
+    def test_pointing_up_is_zero(self):
+        assert heading_in_image(30.0, 30.0) == pytest.approx(0.0)
+
+    def test_pointing_right_is_ninety(self):
+        assert heading_in_image(120.0, 30.0) == pytest.approx(90.0)
+
+    def test_identity_when_up_is_north(self):
+        # a north-up, map-projected raster: image frame == true-north heading
+        for heading in numpy.linspace(0, 360, 9, endpoint=False):
+            assert heading_in_image(heading, 0.0) == pytest.approx(heading % 360.0)
+
+    def test_wraps_to_zero_to_360(self):
+        got = heading_in_image(-10.0, 20.0)
+        assert 0.0 <= got < 360.0
+        assert got == pytest.approx(330.0)
+
+    def test_vectorised(self):
+        got = heading_in_image(numpy.array([30.0, 120.0, 0.0]), 30.0)
+        numpy.testing.assert_allclose(got, [0.0, 90.0, 330.0])
 
 
 class TestAzimuthShiftM:

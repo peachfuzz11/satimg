@@ -200,6 +200,30 @@ def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
     assert away == pytest.approx(-toward)
 
 
+def test_sentinel1_heading_in_image(sentinel1_iw):
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    up_heading = (_local_platform_heading(sentinel1_iw, rowcol) + 180.0) % 360.0
+    assert sentinel1_iw.heading_in_image(rowcol, up_heading) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_in_image(rowcol, (up_heading + 90.0) % 360.0) == pytest.approx(90.0)
+
+
+def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
+    # sanity check against the well-known SAR fact: a descending-pass GRD scene
+    # is displayed close to north-up (ascending passes are the opposite, south-up)
+    assert sentinel1_iw.metadata.attrs["pass"].lower() == "descending"
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    got = sentinel1_iw.heading_in_image(rowcol, 0.0)
+    assert got < 20.0 or got > 340.0
+
+
+@pytest.mark.parametrize("name", ["sentinel2_l1c", "landsat"])
+def test_heading_in_image_is_identity_for_map_projected_products(request, name):
+    product = request.getfixturevalue(name)
+    rowcol = (product.height // 2, product.width // 2)
+    for heading in (0.0, 45.0, 190.0, 350.0):
+        assert product.heading_in_image(rowcol, heading) == pytest.approx(heading % 360.0)
+
+
 def test_thumbnail_opens(product):
     thumb = product.thumbnail()
     assert thumb.size[0] > 0 and thumb.size[1] > 0
