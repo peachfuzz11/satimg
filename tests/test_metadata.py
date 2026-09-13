@@ -70,7 +70,9 @@ class TestSentinel1:
         assert m.attrs["incidence_angle_mid_swath"] == pytest.approx((near + far) / 2, abs=3)
 
     def test_slant_range_time_scale(self, sentinel1_iw):
-        t = sentinel1_iw.metadata.slant_range_time.at((8000, 12000))
+        t = sentinel1_iw.metadata.slant_range_time.at(
+            (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+        )
         assert 1e-3 < t < 1e-2                     # ~5 ms two-way delay
 
     def test_attrs(self, sentinel1_iw):
@@ -208,7 +210,8 @@ def test_metadata_corners_every_field(sentinel2_l1c):
 
 
 def test_patch_meta_corners(sentinel1_iw):
-    patch = next(sentinel1_iw.patches_at([(6000, 9000)], 256))
+    point = (sentinel1_iw.width // 2, sentinel1_iw.height // 2)
+    patch = next(sentinel1_iw.patches_at([point], 256))
     pc = patch.meta.corners()
     assert set(pc) == set(sentinel1_iw.metadata.fields)
     inc = pc["incidence_angle"]
@@ -245,6 +248,9 @@ def test_product_without_reader_has_empty_metadata():
             raise NotImplementedError
 
         def thumbnail(self):  # pragma: no cover
+            raise NotImplementedError
+
+        def heading_in_image(self, rowcol, heading_deg):  # pragma: no cover
             raise NotImplementedError
 
     meta = Bare("/nowhere").metadata

@@ -12,6 +12,7 @@ import rasterio
 import xarray
 from rasterio.transform import Affine
 
+from satimg import eo_utils
 from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import keep_open, merge_bands
@@ -126,3 +127,9 @@ class LandsatProduct(Product):
             if match:
                 return PIL.Image.open(os.path.join(self._path, match))
         raise FileNotFoundError(f"no thumbnail under {self._path}")
+
+    def heading_in_image(self, rowcol, heading_deg):
+        """This product is map-projected and north-up, so a compass heading
+        needs no rotation; see :func:`satimg.eo_utils.heading_in_image`."""
+        result = eo_utils.heading_in_image(heading_deg)
+        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)

@@ -14,6 +14,7 @@ import rasterio
 import rioxarray
 import xarray
 
+from satimg import eo_utils
 from satimg.metadata import Metadata, fill_nan_nearest, regular_axis
 from satimg.product import Product
 from satimg.readers import CHUNK_PX, find_file, keep_open, merge_bands
@@ -187,3 +188,9 @@ class Sentinel2L1CProduct(Product):
 
         name = next(o for o in os.listdir(self._path) if o.endswith("-ql.jpg"))
         return PIL.Image.open(os.path.join(self._path, name))
+
+    def heading_in_image(self, rowcol, heading_deg):
+        """This L1C product is map-projected and north-up, so a compass
+        heading needs no rotation; see :func:`satimg.eo_utils.heading_in_image`."""
+        result = eo_utils.heading_in_image(heading_deg)
+        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)

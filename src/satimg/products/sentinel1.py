@@ -13,7 +13,7 @@ import PIL.Image
 import rasterio
 import xarray
 
-from satimg import doppler
+from satimg import sar_utils
 from satimg.metadata import Metadata, grid_from_points
 from satimg.product import Product
 from satimg.readers import find_file, keep_open, merge_bands
@@ -39,7 +39,7 @@ _NS = {
 #: Sentinel-1's sun-synchronous orbit inclination, degrees -- actively maintained,
 #: so effectively constant across the whole constellation and mission (ESA mission
 #: documentation). Used to derive the local ground-track heading at a target's own
-#: latitude; see :func:`satimg.doppler.ground_track_heading`.
+#: latitude; see :func:`satimg.sar_utils.ground_track_heading`.
 _ORBIT_INCLINATION_DEG = 98.1813
 
 
@@ -191,10 +191,10 @@ class Sentinel1Product(Product):
     def _local_platform_heading(self, rowcol):
         """Satellite ground-track heading at ``rowcol``'s own latitude (rather
         than the single scene-wide ``platform_heading`` attr), via
-        :func:`satimg.doppler.ground_track_heading`."""
+        :func:`satimg.sar_utils.ground_track_heading`."""
         lat = self.transformer.rowcol_to_latlon(rowcol)[:, 0]
         ascending = self.metadata.attrs["pass"].lower() == "ascending"
-        heading = doppler.ground_track_heading(
+        heading = sar_utils.ground_track_heading(
             lat, self.metadata.attrs["orbit_inclination"], ascending
         )
         return float(heading[0]) if numpy.ndim(rowcol) == 1 else heading
@@ -206,10 +206,10 @@ class Sentinel1Product(Product):
         ``rowcol`` is a ``(row, col)`` pixel pair (or a list of pairs / an
         ``(N, 2)`` array, matching :meth:`~satimg.metadata.Field.at`) -- needed
         because the local satellite heading varies (slightly) with latitude across
-        a scene. See :func:`satimg.doppler.heading_to_los` for the convention and
+        a scene. See :func:`satimg.sar_utils.heading_to_los` for the convention and
         equations.
         """
-        rel = doppler.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
+        rel = sar_utils.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
         return float(rel) if numpy.ndim(rowcol) == 1 else numpy.asarray(rel)
 
     def heading_in_image(self, rowcol, heading_deg):
@@ -219,7 +219,7 @@ class Sentinel1Product(Product):
         Unlike an orthorectified product, GRD imagery is still in native
         sensor geometry: row increases with azimuth time, i.e. towards the
         direction the platform is heading (see the sign convention in
-        :func:`satimg.doppler.azimuth_shift_m`), so the image's "up"
+        :func:`satimg.sar_utils.azimuth_shift_m`), so the image's "up"
         (decreasing row) points the *opposite* way -- the local platform
         heading plus 180 degrees. This is why an ascending-pass Sentinel-1
         GRD scene looks upside-down (south-up) relative to a map, and a
@@ -229,7 +229,7 @@ class Sentinel1Product(Product):
         contract.
         """
         up_heading = (self._local_platform_heading(rowcol) + 180.0) % 360.0
-        result = doppler.heading_in_image(heading_deg, up_heading)
+        result = sar_utils.heading_in_image(heading_deg, up_heading)
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
@@ -240,14 +240,14 @@ class Sentinel1Product(Product):
         object's ground speed in m/s, and ``heading_deg`` its compass heading in
         degrees clockwise from true north. Returns the estimated shift in pixels
         along the azimuth (row) axis -- positive towards higher row indices. See
-        :func:`satimg.doppler.azimuth_shift_m` for the underlying physics and sign
+        :func:`satimg.sar_utils.azimuth_shift_m` for the underlying physics and sign
         convention.
         """
         m = self.metadata
         attrs = m.attrs
         incidence = m.incidence_angle.at(rowcol)
-        slant_range_m = m.slant_range_time.at(rowcol) * doppler.SPEED_OF_LIGHT / 2
-        shift_m = doppler.azimuth_shift_m(
+        slant_range_m = m.slant_range_time.at(rowcol) * sar_utils.SPEED_OF_LIGHT / 2
+        shift_m = sar_utils.azimuth_shift_m(
             speed, heading_deg, self._local_platform_heading(rowcol), incidence,
             slant_range_m, attrs["platform_velocity"],
         )
