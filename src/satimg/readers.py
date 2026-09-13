@@ -29,22 +29,29 @@ def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataAr
     return view
 
 
+#: dask chunk size (pixels) each band gets on open. A single whole-array chunk
+#: (``.chunk()`` with no arguments) would still make ``xarray.concat`` lazy,
+#: but dask can't read *part* of an unsplit chunk -- so any later windowed
+#: read (directly, or through a ``reindex_like`` onto another band's grid
+#: below) would decode the entire band first. Tiling it here keeps every
+#: downstream read -- including :meth:`~satimg.product.Product.patches`'s
+#: rechunk to the window size -- properly lazy and windowed.
+CHUNK_PX = 1024
+
+
 def merge_bands(
     paths: Iterable[str], *, match: int | None = None
 ) -> xarray.DataArray:
     """Open each path lazily and stack them along ``band``.
 
     With ``match`` (an index into ``paths``) the other bands are
-    nearest-neighbour reindexed onto that band's grid first. Each band gets one
-    dask chunk so ``xarray.concat`` stays lazy -- concatenating plain arrays
-    would read every scene into memory; the real tiling happens later, when
-    :meth:`~satimg.product.Product.patches` chunks the view to the window size.
+    nearest-neighbour reindexed onto that band's grid first.
 
     ``concat`` drops the per-band ``_close``, so it is wired back on: the
     returned array's ``close()`` shuts every band it opened.
     """
     opened = [rioxarray.open_rasterio(p) for p in paths]
-    bands = [b.chunk() for b in opened]  # one chunk each -> concat stays lazy
+    bands = [b.chunk({"x": CHUNK_PX, "y": CHUNK_PX}) for b in opened]
     if match is not None:
         target = bands[match]
         bands = [b.reindex_like(target, method="nearest") for b in bands]

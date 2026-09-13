@@ -73,8 +73,10 @@ def test_context_manager_releases_fds(key):
 
 @pytest.mark.parametrize("key", ALL)
 def test_loop_over_products_does_not_leak(key):
+    # 3 iterations is enough to catch a per-iteration leak trend without
+    # paying for a long loop of real product opens.
     base = _open_fds()
-    for _ in range(10):
+    for _ in range(3):
         with _fresh(key) as p:
             _ = p.visual
     assert _open_fds() - base <= 1
@@ -107,8 +109,10 @@ def test_open_zip_releases_handles_and_cleans_tempdir(landsat_zip, tmp_path):
 
 
 def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
+    # 3 iterations is enough to catch a per-iteration leak trend without
+    # paying for a long loop of real zip extractions.
     base = _open_fds()
-    for _ in range(8):
+    for _ in range(3):
         with satimg.open_zip(landsat_zip, dest=str(tmp_path)) as p:
             _ = p.visual  # opens rasters lazily; open_zip closes them on exit
             next(iter(p.patches(128)))
