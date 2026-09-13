@@ -79,7 +79,7 @@ class TestPatches:
     def test_iter_yields_patches_with_origin(self, product):
         first = next(iter(product))
         assert first.window.col == 0 and first.window.row == 0
-        assert first.values.shape[0] == product.bands
+        assert first.raw.values.shape[0] == product.bands
 
     def test_patches_conserve_indices(self, product):
         seen = list(product.patches(512))
@@ -94,21 +94,19 @@ class TestPatches:
         # bounded: full-res test scenes have thousands of tiles
         chan = product.bands
         head = itertools.islice(product.patches(256, edge="pad"), 8)
-        assert {p.values.shape for p in head} == {(chan, 256, 256)}
+        assert {p.raw.values.shape for p in head} == {(chan, 256, 256)}
 
-    def test_overlap_batches(self, product):
+    def test_overlap_stride(self, product):
         chan = product.bands
-        groups = product.patches(256, overlap=32, edge="pad", batch=8)
-        first = next(groups)
-        assert len(first) == 8
-        assert first[0].values.shape == (chan, 256, 256)
-        assert first[1].window.col == 224  # stride = 256 - 32
+        patches = list(itertools.islice(product.patches(256, overlap=32, edge="pad"), 2))
+        assert patches[0].raw.values.shape == (chan, 256, 256)
+        assert patches[1].window.col == 224  # stride = 256 - 32
 
     def test_raw_patch_matches_direct_read(self, product):
         win = Window(0, 0, 64, 64)
         patch = next(iter(product.patches(64)))
         numpy.testing.assert_array_equal(
-            patch.values, read_window(product.raw, win).values
+            patch.raw.values, read_window(product.raw, win).values
         )
 
     def test_patches_at_keeps_the_point_centred_including_at_a_padded_edge(self, product):
@@ -128,8 +126,11 @@ class TestPatches:
         # the geo-centre of the patch is the requested pixel, not some rounded
         # window centre drifting off it
         want = product.transformer.rowcol_to_latlon((row, col))
-        got = p.center_latlon
-        assert got == pytest.approx((float(want[0, 0]), float(want[0, 1])), abs=1e-9)
+        pc_col, pc_row = p.window.center
+        got = product.transformer.rowcol_to_latlon((pc_row, pc_col))
+        assert (float(got[0, 0]), float(got[0, 1])) == pytest.approx(
+            (float(want[0, 0]), float(want[0, 1])), abs=1e-9
+        )
 
     def test_patch_exposes_raw_visual_and_meta(self, product):
         p = next(product.patches_at([(600, 600)], 256))
@@ -163,7 +164,9 @@ class TestMetadata:
 
     def test_patch_center_latlon_in_footprint_bbox(self, product):
         min_lon, min_lat, max_lon, max_lat = product.bounds()
-        lat, lon = next(iter(product)).center_latlon
+        patch = next(iter(product))
+        col, row = patch.window.center
+        lat, lon = product.transformer.rowcol_to_latlon((row, col))[0]
         pad = 0.5
         assert min_lat - pad <= lat <= max_lat + pad
         assert min_lon - pad <= lon <= max_lon + pad
