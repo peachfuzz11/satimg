@@ -242,4 +242,4 @@ def test_sentinel1_correct_position(sentinel1_iw):
 
 def test_thumbnail_opens(product):
     thumb = product.thumbnail()
-    assert thumb.size[0] > 0 and thumb.size[1] > 0
+    assert thumb.size == (200, 200)

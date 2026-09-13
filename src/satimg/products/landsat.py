@@ -3,38 +3,20 @@
 from __future__ import annotations
 
 import datetime
-import json
 import os
-from functools import cached_property
 
 import numpy
-import rasterio
 import xarray
-from rasterio.crs import CRS
-from rasterio.transform import Affine
 
+from satimg import landsat_utils
+from satimg.landsat_utils import BANDS
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import keep_open, merge_bands
+from satimg.readers import keep_open, load_thumbnail, merge_bands
 from satimg.registry import register
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
-
-#: band order of :attr:`LandsatProduct.raw`.
-BANDS = ("coastal", "blue", "green", "red", "nir08", "swir16", "swir22", "pan",
-         "cirrus", "lwir11", "lwir12")
-_PAN = BANDS.index("pan")
-_RGB = (BANDS.index("red"), BANDS.index("green"), BANDS.index("blue"))
-
-#: per-pixel angle rasters (int16, hundredths of a degree) -> metadata field name.
-_ANGLE_FILES = {
-    "sun_zenith": "SZA.TIF",
-    "sun_azimuth": "SAA.TIF",
-    "view_zenith": "VZA.TIF",
-    "view_azimuth": "VAA.TIF",
-}
-_ANGLE_SCALE = 0.01
 
 
 @register(r"^LC(0[1-9])_L1(TP|GT)_\d+_\d+_\d+_\d+_T1$")
@@ -42,45 +24,21 @@ class LandsatProduct(Product):
     """``raw`` is every band resampled to the 15 m panchromatic grid; ``visual`` is
     a 3-band pan-sharpened true-colour render. ``metadata`` carries the per-pixel
     angle rasters (``sun_zenith``, ``sun_azimuth``, ``view_zenith``,
-    ``view_azimuth``), read decimated to a coarse grid."""
+    ``view_azimuth``), read decimated to a coarse grid. ``MTL.json``/angle-raster
+    parsing itself lives in :mod:`satimg.landsat_utils`."""
 
     def __init__(self, source: Source):
         super().__init__(source)
-        with self._source.open("MTL.json") as f:
-            mtl = json.load(f)["LANDSAT_METADATA_FILE"]
-
-        attrs = mtl["IMAGE_ATTRIBUTES"]
-        self._image_attrs = attrs
-        self._timestamp = datetime.datetime.fromisoformat(
-            f"{attrs['DATE_ACQUIRED']}T{attrs['SCENE_CENTER_TIME']}"
-        )
-        proj = mtl["PROJECTION_ATTRIBUTES"]
-        ring = [
-            (float(proj[f"CORNER_{c}_LON_PRODUCT"]), float(proj[f"CORNER_{c}_LAT_PRODUCT"]))
-            for c in ("UL", "UR", "LR", "LL", "UL")
-        ]
-        self._footprint = {
-            "type": "Feature",
-            "geometry": {"type": "Polygon", "coordinates": [ring]},
-        }
-        if proj.get("MAP_PROJECTION") != "UTM":
-            raise NotImplementedError(
-                f"unsupported MAP_PROJECTION {proj.get('MAP_PROJECTION')!r}"
-            )
-        zone = int(proj["UTM_ZONE"])
-        epsg = 32600 + zone if float(proj["CORNER_UL_LAT_PRODUCT"]) >= 0 else 32700 + zone
-        gsd = float(proj["GRID_CELL_SIZE_PANCHROMATIC"])
-        # MTL's CORNER_UL_PROJECTION_*_PRODUCT is the UL pixel's *centre*; a
-        # geotransform origin is that pixel's corner, half a pixel out.
-        ul_x = float(proj["CORNER_UL_PROJECTION_X_PRODUCT"]) - gsd / 2
-        ul_y = float(proj["CORNER_UL_PROJECTION_Y_PRODUCT"]) + gsd / 2
-        transform = Affine(gsd, 0, ul_x, 0, -gsd, ul_y)
-        self._transformer = Transformer(transform, CRS.from_epsg(epsg))
+        mtl = landsat_utils.parse_mtl(self._source)
+        self._image_attrs = mtl["image_attrs"]
+        self._timestamp = mtl["timestamp"]
+        self._footprint = mtl["footprint"]
+        self._transformer = mtl["transformer"]
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
         self._require_extracted("raw")
         paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
-        merged = merge_bands(paths, match=_PAN, tile=tile)
+        merged = merge_bands(paths, match=landsat_utils.PAN, tile=tile)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
 
     def _render_visual(
@@ -88,11 +46,11 @@ class LandsatProduct(Product):
     ) -> xarray.DataArray:
         self._require_extracted("visual")
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
-        rgb = a.isel(band=list(_RGB)).astype("float32")
+        rgb = a.isel(band=list(landsat_utils.RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
         rgb = rgb * weights[:, None, None]
         rgb = rgb / (rgb.sum(dim="band") + 1e-12)
-        rgb = rgb * a.isel(band=_PAN).astype("float32")
+        rgb = rgb * a.isel(band=landsat_utils.PAN).astype("float32")
         rgb = 0.75 * rgb.fillna(0) ** (1 / 1.4)
         return label_bands(as_band_yx(rgb.clip(0, 255).astype("uint8")),
                            ("red", "green", "blue"))
@@ -100,20 +58,11 @@ class LandsatProduct(Product):
     def _read_metadata(self) -> Metadata:
         # no XML/JSON equivalent ships for these -- only ever as full rasters.
         self._require_extracted("metadata")
-        pan = self._transformer._transform
-        rows = cols = None
+        pan_transform = self._transformer._transform
         fields = {}
-        for name, fname in _ANGLE_FILES.items():
+        for name, fname in landsat_utils.ANGLE_FILES.items():
             path = os.path.join(self._path, fname)
-            with rasterio.open(path) as src:
-                stride = max(1, max(src.height, src.width) // 256)
-                out_h, out_w = src.height // stride, src.width // stride
-                values = src.read(1, out_shape=(out_h, out_w)).astype(float) * _ANGLE_SCALE
-                grid_t = src.transform * Affine.scale(src.width / out_w, src.height / out_h)
-            if rows is None:
-                # angle-grid sample centres expressed in pan-grid pixel coordinates
-                cols = (grid_t.c + (numpy.arange(out_w) + 0.5) * grid_t.a - pan.c) / pan.a - 0.5
-                rows = (grid_t.f + (numpy.arange(out_h) + 0.5) * grid_t.e - pan.f) / pan.e - 0.5
+            rows, cols, values = landsat_utils.read_angle_grid(path, pan_transform)
             fields[name] = self._field(rows, cols, values, name=name, units="degrees")
 
         want = ("SUN_ELEVATION", "SUN_AZIMUTH", "EARTH_SUN_DISTANCE", "ROLL_ANGLE")
@@ -137,14 +86,9 @@ class LandsatProduct(Product):
         return self._footprint
 
     def thumbnail(self):
-        import PIL.Image
-
         entries = self._source.listdir()
         for suffix in ("_small.jpeg", "thumbnail.jpeg", ".jpeg"):
             match = next((o for o in entries if o.endswith(suffix)), None)
             if match:
-                with self._source.open(match) as f:
-                    img = PIL.Image.open(f)
-                    img.load()
-                    return img
+                return load_thumbnail(self._source, match)
         raise FileNotFoundError(f"no thumbnail under {self._source.name}")
