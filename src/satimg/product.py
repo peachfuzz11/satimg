@@ -36,16 +36,14 @@ import tempfile
 import weakref
 import zipfile
 from contextlib import contextmanager
-from dataclasses import dataclass
 from functools import cached_property
-from itertools import batched
 from typing import TYPE_CHECKING, Iterable, Iterator
 
-import numpy
 import xarray
 
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
+from satimg.patch import Patch
 from satimg.readers import CHUNK_PX
 from satimg.tiling import read_window
 
@@ -55,55 +53,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from satimg.transform import Transformer
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class Patch:
-    """One window of a product's raw/visual/metadata, already sliced to that
-    window -- still lazy (only ``.values`` on ``raw``/``visual`` triggers real
-    computation). Built by :meth:`Product._read_patch`, yielded by
-    :meth:`Product.patches` / :meth:`Product.patches_at`::
-
-        for p in product.patches_at(points, 512):
-            p.raw                 # (band, y, x) DataArray for this window, band-labelled
-            p.raw.sel(band="red") # ("B04" for Sentinel-2, "VV" for Sentinel-1)
-            p.visual              # uint8 DataArray, same window
-            p.meta.sample()       # {field: value} per-pixel angles at the patch centre
-    """
-
-    window: Window
-    raw: xarray.DataArray
-    visual: xarray.DataArray
-    meta: PatchMeta
-
-    # -- index passthrough ---------------------------------------
-    @property
-    def col(self) -> int:
-        return self.window.col
-
-    @property
-    def row(self) -> int:
-        return self.window.row
-
-    @property
-    def bounds(self) -> tuple[int, int, int, int]:
-        return self.window.bounds
-
-    @property
-    def center(self) -> tuple[float, float]:
-        """``(col, row)`` of the patch centre in full-image pixels."""
-        return self.window.center
-
-    def image(self) -> "PIL.Image.Image":
-        """Render :attr:`visual` as a PIL image."""
-        import PIL.Image
-
-        arr = self.visual
-        if "band" in arr.dims:
-            arr = arr.transpose("y", "x", "band")
-            if arr.sizes["band"] == 1:
-                arr = arr.isel(band=0)
-        return PIL.Image.fromarray(numpy.asarray(arr.data))
 
 
 class Product(abc.ABC):
@@ -200,8 +149,7 @@ class Product(abc.ABC):
         *,
         overlap: int | tuple[int, int] = 0,
         edge: EdgeMode = "pad",
-        batch: int | None = None,
-    ) -> Iterator[Patch] | Iterator[list[Patch]]:
+    ) -> Iterator[Patch]:
         """Walk the product in windows of ``size``.
 
         Opens its own raw and visual view -- separate from :attr:`raw` /
@@ -209,19 +157,14 @@ class Product(abc.ABC):
         them when the loop ends (return, break, or an exception), whichever
         comes first -- no explicit ``with``/``close()`` needed for this view.
         ``edge`` decides what happens to windows that run past the border (see
-        :class:`~satimg.geometry.Grid`); with ``batch=n`` patches arrive in
-        lists of up to ``n`` instead of one at a time.
+        :class:`~satimg.geometry.Grid`).
         """
         raw = self._open_raw(size)
         visual = self._render_visual(raw, size)
         try:
             grid = Grid(int(raw.sizes["x"]), int(raw.sizes["y"]), size, overlap, edge)
-            if batch is None:
-                for win in grid:
-                    yield self._read_patch(raw, visual, win)
-            else:
-                for group in grid.batched(batch):
-                    yield [self._read_patch(raw, visual, win) for win in group]
+            for win in grid:
+                yield self._read_patch(raw, visual, win)
         finally:
             raw.close()
             visual.close()
@@ -230,9 +173,7 @@ class Product(abc.ABC):
         self,
         points: Iterable[tuple[float, float]],
         size: int | tuple[int, int] = 512,
-        *,
-        batch: int | None = None,
-    ) -> Iterator[Patch] | Iterator[list[Patch]]:
+    ) -> Iterator[Patch]:
         """Walk the product at caller-supplied ``(col, row)`` points. See
         :func:`~satimg.geometry.windows_at`.
 
@@ -242,13 +183,8 @@ class Product(abc.ABC):
         raw = self._open_raw(size)
         visual = self._render_visual(raw, size)
         try:
-            windows = windows_at(points, size)
-            if batch is None:
-                for win in windows:
-                    yield self._read_patch(raw, visual, win)
-            else:
-                for group in batched(windows, batch):
-                    yield [self._read_patch(raw, visual, win) for win in group]
+            for win in windows_at(points, size):
+                yield self._read_patch(raw, visual, win)
         finally:
             raw.close()
             visual.close()

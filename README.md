@@ -56,8 +56,6 @@ already carries `.raw` / `.visual` / `.meta` for that window (see
 [Reading raw + visual + metadata together](#reading-raw--visual--metadata-together)) --
 `product.patches()` / `patches_at()` are the only iterators in the library.
 
-`batch=n` yields lists of `n` patches instead of one at a time.
-
 `product.patches()` / `patches_at()` open `raw` and `visual` chunked to
 exactly the window size before iterating, so each patch read decodes just the
 one tile it covers.
@@ -96,8 +94,8 @@ for patch in product.patches_at(points, 512):
     tile = patch.raw.values         # (band, 512, 512), centred on the point
 ```
 
-`batch=n` works the same as for `patches()`. `satimg.windows_at(points, size)`
-gives the bare `Window`s if you don't need a patch bound.
+`satimg.windows_at(points, size)` gives the bare `Window`s if you don't need a
+patch bound.
 
 ### Reading raw + visual + metadata together
 

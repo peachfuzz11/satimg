@@ -96,13 +96,11 @@ class TestPatches:
         head = itertools.islice(product.patches(256, edge="pad"), 8)
         assert {p.raw.values.shape for p in head} == {(chan, 256, 256)}
 
-    def test_overlap_batches(self, product):
+    def test_overlap_stride(self, product):
         chan = product.bands
-        groups = product.patches(256, overlap=32, edge="pad", batch=8)
-        first = next(groups)
-        assert len(first) == 8
-        assert first[0].raw.values.shape == (chan, 256, 256)
-        assert first[1].window.col == 224  # stride = 256 - 32
+        patches = list(itertools.islice(product.patches(256, overlap=32, edge="pad"), 2))
+        assert patches[0].raw.values.shape == (chan, 256, 256)
+        assert patches[1].window.col == 224  # stride = 256 - 32
 
     def test_raw_patch_matches_direct_read(self, product):
         win = Window(0, 0, 64, 64)

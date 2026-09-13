@@ -25,7 +25,8 @@ from satimg import products as _products  # noqa: F401  (populates the registry)
 from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
-from satimg.product import Patch, Product, open, open_zip
+from satimg.patch import Patch
+from satimg.product import Product, open, open_zip
 from satimg.registry import UnknownProductError
 from satimg.tiling import as_band_yx, label_bands, read_window
 
