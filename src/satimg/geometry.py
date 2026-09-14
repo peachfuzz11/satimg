@@ -168,19 +168,6 @@ class Grid:
     def __len__(self) -> int:
         return sum(1 for _ in self._windows())
 
-    def batched(self, n: int) -> Iterator[list[Window]]:
-        """Yield windows in lists of up to ``n`` (last list may be shorter)."""
-        if n <= 0:
-            raise ValueError("batch size must be positive")
-        batch: list[Window] = []
-        for win in self._windows():
-            batch.append(win)
-            if len(batch) == n:
-                yield batch
-                batch = []
-        if batch:
-            yield batch
-
 
 def windows_at(
     points: Iterable[tuple[float, float]],

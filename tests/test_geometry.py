@@ -75,11 +75,6 @@ class TestGrid:
         assert {w.shape for w in windows} == {(200, 300)}
         assert sorted({w.col for w in windows})[:2] == [0, 200]
 
-    def test_batched(self):
-        grid = Grid(1000, 1000, 256, edge="pad")  # 16 windows
-        batches = list(grid.batched(5))
-        assert [len(b) for b in batches] == [5, 5, 5, 1]
-
     def test_bad_params(self):
         with pytest.raises(ValueError):
             Grid(100, 100, 64, overlap=64)
