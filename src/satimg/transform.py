@@ -11,13 +11,13 @@ always return an ``(N, 2)`` array. ``rowcol`` is ``(row, col)`` = ``(y, x)``;
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import numpy
 import rasterio
 from rasterio import warp
 
-Coords = Union[Sequence[float], Sequence[Sequence[float]], numpy.ndarray]
+Coords = Sequence[float] | Sequence[Sequence[float]] | numpy.ndarray
 
 
 def _as_n2(coords: Coords) -> numpy.ndarray:

@@ -3,8 +3,6 @@ its own. These tests pin that contract and a few high-value records."""
 
 import logging
 
-import pytest
-
 import satimg  # noqa: F401  (import triggers the NullHandler registration)
 from satimg.connectors import _auth
 from satimg.connectors._credentials import Credentials

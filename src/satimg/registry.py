@@ -1,10 +1,5 @@
 """Map a product directory to the :class:`~satimg.product.Product` subclass
-that can read it.
-
-Resolution tries, in order:
-
-1. each registered regex against the directory name;
-2. each class's optional :meth:`Product.sniff` classmethod (content inspection).
+that can read it, by matching each registered regex against the directory name.
 
 Products register themselves with the :func:`register` decorator; importing
 :mod:`satimg.products` pulls them all in.
@@ -43,11 +38,6 @@ def register(pattern: str) -> Callable[[T], T]:
     return decorate
 
 
-def registry() -> list[tuple[str, type[Product]]]:
-    """The registered ``(pattern, class)`` pairs, for inspection."""
-    return [(p.pattern, c) for p, c in _REGISTRY]
-
-
 def resolve(path: str) -> type[Product]:
     """Return the product class for ``path`` or raise :class:`UnknownProductError`."""
     name = Path(path).name
@@ -56,10 +46,5 @@ def resolve(path: str) -> type[Product]:
             logger.debug(
                 "resolved %s via pattern %r -> %s", name, pattern.pattern, cls.__name__
             )
-            return cls
-    for _, cls in _REGISTRY:
-        sniff = getattr(cls, "sniff", None)
-        if callable(sniff) and sniff(path):
-            logger.debug("resolved %s via %s.sniff()", name, cls.__name__)
             return cls
     raise UnknownProductError(path)

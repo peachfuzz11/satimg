@@ -896,15 +896,17 @@ wheels = [
 
 [[package]]
 name = "satimg"
-version = "0.13.0"
+version = "0.13.1"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "dask", extra = ["array"] },
+    { name = "numpy" },
     { name = "onnxruntime" },
     { name = "pillow" },
     { name = "pystac-client" },
     { name = "rasterio" },
+    { name = "requests" },
     { name = "rioxarray" },
     { name = "roaring-landmask" },
     { name = "xarray" },
@@ -919,10 +921,12 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.2" },
     { name = "dask", extras = ["array"], specifier = ">=2025.10.0" },
+    { name = "numpy", specifier = ">=2.0.0" },
     { name = "onnxruntime", specifier = ">=1.23.2" },
     { name = "pillow", specifier = ">=12.0.0" },
     { name = "pystac-client", specifier = ">=0.9.0" },
     { name = "rasterio", specifier = ">=1.4.3" },
+    { name = "requests", specifier = ">=2.32.0" },
     { name = "rioxarray", specifier = ">=0.19.0" },
     { name = "roaring-landmask", specifier = ">=0.10.1" },
     { name = "xarray", specifier = ">=2025.10.1" },

@@ -12,7 +12,6 @@ import numpy
 import pytest
 import xarray
 
-import satimg
 from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product

@@ -18,10 +18,6 @@ class Model(abc.ABC):
         logger.debug("loading ONNX model: %s", model_path)
         self._session = onnxruntime.InferenceSession(model_path)
 
-    @property
-    def session(self):
-        return self._session
-
     def _infer(self, batch: numpy.ndarray) -> numpy.ndarray:
         name = self._session.get_inputs()[0].name
         return self._session.run(None, {name: batch})[0]
