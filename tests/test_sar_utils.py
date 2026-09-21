@@ -66,25 +66,42 @@ class TestHeadingToLos:
 
 
 class TestHeadingInImage:
-    def test_pointing_up_is_zero(self):
-        assert heading_in_image(30.0, 30.0) == pytest.approx(0.0)
+    """GRD frame: row (image "down") runs along the platform heading, column
+    (image "right") along the look direction, platform heading + 90."""
 
-    def test_pointing_right_is_ninety(self):
-        assert heading_in_image(120.0, 30.0) == pytest.approx(90.0)
+    platform_heading = -168.038694
 
-    def test_identity_when_up_is_north(self):
-        # a north-up, map-projected raster: image frame == true-north heading
-        for heading in numpy.linspace(0, 360, 9, endpoint=False):
-            assert heading_in_image(heading, 0.0) == pytest.approx(heading % 360.0)
+    def test_platform_heading_points_down(self):
+        got = heading_in_image(self.platform_heading, self.platform_heading)
+        assert got == pytest.approx(180.0)
+
+    def test_opposite_of_platform_heading_points_up(self):
+        got = heading_in_image(self.platform_heading + 180.0, self.platform_heading)
+        assert got == pytest.approx(0.0)
+
+    def test_look_direction_points_right(self):
+        got = heading_in_image(self.platform_heading + 90.0, self.platform_heading)
+        assert got == pytest.approx(90.0)
+
+    def test_away_from_look_direction_points_left(self):
+        got = heading_in_image(self.platform_heading - 90.0, self.platform_heading)
+        assert got == pytest.approx(270.0)
+
+    def test_is_a_reflection_not_a_rotation(self):
+        # turning the ship clockwise on the map turns it *counter*-clockwise on the raster
+        step = 10.0
+        for heading in numpy.linspace(0, 360, 12, endpoint=False):
+            turned = heading_in_image(heading + step, self.platform_heading)
+            base = heading_in_image(heading, self.platform_heading)
+            assert (turned - base + 180.0) % 360.0 - 180.0 == pytest.approx(-step)
 
     def test_wraps_to_zero_to_360(self):
-        got = heading_in_image(-10.0, 20.0)
-        assert 0.0 <= got < 360.0
-        assert got == pytest.approx(330.0)
+        for heading in numpy.linspace(-360, 720, 41):
+            assert 0.0 <= heading_in_image(heading, self.platform_heading) < 360.0
 
     def test_vectorised(self):
-        got = heading_in_image(numpy.array([30.0, 120.0, 0.0]), 30.0)
-        numpy.testing.assert_allclose(got, [0.0, 90.0, 330.0])
+        got = heading_in_image(numpy.array([30.0, 210.0, 120.0, -60.0]), 30.0)
+        numpy.testing.assert_allclose(got, [180.0, 0.0, 90.0, 270.0])
 
 
 class TestAzimuthShiftM:
@@ -102,22 +119,24 @@ class TestAzimuthShiftM:
         )
         assert got == pytest.approx(0.0, abs=1e-9)
 
-    def test_moving_away_gives_positive_shift(self):
+    def test_moving_away_gives_negative_shift(self):
+        # receding target -> earlier azimuth time -> lower row index
         look_direction = (self.platform_heading + 90.0) % 360.0
         got = azimuth_shift_m(
             10.0, look_direction, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        assert got > 0
+        assert got < 0
 
-    def test_moving_toward_gives_negative_shift(self):
+    def test_moving_toward_gives_positive_shift(self):
+        # approaching target -> later azimuth time -> higher row index
         look_direction = (self.platform_heading + 90.0) % 360.0
         toward = (look_direction + 180.0) % 360.0
         got = azimuth_shift_m(
             10.0, toward, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        assert got < 0
+        assert got > 0
 
     def test_magnitude_matches_closed_form(self):
         look_direction = (self.platform_heading + 90.0) % 360.0
@@ -126,7 +145,7 @@ class TestAzimuthShiftM:
             speed, look_direction, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        expected = (
+        expected = -(
             speed * numpy.sin(numpy.deg2rad(self.incidence))
             * self.slant_range / self.v_sat
         )
