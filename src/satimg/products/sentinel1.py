@@ -173,8 +173,7 @@ class Sentinel1Product(Product):
         SAR-only concern: a map-projected, north-up optical product needs no
         such conversion at all.
         """
-        up_heading = (self._local_platform_heading(rowcol) + 180.0) % 360.0
-        result = sar_utils.heading_in_image(heading_deg, up_heading, mirrored=True)
+        result = sar_utils.heading_in_image(heading_deg, self._local_platform_heading(rowcol))
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):

@@ -62,31 +62,28 @@ def heading_to_los(heading_deg, platform_heading_deg):
     return (heading - look_direction + 180.0) % 360.0 - 180.0
 
 
-def heading_in_image(heading_deg, up_heading_deg, mirrored=False):
+def heading_in_image(heading_deg, platform_heading_deg):
     """Convert a compass heading (degrees clockwise from true north) into the
-    equivalent direction within an image's own pixel frame.
+    direction it points within a SAR GRD's own pixel frame.
 
-    ``up_heading_deg`` is the true-north compass bearing that the image's own
-    "up" (decreasing row) points towards at this pixel -- ``0`` for a standard
-    map-projected, north-up raster, or a value derived from the local platform
-    heading for imagery still in native sensor geometry (e.g. SAR GRD, where
-    "up" is the reverse of the platform's own direction of travel; see
-    :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image`).
+    ``platform_heading_deg`` is the satellite's ground-track heading (see
+    :func:`ground_track_heading`). GRD imagery is still in native sensor
+    geometry: row increases along that heading (image "down") and column
+    increases towards the look direction, ``platform_heading_deg + 90`` for a
+    right-looking sensor (image "right"). The raster is therefore a *mirror
+    image* of the map -- "right" sits counter-clockwise of "up" -- so the sense
+    of every angle reverses, and this is not a plain subtraction of a rotation.
+    See :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image`.
 
-    ``mirrored`` says whether the image is a *reflection* of the map rather than
-    just a rotation of it: with the same "up", its "right" then points
-    counter-clockwise of "up" (at ``up_heading_deg - 90``) instead of clockwise
-    (``up_heading_deg + 90``). Rotating alone can't reproduce that -- the sense
-    of every angle has to be reversed too. Native-geometry SAR GRD is mirrored
-    (see the Sentinel-1 method above); a map-projected raster never is.
-
-    Returns degrees wrapped to ``[0, 360)``: ``0``/``360`` means the object
-    points towards the top of the image, ``90`` towards the right.
+    Returns degrees wrapped to ``[0, 360)`` measured clockwise from image
+    "up": ``0``/``360`` means the object points towards the top of the image
+    (decreasing row), ``90`` towards the right, ``180`` towards the bottom.
+    Drawn as an arrow on the raster, it lies along the ship's heading as it
+    appears in the image.
     """
     heading = numpy.asarray(heading_deg, dtype=float)
-    up_heading = numpy.asarray(up_heading_deg, dtype=float)
-    relative = up_heading - heading if mirrored else heading - up_heading
-    return relative % 360.0
+    platform_heading = numpy.asarray(platform_heading_deg, dtype=float)
+    return (platform_heading + 180.0 - heading) % 360.0
 
 
 def azimuth_shift_m(
