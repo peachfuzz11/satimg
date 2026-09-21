@@ -87,6 +87,32 @@ class TestHeadingInImage:
         numpy.testing.assert_allclose(got, [0.0, 90.0, 330.0])
 
 
+class TestHeadingInImageMirrored:
+    """A mirrored image keeps "up" but swaps left/right: "right" sits at
+    ``up - 90`` instead of ``up + 90``, and every angle's sense reverses."""
+
+    def test_pointing_up_is_zero(self):
+        assert heading_in_image(30.0, 30.0, mirrored=True) == pytest.approx(0.0)
+
+    def test_pointing_down_is_180(self):
+        assert heading_in_image(210.0, 30.0, mirrored=True) == pytest.approx(180.0)
+
+    def test_right_is_counter_clockwise_of_up(self):
+        # up = 30 -> the mirrored image's right is at 30 - 90 = -60
+        assert heading_in_image(-60.0, 30.0, mirrored=True) == pytest.approx(90.0)
+        assert heading_in_image(120.0, 30.0, mirrored=True) == pytest.approx(270.0)
+
+    def test_is_reflection_of_unmirrored(self):
+        for heading in numpy.linspace(0, 360, 13, endpoint=False):
+            plain = heading_in_image(heading, 40.0)
+            mirrored = heading_in_image(heading, 40.0, mirrored=True)
+            assert (plain + mirrored + 180.0) % 360.0 - 180.0 == pytest.approx(0.0)
+
+    def test_vectorised(self):
+        got = heading_in_image(numpy.array([30.0, 120.0, -60.0]), 30.0, mirrored=True)
+        numpy.testing.assert_allclose(got, [0.0, 270.0, 90.0])
+
+
 class TestAzimuthShiftM:
     platform_heading = -168.038694
     incidence = 35.0
@@ -102,22 +128,24 @@ class TestAzimuthShiftM:
         )
         assert got == pytest.approx(0.0, abs=1e-9)
 
-    def test_moving_away_gives_positive_shift(self):
+    def test_moving_away_gives_negative_shift(self):
+        # receding target -> earlier azimuth time -> lower row index
         look_direction = (self.platform_heading + 90.0) % 360.0
         got = azimuth_shift_m(
             10.0, look_direction, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        assert got > 0
+        assert got < 0
 
-    def test_moving_toward_gives_negative_shift(self):
+    def test_moving_toward_gives_positive_shift(self):
+        # approaching target -> later azimuth time -> higher row index
         look_direction = (self.platform_heading + 90.0) % 360.0
         toward = (look_direction + 180.0) % 360.0
         got = azimuth_shift_m(
             10.0, toward, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        assert got < 0
+        assert got > 0
 
     def test_magnitude_matches_closed_form(self):
         look_direction = (self.platform_heading + 90.0) % 360.0
@@ -126,7 +154,7 @@ class TestAzimuthShiftM:
             speed, look_direction, self.platform_heading, self.incidence,
             self.slant_range, self.v_sat,
         )
-        expected = (
+        expected = -(
             speed * numpy.sin(numpy.deg2rad(self.incidence))
             * self.slant_range / self.v_sat
         )

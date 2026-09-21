@@ -4,9 +4,9 @@ image-frame heading, and the moving-target Doppler azimuth-shift effect.
 A ground target with a non-zero velocity relative to the radar's line of sight (LOS)
 is displaced from its true position along the *azimuth* axis of a focused SAR image
 -- the effect behind a ship appearing offset from its own wake. ``heading_in_image``
-re-expresses a compass heading in the image's own rotated, native-sensor-geometry
-pixel frame -- a SAR-only concern, since a map-projected optical raster is already
-north-up. The functions here are pure geometry, taking already-extracted scalars,
+re-expresses a compass heading in the image's own rotated *and mirrored*,
+native-sensor-geometry pixel frame -- a SAR-only concern, since a map-projected
+optical raster is already north-up. The functions here are pure geometry, taking already-extracted scalars,
 so they're reusable and testable independently of any product class; see
 :meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`,
 :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_to_los`,
@@ -62,7 +62,7 @@ def heading_to_los(heading_deg, platform_heading_deg):
     return (heading - look_direction + 180.0) % 360.0 - 180.0
 
 
-def heading_in_image(heading_deg, up_heading_deg):
+def heading_in_image(heading_deg, up_heading_deg, mirrored=False):
     """Convert a compass heading (degrees clockwise from true north) into the
     equivalent direction within an image's own pixel frame.
 
@@ -73,12 +73,20 @@ def heading_in_image(heading_deg, up_heading_deg):
     "up" is the reverse of the platform's own direction of travel; see
     :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image`).
 
+    ``mirrored`` says whether the image is a *reflection* of the map rather than
+    just a rotation of it: with the same "up", its "right" then points
+    counter-clockwise of "up" (at ``up_heading_deg - 90``) instead of clockwise
+    (``up_heading_deg + 90``). Rotating alone can't reproduce that -- the sense
+    of every angle has to be reversed too. Native-geometry SAR GRD is mirrored
+    (see the Sentinel-1 method above); a map-projected raster never is.
+
     Returns degrees wrapped to ``[0, 360)``: ``0``/``360`` means the object
     points towards the top of the image, ``90`` towards the right.
     """
     heading = numpy.asarray(heading_deg, dtype=float)
     up_heading = numpy.asarray(up_heading_deg, dtype=float)
-    return (heading - up_heading) % 360.0
+    relative = up_heading - heading if mirrored else heading - up_heading
+    return relative % 360.0
 
 
 def azimuth_shift_m(
@@ -105,14 +113,17 @@ def azimuth_shift_m(
 
     Sign convention: positive means the target appears shifted towards *later*
     azimuth (acquisition) time -- the direction of increasing row index in a
-    Sentinel-1 GRD product -- which happens when the object moves away from the
-    satellite (increasing ground range). Purely along-track motion
+    Sentinel-1 GRD product -- which happens when the object moves *towards* the
+    satellite (decreasing ground range); a receding object is shifted towards
+    earlier time. (A target with range rate ``v_r`` picks up a Doppler offset
+    the focusing reads as a stationary target ``-R * v_r / V`` along-track, so
+    the sign is opposite to ``v_r``.) Purely along-track motion
     (:func:`heading_to_los` == +-90) produces zero shift.
     """
     los_angle = numpy.deg2rad(heading_to_los(heading_deg, platform_heading_deg))
     incidence = numpy.deg2rad(numpy.asarray(incidence_angle_deg, dtype=float))
     v_ground_away = numpy.asarray(speed, dtype=float) * numpy.cos(los_angle)
     v_radial = v_ground_away * numpy.sin(incidence)
-    return v_radial * numpy.asarray(slant_range_m, dtype=float) / numpy.asarray(
+    return -v_radial * numpy.asarray(slant_range_m, dtype=float) / numpy.asarray(
         platform_velocity_mps, dtype=float
     )

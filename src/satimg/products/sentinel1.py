@@ -29,7 +29,7 @@ class Sentinel1Product(Product):
     ``elevation_angle``, ``slant_range_time``, ``height``). :meth:`heading_to_los`
     and :meth:`doppler_azimuth_shift` estimate the SAR moving-target azimuth-shift
     effect for an object detected in the image, in pixels; :meth:`heading_in_image`
-    re-expresses a compass heading in this GRD product's own (rotated) pixel frame;
+    re-expresses a compass heading in this GRD product's own (rotated and mirrored) pixel frame;
     :meth:`correct_position` combines both to recover a moving target's true
     lat/lon from its as-detected position. SAFE parsing itself lives in
     :mod:`satimg.s1_utils`; the SAR geometry behind the last four methods lives
@@ -157,9 +157,15 @@ class Sentinel1Product(Product):
         direction the platform is heading (see the sign convention in
         :func:`satimg.sar_utils.azimuth_shift_m`), so the image's "up"
         (decreasing row) points the *opposite* way -- the local platform
-        heading plus 180 degrees. This is why an ascending-pass Sentinel-1
-        GRD scene looks upside-down (south-up) relative to a map, and a
-        descending-pass one looks right-side up.
+        heading plus 180 degrees. Column increases with ground range, i.e.
+        towards the look direction, which for the right-looking Sentinel-1 is
+        the platform heading plus 90 degrees -- so "right" sits *counter-
+        clockwise* of "up", where on a map it sits clockwise. The image is
+        therefore a **mirror image** of the map, not merely a rotated one:
+        an ascending-pass scene is flipped top-to-bottom (north at the bottom,
+        east on the right) and a descending-pass one left-to-right (north at
+        the top, east on the left). Headings are converted accordingly, sense
+        of rotation reversed.
 
         ``0``/``360`` means the object points towards the top of the image
         (decreasing row), ``90`` towards the right -- handy for e.g. drawing a
@@ -168,7 +174,7 @@ class Sentinel1Product(Product):
         such conversion at all.
         """
         up_heading = (self._local_platform_heading(rowcol) + 180.0) % 360.0
-        result = sar_utils.heading_in_image(heading_deg, up_heading)
+        result = sar_utils.heading_in_image(heading_deg, up_heading, mirrored=True)
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):

@@ -197,22 +197,27 @@ def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
     toward = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 180.0) % 360.0)
     along_track = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 90.0) % 360.0)
 
-    assert away > 0
-    assert toward < 0
+    assert away < 0
+    assert toward > 0
     assert along_track == pytest.approx(0.0, abs=1e-6)
     assert away == pytest.approx(-toward)
 
 
 def test_sentinel1_heading_in_image(sentinel1_iw):
+    # GRD native geometry: row increases along the platform heading (image
+    # "down"), column along the right-looking LOS, platform heading + 90
+    # (image "right"). Assert the frame directly, not through the formula.
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
-    up_heading = (_local_platform_heading(sentinel1_iw, rowcol) + 180.0) % 360.0
-    assert sentinel1_iw.heading_in_image(rowcol, up_heading) == pytest.approx(0.0)
-    assert sentinel1_iw.heading_in_image(rowcol, (up_heading + 90.0) % 360.0) == pytest.approx(90.0)
+    platform = _local_platform_heading(sentinel1_iw, rowcol)
+    assert sentinel1_iw.heading_in_image(rowcol, platform) == pytest.approx(180.0)
+    assert sentinel1_iw.heading_in_image(rowcol, (platform + 180.0) % 360.0) == pytest.approx(0.0)
+    assert sentinel1_iw.heading_in_image(rowcol, (platform + 90.0) % 360.0) == pytest.approx(90.0)
+    assert sentinel1_iw.heading_in_image(rowcol, (platform - 90.0) % 360.0) == pytest.approx(270.0)
 
 
 def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
-    # sanity check against the well-known SAR fact: a descending-pass GRD scene
-    # is displayed close to north-up (ascending passes are the opposite, south-up)
+    # a descending-pass GRD scene keeps north at the top (it is flipped
+    # left-to-right, not rotated); an ascending one is flipped top-to-bottom
     assert sentinel1_iw.metadata.attrs["pass"].lower() == "descending"
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
     got = sentinel1_iw.heading_in_image(rowcol, 0.0)
