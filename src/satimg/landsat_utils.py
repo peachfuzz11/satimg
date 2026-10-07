@@ -41,7 +41,8 @@ ANGLE_SCALE = 0.01
 
 def parse_mtl(source: Source) -> dict:
     """``MTL.json``'s image attrs, acquisition timestamp, footprint, and
-    :class:`~satimg.transform.Transformer` (UTM zone/hemisphere resolved from
+    :class:`~satimg.transform.Transformer` and pan-grid ``(lines, samples)``
+    shape (UTM zone/hemisphere resolved from
     ``PROJECTION_ATTRIBUTES``, since Landsat ships no CRS/affine transform of
     its own the way an embedded GCP list or ``MTD_TL.xml`` geocoding block
     would)."""
@@ -74,12 +75,14 @@ def parse_mtl(source: Source) -> dict:
     ul_y = float(proj["CORNER_UL_PROJECTION_Y_PRODUCT"]) + gsd / 2
     transform = Affine(gsd, 0, ul_x, 0, -gsd, ul_y)
     transformer = Transformer(transform, CRS.from_epsg(epsg))
+    shape = (int(proj["PANCHROMATIC_LINES"]), int(proj["PANCHROMATIC_SAMPLES"]))
 
     return {
         "image_attrs": attrs,
         "timestamp": timestamp,
         "footprint": footprint,
         "transformer": transformer,
+        "shape": shape,
     }
 
 

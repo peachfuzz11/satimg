@@ -14,9 +14,14 @@ from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import keep_open, load_thumbnail, merge_bands
 from satimg.registry import register
+from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform import Transformer
+
+
+#: side of the square grid :attr:`LandsatProduct.geometry` stores each angle field on
+GEOMETRY_GRID = 32
 
 
 @register(r"^LC(0[1-9])_L1(TP|GT)_\d+_\d+_\d+_\d+_T1$")
@@ -34,6 +39,7 @@ class LandsatProduct(Product):
         self._timestamp = mtl["timestamp"]
         self._footprint = mtl["footprint"]
         self._transformer = mtl["transformer"]
+        self._shape = mtl["shape"]
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
         self._require_extracted("raw")
@@ -74,8 +80,32 @@ class LandsatProduct(Product):
         return Metadata(fields, attrs)
 
     @property
+    def height(self) -> int:
+        """From ``MTL.json``'s ``PANCHROMATIC_LINES`` (the pan grid ``raw`` is
+        merged onto) rather than the base ``int(self.raw.sizes["y"])`` -- no
+        ``raw`` open needed."""
+        return self._shape[0]
+
+    @property
+    def width(self) -> int:
+        """See :attr:`height`; from ``PANCHROMATIC_SAMPLES``."""
+        return self._shape[1]
+
+    @property
     def transformer(self) -> Transformer:
         return self._transformer
+
+    @property
+    def geometry(self) -> SceneGeometry:
+        """As :attr:`Product.geometry`, with the angle fields resampled to a
+        :data:`GEOMETRY_GRID` square grid -- the decimated rasters
+        :attr:`metadata` reads are ~256 x 256 per field, too much to store
+        per scene, and the angles vary smoothly. Like :attr:`metadata`,
+        needs the product extracted."""
+        shape = (self.height, self.width)
+        return SceneGeometry(
+            self.transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self.metadata.attrs, shape
+        )
 
     @property
     def timestamp(self) -> datetime.datetime:

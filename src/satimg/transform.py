@@ -7,6 +7,10 @@ control points (Sentinel-1).
 Both accept a single ``(a, b)`` pair, a list of pairs, or an ``(N, 2)`` array and
 always return an ``(N, 2)`` array. ``rowcol`` is ``(row, col)`` = ``(y, x)``;
 ``latlon`` is ``(lat, lon)``.
+
+Each round-trips through a JSON-serialisable dict of its own (``to_dict`` /
+``from_dict``), so a product's georeferencing can be stored and used after the
+product file is gone.
 """
 
 from __future__ import annotations
@@ -16,6 +20,9 @@ from collections.abc import Sequence
 import numpy
 import rasterio
 from rasterio import warp
+from rasterio.control import GroundControlPoint
+from rasterio.crs import CRS
+from rasterio.transform import Affine
 
 Coords = Sequence[float] | Sequence[Sequence[float]] | numpy.ndarray
 
@@ -36,6 +43,15 @@ class Transformer:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(crs={self._crs}, transform={self._transform})"
+
+    def to_dict(self) -> dict:
+        """A JSON-serialisable dict that :meth:`from_dict` turns back into an
+        equal transformer."""
+        return {"transform": list(self._transform)[:6], "crs": self._crs.to_wkt()}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Transformer:
+        return cls(Affine(*data["transform"]), CRS.from_wkt(data["crs"]))
 
     def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
         rc = _as_n2(coords)
@@ -61,6 +77,21 @@ class GCPTransformer(Transformer):
 
     def __init__(self, gcps, crs):
         super().__init__(rasterio.transform.GCPTransformer(gcps), crs)
+        self._gcps = list(gcps)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(crs={self._crs}, gcps={len(self._gcps)})"
+
+    def to_dict(self) -> dict:
+        return {
+            "gcps": [[g.row, g.col, g.x, g.y, g.z] for g in self._gcps],
+            "crs": self._crs.to_wkt(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> GCPTransformer:
+        gcps = [GroundControlPoint(row=r, col=c, x=x, y=y, z=z) for r, c, x, y, z in data["gcps"]]
+        return cls(gcps, CRS.from_wkt(data["crs"]))
 
     def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
         rc = _as_n2(coords)

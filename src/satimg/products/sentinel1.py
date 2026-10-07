@@ -10,11 +10,12 @@ import numpy
 import PIL.Image
 import xarray
 
-from satimg import s1_utils, sar_utils
-from satimg.metadata import Metadata, grid_from_points
+from satimg import s1_utils
+from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import keep_open, load_thumbnail, merge_bands
 from satimg.registry import register
+from satimg.s1_geometry import Sentinel1Geometry
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
 
@@ -45,10 +46,7 @@ class Sentinel1Product(Product):
         points, attrs, shape = s1_utils.read_geolocation(
             self._source, annotation, self._timestamp
         )
-        self._geoloc_points = points
-        self._geoloc_attrs = attrs
-        self._geoloc_shape = shape
-        self._transformer = s1_utils.build_transformer(points)
+        self._geometry = Sentinel1Geometry.from_points(points, attrs, shape)
 
     @property
     def mode(self) -> str:
@@ -77,16 +75,7 @@ class Sentinel1Product(Product):
         return label_bands(as_band_yx(u8), ("amplitude",))
 
     def _read_metadata(self) -> Metadata:
-        keys = tuple(s1_utils.GEOLOC_FIELDS)
-        grid = grid_from_points(self._geoloc_points, keys)
-        fields = {
-            name: self._field(
-                grid["rows"], grid["cols"], grid[name],
-                name=name, units=s1_utils.GEOLOC_FIELDS[name][1],
-            )
-            for name in keys
-        }
-        return Metadata(fields, self._geoloc_attrs)
+        return self._geometry.metadata
 
     @property
     def height(self) -> int:
@@ -94,16 +83,23 @@ class Sentinel1Product(Product):
         exactly) rather than the base ``int(self.raw.sizes["y"])`` -- so
         ``metadata``'s fields get a real ``.grid`` / ``.corners()`` even
         zip-native, with no ``raw`` open needed."""
-        return self._geoloc_shape[0]
+        return self._geometry.height
 
     @property
     def width(self) -> int:
         """See :attr:`height`; from ``numberOfSamples``."""
-        return self._geoloc_shape[1]
+        return self._geometry.width
 
     @property
     def transformer(self):
-        return self._transformer
+        return self._geometry.transformer
+
+    @property
+    def geometry(self) -> Sentinel1Geometry:
+        """As :attr:`Product.geometry`, as a
+        :class:`~satimg.s1_geometry.Sentinel1Geometry` -- which the
+        transformer, metadata and SAR geometry methods below delegate to."""
+        return self._geometry
 
     @property
     def timestamp(self) -> datetime.datetime:
@@ -124,17 +120,6 @@ class Sentinel1Product(Product):
                 return load_thumbnail(self._source, relpath, greyscale=True)
         raise FileNotFoundError(f"no preview image under {self._source.name}")
 
-    def _local_platform_heading(self, rowcol):
-        """Satellite ground-track heading at ``rowcol``'s own latitude (rather
-        than the single scene-wide ``platform_heading`` attr), via
-        :func:`satimg.sar_utils.ground_track_heading`."""
-        lat = self.transformer.rowcol_to_latlon(rowcol)[:, 0]
-        ascending = self.metadata.attrs["pass"].lower() == "ascending"
-        heading = sar_utils.ground_track_heading(
-            lat, self.metadata.attrs["orbit_inclination"], ascending
-        )
-        return float(heading[0]) if numpy.ndim(rowcol) == 1 else heading
-
     def heading_to_los(self, rowcol, heading_deg):
         """Convert a compass heading (degrees clockwise from true north) into the
         object's bearing relative to the radar line of sight at ``rowcol``.
@@ -145,8 +130,7 @@ class Sentinel1Product(Product):
         a scene. See :func:`satimg.sar_utils.heading_to_los` for the convention and
         equations.
         """
-        rel = sar_utils.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
-        return float(rel) if numpy.ndim(rowcol) == 1 else numpy.asarray(rel)
+        return self._geometry.heading_to_los(rowcol, heading_deg)
 
     def heading_in_image(self, rowcol, heading_deg):
         """Convert a compass heading (degrees clockwise from true north) into
@@ -173,8 +157,7 @@ class Sentinel1Product(Product):
         SAR-only concern: a map-projected, north-up optical product needs no
         such conversion at all.
         """
-        result = sar_utils.heading_in_image(heading_deg, self._local_platform_heading(rowcol))
-        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
+        return self._geometry.heading_in_image(rowcol, heading_deg)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
         """Azimuth-direction pixel displacement of a moving object at ``rowcol``.
@@ -187,16 +170,7 @@ class Sentinel1Product(Product):
         :func:`satimg.sar_utils.azimuth_shift_m` for the underlying physics and sign
         convention.
         """
-        m = self.metadata
-        attrs = m.attrs
-        incidence = m.incidence_angle.at(rowcol)
-        slant_range_m = m.slant_range_time.at(rowcol) * sar_utils.SPEED_OF_LIGHT / 2
-        shift_m = sar_utils.azimuth_shift_m(
-            speed, heading_deg, self._local_platform_heading(rowcol), incidence,
-            slant_range_m, attrs["platform_velocity"],
-        )
-        shift_px = shift_m / attrs["azimuth_pixel_spacing"]
-        return float(shift_px) if numpy.ndim(rowcol) == 1 else numpy.asarray(shift_px)
+        return self._geometry.doppler_azimuth_shift(rowcol, speed, heading_deg)
 
     def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
         """Recover a moving target's true ``(lat, lon)`` from its as-detected
@@ -209,8 +183,4 @@ class Sentinel1Product(Product):
         :meth:`doppler_azimuth_shift`'s pixel shift; this undoes that displacement
         to recover the position the target actually occupied at acquisition time.
         """
-        rowcol = self.transformer.latlon_to_rowcol((lat, lon))[0]
-        shift_px = self.doppler_azimuth_shift(rowcol, speed, heading_deg)
-        corrected_rowcol = (rowcol[0] - shift_px, rowcol[1])
-        corrected_lat, corrected_lon = self.transformer.rowcol_to_latlon(corrected_rowcol)[0]
-        return float(corrected_lat), float(corrected_lon)
+        return self._geometry.correct_position(lat, lon, speed, heading_deg)

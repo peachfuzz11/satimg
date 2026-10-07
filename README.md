@@ -234,6 +234,28 @@ for patch in product.patches(512):
 materialising the patch grid — a cheap way to see how a field varies across a
 tile. `corners()[field]["center"]` equals `sample()[field]`.
 
+### Geometry without the product
+
+Every product's `geometry` -- its transformer, image shape, coarse metadata
+grids and scene attrs -- is a small dict that survives strict JSON (e.g. a
+PostgreSQL `jsonb` column; `NaN` is stored as `null`). Store it while the
+product is open and keep converting coordinates and sampling metadata after the
+file is gone. For Sentinel-1, load it as a `Sentinel1Geometry` to also get the
+SAR geometry (Doppler shift, headings):
+
+```python
+with satimg.open("S1A_IW_GRDH_....SAFE.zip") as product:
+    stored = product.geometry.to_dict()      # ~30-80 KB
+
+geometry = satimg.Sentinel1Geometry.from_dict(stored)   # SceneGeometry for other products
+geometry.transformer.latlon_to_rowcol((lat, lon))
+geometry.metadata.incidence_angle.at((row, col))
+geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
+```
+
+Landsat's angle fields are stored resampled to 32 x 32, and, like its
+`metadata`, need the product extracted (`open_zip`).
+
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive.
