@@ -8,9 +8,9 @@ Both accept a single ``(a, b)`` pair, a list of pairs, or an ``(N, 2)`` array an
 always return an ``(N, 2)`` array. ``rowcol`` is ``(row, col)`` = ``(y, x)``;
 ``latlon`` is ``(lat, lon)``.
 
-Both round-trip through a JSON-serialisable dict (:meth:`Transformer.to_dict` /
-:meth:`Transformer.from_dict`), so a product's georeferencing can be stored and
-used after the product file is gone.
+Each round-trips through a JSON-serialisable dict of its own (``to_dict`` /
+``from_dict``), so a product's georeferencing can be stored and used after the
+product file is gone.
 """
 
 from __future__ import annotations
@@ -47,17 +47,11 @@ class Transformer:
     def to_dict(self) -> dict:
         """A JSON-serialisable dict that :meth:`from_dict` turns back into an
         equal transformer."""
-        return {"type": "affine", "transform": list(self._transform)[:6], "crs": self._crs.to_wkt()}
+        return {"transform": list(self._transform)[:6], "crs": self._crs.to_wkt()}
 
-    @staticmethod
-    def from_dict(data: dict) -> Transformer:
-        """Rebuild a :class:`Transformer` or :class:`GCPTransformer` from
-        :meth:`to_dict`."""
-        crs = CRS.from_wkt(data["crs"])
-        if data["type"] == "gcp":
-            gcps = [GroundControlPoint(row=r, col=c, x=x, y=y, z=z) for r, c, x, y, z in data["gcps"]]
-            return GCPTransformer(gcps, crs)
-        return Transformer(Affine(*data["transform"]), crs)
+    @classmethod
+    def from_dict(cls, data: dict) -> Transformer:
+        return cls(Affine(*data["transform"]), CRS.from_wkt(data["crs"]))
 
     def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
         rc = _as_n2(coords)
@@ -90,10 +84,14 @@ class GCPTransformer(Transformer):
 
     def to_dict(self) -> dict:
         return {
-            "type": "gcp",
             "gcps": [[g.row, g.col, g.x, g.y, g.z] for g in self._gcps],
             "crs": self._crs.to_wkt(),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> GCPTransformer:
+        gcps = [GroundControlPoint(row=r, col=c, x=x, y=y, z=z) for r, c, x, y, z in data["gcps"]]
+        return cls(gcps, CRS.from_wkt(data["crs"]))
 
     def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
         rc = _as_n2(coords)

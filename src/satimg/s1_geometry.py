@@ -19,6 +19,7 @@ import numpy
 from satimg import s1_utils, sar_utils
 from satimg.metadata import grid_from_points
 from satimg.scene_geometry import SceneGeometry
+from satimg.transform import GCPTransformer
 
 
 class Sentinel1Geometry(SceneGeometry):
@@ -28,6 +29,8 @@ class Sentinel1Geometry(SceneGeometry):
     Built by :meth:`from_points`; stored like any
     :class:`~satimg.scene_geometry.SceneGeometry`.
     """
+
+    transformer_cls = GCPTransformer
 
     @classmethod
     def from_points(cls, points: list[dict], attrs: dict, shape: tuple[int, int]) -> Sentinel1Geometry:

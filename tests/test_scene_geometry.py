@@ -22,6 +22,11 @@ def _stored(product):
     return json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
 
 
+def _load(product, stored):
+    cls = Sentinel1Geometry if isinstance(product.geometry, Sentinel1Geometry) else SceneGeometry
+    return cls.from_dict(stored)
+
+
 def _rowcols(product):
     h, w = product.height, product.width
     return numpy.array([(h // 4, w // 4), (h // 2, w // 2), (3 * h // 4, 3 * w // 4)])
@@ -29,16 +34,17 @@ def _rowcols(product):
 
 def test_round_trips_through_strict_json(product):
     stored = _stored(product)
-    assert SceneGeometry.from_dict(stored).to_dict() == stored
+    assert _load(product, stored).to_dict() == stored
 
 
-def test_from_dict_builds_the_class_it_is_called_on(sentinel1_iw):
-    assert type(Sentinel1Geometry.from_dict(_stored(sentinel1_iw))) is Sentinel1Geometry
-    assert type(SceneGeometry.from_dict(_stored(sentinel1_iw))) is SceneGeometry
+def test_sentinel1_loads_with_its_gcp_transformer(sentinel1_iw):
+    geometry = Sentinel1Geometry.from_dict(_stored(sentinel1_iw))
+    assert type(geometry) is Sentinel1Geometry
+    assert type(geometry.transformer) is GCPTransformer
 
 
 def test_shape_and_transformer_match(product):
-    geometry = SceneGeometry.from_dict(_stored(product))
+    geometry = _load(product, _stored(product))
     assert (geometry.height, geometry.width) == (product.height, product.width)
     rowcols = _rowcols(product)
     latlons = product.transformer.rowcol_to_latlon(rowcols)
@@ -49,7 +55,7 @@ def test_shape_and_transformer_match(product):
 
 
 def test_metadata_matches(product):
-    geometry = SceneGeometry.from_dict(_stored(product))
+    geometry = _load(product, _stored(product))
     assert geometry.metadata.fields == product.metadata.fields
     assert geometry.metadata.attrs == product.metadata.attrs
     rowcols = _rowcols(product)
@@ -110,7 +116,7 @@ def test_zip_native_landsat_geometry_needs_extraction(tmp_path_factory):
 def test_transformer_round_trips_through_dict(key, kind, request):
     product = request.getfixturevalue(key)
     stored = json.loads(json.dumps(product.transformer.to_dict(), allow_nan=False))
-    transformer = Transformer.from_dict(stored)
+    transformer = kind.from_dict(stored)
     assert type(transformer) is kind
     assert transformer.to_dict() == stored
     rowcols = _rowcols(product)

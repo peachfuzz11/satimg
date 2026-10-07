@@ -45,6 +45,9 @@ class SceneGeometry:
     is the full image's ``(height, width)``.
     """
 
+    #: the transformer class :meth:`from_dict` loads the stored transformer as
+    transformer_cls = Transformer
+
     def __init__(self, transformer: Transformer, fields: dict, attrs: dict, shape: tuple[int, int]):
         self._transformer = transformer
         self._fields = {
@@ -99,7 +102,7 @@ class SceneGeometry:
             for name, f in data["fields"].items()
         }
         return cls(
-            Transformer.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
+            cls.transformer_cls.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
         )
 
     # -- shape / transform / metadata -----------------------------------
