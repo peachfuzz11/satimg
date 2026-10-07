@@ -96,10 +96,9 @@ class Sentinel1Product(Product):
 
     @property
     def geometry(self) -> Sentinel1Geometry:
-        """This scene's :class:`~satimg.s1_geometry.Sentinel1Geometry` --
-        ``geometry.to_dict()`` is what to store to keep using
-        :attr:`transformer`, :attr:`metadata` and the SAR geometry methods
-        below after the product file is gone."""
+        """As :attr:`Product.geometry`, as a
+        :class:`~satimg.s1_geometry.Sentinel1Geometry` -- which the
+        transformer, metadata and SAR geometry methods below delegate to."""
         return self._geometry
 
     @property

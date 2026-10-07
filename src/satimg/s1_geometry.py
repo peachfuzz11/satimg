@@ -1,15 +1,15 @@
 """Sentinel-1 scene geometry, detached from the product files.
 
-:class:`Sentinel1Geometry` holds everything the SAR geometry methods need -- the
-annotation's geolocation grid points, the scene-wide attrs and the image shape --
-and nothing else. It round-trips through a plain JSON-serialisable dict, so an
-app can store it (e.g. in a database) while the product is open and later
-convert coordinates or estimate Doppler shifts after the product file is gone::
+:class:`Sentinel1Geometry` is the :class:`~satimg.scene_geometry.SceneGeometry`
+of a Sentinel-1 GRD scene: built from (and stored as) the annotation's
+geolocation grid points, the scene-wide attrs and the image shape, plus the SAR
+moving-target geometry -- so Doppler shifts can be estimated after the product
+file is gone::
 
     with satimg.open(path) as product:
         stored = product.geometry.to_dict()
 
-    geometry = Sentinel1Geometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)    # a Sentinel1Geometry
     shift_px = geometry.doppler_azimuth_shift(rowcol, speed, heading)
 """
 
@@ -18,10 +18,11 @@ from __future__ import annotations
 import numpy
 
 from satimg import s1_utils, sar_utils
-from satimg.metadata import Field, Metadata, grid_from_points
+from satimg.metadata import grid_from_points
+from satimg.scene_geometry import SceneGeometry
 
 
-class Sentinel1Geometry:
+class Sentinel1Geometry(SceneGeometry):
     """Pixel <-> lat/lon conversion, per-pixel geolocation metadata and the
     moving-target SAR geometry of one Sentinel-1 GRD scene.
 
@@ -30,57 +31,32 @@ class Sentinel1Geometry:
     ``(height, width)``.
     """
 
+    type_name = "sentinel1"
+
     def __init__(self, points: list[dict], attrs: dict, shape: tuple[int, int]):
         self._points = points
-        self._attrs = attrs
-        self._shape = (int(shape[0]), int(shape[1]))
-        self._transformer = s1_utils.build_transformer(points)
-        self._metadata = None
+        keys = tuple(s1_utils.GEOLOC_FIELDS)
+        grid = grid_from_points(points, keys)
+        fields = {
+            name: (grid["rows"], grid["cols"], grid[name], s1_utils.GEOLOC_FIELDS[name][1])
+            for name in keys
+        }
+        super().__init__(s1_utils.build_transformer(points), fields, attrs, shape)
 
     # -- serialisation --------------------------------------------------
     def to_dict(self) -> dict:
-        """A JSON-serialisable dict that :meth:`from_dict` turns back into an
-        equal geometry."""
+        """Stored as the geolocation grid points the GCP transformer and the
+        fields are both built from."""
         return {
+            "type": self.type_name,
             "points": [dict(p) for p in self._points],
             "attrs": dict(self._attrs),
             "shape": list(self._shape),
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Sentinel1Geometry":
+    def _from_dict(cls, data: dict) -> "Sentinel1Geometry":
         return cls(data["points"], data["attrs"], tuple(data["shape"]))
-
-    # -- shape / transform / metadata -----------------------------------
-    @property
-    def height(self) -> int:
-        return self._shape[0]
-
-    @property
-    def width(self) -> int:
-        return self._shape[1]
-
-    @property
-    def transformer(self):
-        return self._transformer
-
-    @property
-    def metadata(self) -> Metadata:
-        """The ``geolocationGridPoint`` fields (``incidence_angle``,
-        ``elevation_angle``, ``slant_range_time``, ``height``) plus the
-        scene-wide attrs."""
-        if self._metadata is None:
-            keys = tuple(s1_utils.GEOLOC_FIELDS)
-            grid = grid_from_points(self._points, keys)
-            fields = {
-                name: Field(
-                    grid["rows"], grid["cols"], grid[name],
-                    name=name, units=s1_utils.GEOLOC_FIELDS[name][1], shape=self._shape,
-                )
-                for name in keys
-            }
-            self._metadata = Metadata(fields, self._attrs)
-        return self._metadata
 
     # -- SAR geometry ---------------------------------------------------
     def _local_platform_heading(self, rowcol):

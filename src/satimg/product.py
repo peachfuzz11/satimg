@@ -57,6 +57,7 @@ from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
 from satimg.readers import CHUNK_PX
+from satimg.scene_geometry import SceneGeometry
 from satimg.source import Source
 from satimg.tiling import read_window
 
@@ -284,6 +285,14 @@ class Product(abc.ABC):
         """Build this product's :class:`~satimg.metadata.Metadata`. Override in a
         subclass; the default has no fields."""
         return Metadata({})
+
+    @property
+    def geometry(self) -> SceneGeometry:
+        """This scene's :class:`~satimg.scene_geometry.SceneGeometry` -- its
+        :attr:`transformer`, :attr:`metadata` and shape, detached from the
+        product files. ``geometry.to_dict()`` is what to store to keep using
+        them (and, for Sentinel-1, the SAR geometry) after the file is gone."""
+        return SceneGeometry.from_metadata(self.transformer, self.metadata, (self.height, self.width))
 
     def _field(self, rows, cols, values, *, name: str, units: str = "") -> Field:
         """Helper for :meth:`_read_metadata`: a :class:`~satimg.metadata.Field` on
