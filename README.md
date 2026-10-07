@@ -234,6 +234,24 @@ for patch in product.patches(512):
 materialising the patch grid — a cheap way to see how a field varies across a
 tile. `corners()[field]["center"]` equals `sample()[field]`.
 
+### Sentinel-1 geometry without the product
+
+A Sentinel-1 scene's geolocation grid, scene-wide attrs and shape are a small
+JSON-serialisable dict. Store it while the product is open, and keep converting
+coordinates, sampling metadata and estimating Doppler shifts after the file is
+gone:
+
+```python
+with satimg.open("S1A_IW_GRDH_....SAFE.zip") as product:
+    stored = product.geometry.to_dict()      # {"points": [...], "attrs": {...}, "shape": [h, w]}
+
+geometry = satimg.Sentinel1Geometry.from_dict(stored)
+geometry.transformer.latlon_to_rowcol((lat, lon))
+geometry.metadata.incidence_angle.at((row, col))
+geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)
+geometry.correct_position(lat, lon, speed_mps, heading_deg)
+```
+
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive.

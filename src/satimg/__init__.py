@@ -28,6 +28,7 @@ from satimg.metadata import Field, Metadata
 from satimg.patch import Patch
 from satimg.product import Product, ZipNativeUnsupportedError, open, open_zip
 from satimg.registry import UnknownProductError
+from satimg.s1_geometry import Sentinel1Geometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "windows_at",
     "Metadata",
     "Field",
+    "Sentinel1Geometry",
     "UnknownProductError",
     "CredentialsError",
 ]
