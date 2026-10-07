@@ -1,10 +1,9 @@
 """Sentinel-1 scene geometry, detached from the product files.
 
 :class:`Sentinel1Geometry` is the :class:`~satimg.scene_geometry.SceneGeometry`
-of a Sentinel-1 GRD scene: built from (and stored as) the annotation's
-geolocation grid points, the scene-wide attrs and the image shape, plus the SAR
-moving-target geometry -- so Doppler shifts can be estimated after the product
-file is gone::
+of a Sentinel-1 GRD scene -- a GCP transformer and the geolocation grid fields --
+plus the SAR moving-target geometry, so Doppler shifts can be estimated after
+the product file is gone::
 
     with satimg.open(path) as product:
         stored = product.geometry.to_dict()
@@ -26,37 +25,23 @@ class Sentinel1Geometry(SceneGeometry):
     """Pixel <-> lat/lon conversion, per-pixel geolocation metadata and the
     moving-target SAR geometry of one Sentinel-1 GRD scene.
 
-    ``points`` and ``attrs`` are as returned by
-    :func:`satimg.s1_utils.read_geolocation`; ``shape`` is the full image's
-    ``(height, width)``.
+    Built by :meth:`from_points`; stored like any
+    :class:`~satimg.scene_geometry.SceneGeometry`.
     """
 
     type_name = "sentinel1"
 
-    def __init__(self, points: list[dict], attrs: dict, shape: tuple[int, int]):
-        self._points = points
+    @classmethod
+    def from_points(cls, points: list[dict], attrs: dict, shape: tuple[int, int]) -> Sentinel1Geometry:
+        """Build from :func:`satimg.s1_utils.read_geolocation`'s output: the
+        geolocation grid points give both the GCP transformer and the fields."""
         keys = tuple(s1_utils.GEOLOC_FIELDS)
         grid = grid_from_points(points, keys)
         fields = {
             name: (grid["rows"], grid["cols"], grid[name], s1_utils.GEOLOC_FIELDS[name][1])
             for name in keys
         }
-        super().__init__(s1_utils.build_transformer(points), fields, attrs, shape)
-
-    # -- serialisation --------------------------------------------------
-    def to_dict(self) -> dict:
-        """Stored as the geolocation grid points the GCP transformer and the
-        fields are both built from."""
-        return {
-            "type": self.type_name,
-            "points": [dict(p) for p in self._points],
-            "attrs": dict(self._attrs),
-            "shape": list(self._shape),
-        }
-
-    @classmethod
-    def _from_dict(cls, data: dict) -> "Sentinel1Geometry":
-        return cls(data["points"], data["attrs"], tuple(data["shape"]))
+        return cls(s1_utils.build_transformer(points), fields, attrs, shape)
 
     # -- SAR geometry ---------------------------------------------------
     def _local_platform_heading(self, rowcol):

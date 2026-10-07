@@ -46,7 +46,7 @@ class Sentinel1Product(Product):
         points, attrs, shape = s1_utils.read_geolocation(
             self._source, annotation, self._timestamp
         )
-        self._geometry = Sentinel1Geometry(points, attrs, shape)
+        self._geometry = Sentinel1Geometry.from_points(points, attrs, shape)
 
     @property
     def mode(self) -> str:

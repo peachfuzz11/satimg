@@ -6,6 +6,7 @@ import pytest
 import satimg
 from satimg import SceneGeometry, Sentinel1Geometry
 from satimg.products.landsat import GEOMETRY_GRID
+from satimg.transform import GCPTransformer, Transformer
 from tests.test_zip_native import _build_zip
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
@@ -103,3 +104,16 @@ def test_zip_native_landsat_geometry_needs_extraction(tmp_path_factory):
     with satimg.open(_build_zip("landsat", tmp_path_factory)) as zip_product:
         with pytest.raises(satimg.ZipNativeUnsupportedError):
             zip_product.geometry
+
+
+@pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", Transformer)])
+def test_transformer_round_trips_through_dict(key, kind, request):
+    product = request.getfixturevalue(key)
+    stored = json.loads(json.dumps(product.transformer.to_dict(), allow_nan=False))
+    transformer = Transformer.from_dict(stored)
+    assert type(transformer) is kind
+    assert transformer.to_dict() == stored
+    rowcols = _rowcols(product)
+    numpy.testing.assert_allclose(
+        transformer.rowcol_to_latlon(rowcols), product.transformer.rowcol_to_latlon(rowcols)
+    )

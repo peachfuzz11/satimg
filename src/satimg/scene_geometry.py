@@ -19,11 +19,9 @@ from __future__ import annotations
 import math
 
 import numpy
-from rasterio.crs import CRS
-from rasterio.transform import Affine
 
 from satimg.metadata import Field, Metadata
-from satimg.transform import GCPTransformer, Transformer
+from satimg.transform import Transformer
 
 
 def _nan_to_none(values) -> list:
@@ -88,7 +86,7 @@ class SceneGeometry:
         return {
             "type": self.type_name,
             "shape": list(self._shape),
-            "transformer": _transformer_to_dict(self._transformer),
+            "transformer": self._transformer.to_dict(),
             "fields": {
                 name: {
                     "rows": rows.tolist(),
@@ -115,7 +113,7 @@ class SceneGeometry:
             for name, f in data["fields"].items()
         }
         return cls(
-            _transformer_from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
+            Transformer.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
         )
 
     # -- shape / transform / metadata -----------------------------------
@@ -145,16 +143,6 @@ class SceneGeometry:
 
 
 SceneGeometry._types[SceneGeometry.type_name] = SceneGeometry
-
-
-def _transformer_to_dict(transformer: Transformer) -> dict:
-    if isinstance(transformer, GCPTransformer):
-        raise TypeError("a GCPTransformer is stored by its owning geometry (see Sentinel1Geometry)")
-    return {"transform": list(transformer._transform)[:6], "crs": transformer._crs.to_wkt()}
-
-
-def _transformer_from_dict(data: dict) -> Transformer:
-    return Transformer(Affine(*data["transform"]), CRS.from_wkt(data["crs"]))
 
 
 def coarsen(metadata: Metadata, shape: tuple[int, int], size: int) -> dict:
