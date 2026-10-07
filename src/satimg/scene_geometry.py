@@ -9,7 +9,7 @@ the product is open and keep using it after the product file is gone::
     with satimg.open(path) as product:
         stored = product.geometry.to_dict()
 
-    geometry = SceneGeometry.from_dict(stored)    # the right subclass, e.g. Sentinel1Geometry
+    geometry = SceneGeometry.from_dict(stored)
     geometry.transformer.latlon_to_rowcol((lat, lon))
     geometry.metadata.incidence_angle.at((row, col))
 """
@@ -45,14 +45,6 @@ class SceneGeometry:
     is the full image's ``(height, width)``.
     """
 
-    #: the ``"type"`` :meth:`to_dict` writes and :meth:`from_dict` dispatches on
-    type_name = "scene"
-    _types: dict[str, type[SceneGeometry]] = {}
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        SceneGeometry._types[cls.type_name] = cls
-
     def __init__(self, transformer: Transformer, fields: dict, attrs: dict, shape: tuple[int, int]):
         self._transformer = transformer
         self._fields = {
@@ -84,7 +76,6 @@ class SceneGeometry:
         """A JSON-serialisable dict (no ``NaN``) that :meth:`from_dict` turns
         back into an equal geometry."""
         return {
-            "type": self.type_name,
             "shape": list(self._shape),
             "transformer": self._transformer.to_dict(),
             "fields": {
@@ -101,13 +92,8 @@ class SceneGeometry:
 
     @classmethod
     def from_dict(cls, data: dict) -> SceneGeometry:
-        """Rebuild a geometry from :meth:`to_dict`, as the subclass it was
-        saved from (whichever class this is called on)."""
-        sub = SceneGeometry._types[data.get("type", SceneGeometry.type_name)]
-        return sub._from_dict(data)
-
-    @classmethod
-    def _from_dict(cls, data: dict) -> SceneGeometry:
+        """Rebuild a geometry from :meth:`to_dict` -- as ``cls``, so
+        ``Sentinel1Geometry.from_dict`` gives back the SAR methods too."""
         fields = {
             name: (f["rows"], f["cols"], _none_to_nan(f["values"]), f["units"])
             for name, f in data["fields"].items()
@@ -140,9 +126,6 @@ class SceneGeometry:
                 self._attrs,
             )
         return self._metadata
-
-
-SceneGeometry._types[SceneGeometry.type_name] = SceneGeometry
 
 
 def coarsen(metadata: Metadata, shape: tuple[int, int], size: int) -> dict:

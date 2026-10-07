@@ -8,7 +8,7 @@ the product file is gone::
     with satimg.open(path) as product:
         stored = product.geometry.to_dict()
 
-    geometry = SceneGeometry.from_dict(stored)    # a Sentinel1Geometry
+    geometry = Sentinel1Geometry.from_dict(stored)
     shift_px = geometry.doppler_azimuth_shift(rowcol, speed, heading)
 """
 
@@ -28,8 +28,6 @@ class Sentinel1Geometry(SceneGeometry):
     Built by :meth:`from_points`; stored like any
     :class:`~satimg.scene_geometry.SceneGeometry`.
     """
-
-    type_name = "sentinel1"
 
     @classmethod
     def from_points(cls, points: list[dict], attrs: dict, shape: tuple[int, int]) -> Sentinel1Geometry:

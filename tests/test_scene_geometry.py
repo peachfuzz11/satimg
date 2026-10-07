@@ -32,9 +32,9 @@ def test_round_trips_through_strict_json(product):
     assert SceneGeometry.from_dict(stored).to_dict() == stored
 
 
-def test_from_dict_returns_the_saved_subclass(sentinel1_iw, sentinel2_l1c):
-    assert type(SceneGeometry.from_dict(_stored(sentinel1_iw))) is Sentinel1Geometry
-    assert type(SceneGeometry.from_dict(_stored(sentinel2_l1c))) is SceneGeometry
+def test_from_dict_builds_the_class_it_is_called_on(sentinel1_iw):
+    assert type(Sentinel1Geometry.from_dict(_stored(sentinel1_iw))) is Sentinel1Geometry
+    assert type(SceneGeometry.from_dict(_stored(sentinel1_iw))) is SceneGeometry
 
 
 def test_shape_and_transformer_match(product):
