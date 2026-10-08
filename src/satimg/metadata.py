@@ -63,8 +63,10 @@ def bilinear(
     j = numpy.clip(numpy.searchsorted(cols, qc, side="right") - 1, 0, len(cols) - 2)
     r0, r1 = rows[i], rows[i + 1]
     c0, c1 = cols[j], cols[j + 1]
-    tr = numpy.where(r1 > r0, (qr - r0) / (r1 - r0), 0.0)
-    tc = numpy.where(c1 > c0, (qc - c0) / (c1 - c0), 0.0)
+    # a single-row/-column axis gives r1 == r0 (c1 == c0): divide by 1 there
+    # rather than 0, so numpy.where's untaken branch doesn't warn
+    tr = numpy.where(r1 > r0, (qr - r0) / numpy.where(r1 > r0, r1 - r0, 1.0), 0.0)
+    tc = numpy.where(c1 > c0, (qc - c0) / numpy.where(c1 > c0, c1 - c0, 1.0), 0.0)
 
     top = grid[i, j] * (1 - tc) + grid[i, j + 1] * tc
     bot = grid[i + 1, j] * (1 - tc) + grid[i + 1, j + 1] * tc

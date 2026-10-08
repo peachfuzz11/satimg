@@ -12,7 +12,6 @@ product-facing entry point that calls these.
 from __future__ import annotations
 
 import datetime
-import logging
 import os
 import re
 import warnings
@@ -24,8 +23,6 @@ from rasterio.transform import Affine
 
 from satimg.metadata import fill_nan_nearest, regular_axis
 from satimg.source import Source
-
-logger = logging.getLogger(__name__)
 
 #: spacing of the MTD_TL.xml angle grids, metres.
 ANGLE_STEP_M = 5000.0
@@ -99,8 +96,13 @@ def _angle_grid(node: ElementTree.Element) -> numpy.ndarray:
 
 def _mean_grids(grids: list[numpy.ndarray], *, circular: bool) -> numpy.ndarray:
     """NaN-aware mean of the per-detector grids; ``circular`` for azimuths. Cells
-    that no detector covers (tile corners) are then nearest-filled."""
-    stack = numpy.stack(grids)
+    that no detector covers (tile corners) are then nearest-filled. Every grid
+    starts at the tile's top-left corner, so grids of different shapes are
+    NaN-padded to the largest before averaging."""
+    shape = tuple(max(g.shape[axis] for g in grids) for axis in (0, 1))
+    stack = numpy.full((len(grids), *shape), numpy.nan)
+    for i, g in enumerate(grids):
+        stack[i, : g.shape[0], : g.shape[1]] = g
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices
         if not circular:
@@ -111,39 +113,6 @@ def _mean_grids(grids: list[numpy.ndarray], *, circular: bool) -> numpy.ndarray:
                 numpy.arctan2(numpy.nanmean(numpy.sin(rad), 0), numpy.nanmean(numpy.cos(rad), 0))
             ) % 360.0
     return fill_nan_nearest(merged)
-
-
-def _view_grid(
-    grids: list[numpy.ndarray], shape: tuple[int, int], fallback: float, *, circular: bool, name: str
-) -> numpy.ndarray:
-    """The merged per-detector viewing grid on the tile's ``shape`` angle grid.
-
-    A detector grid of any other shape can't be placed: ``Values_List`` carries
-    no offset, so its cells could sit anywhere on the tile. Such grids (seen on
-    products that only clip a tile's edge) are dropped rather than guessed at,
-    and with none left the grid is the constant ``fallback`` -- the band-mean
-    viewing angle -- instead."""
-    placeable = [g for g in grids if g.shape == shape]
-    if len(placeable) < len(grids):
-        logger.warning(
-            "%s: dropping %d of %d detector grids whose shape is not the tile's %s",
-            name, len(grids) - len(placeable), len(grids), shape,
-        )
-    if not placeable:
-        return numpy.full(shape, fallback)
-    return _mean_grids(placeable, circular=circular)
-
-
-def _mean_view_angles(root: ElementTree.Element) -> tuple[float, float]:
-    """``(zenith, azimuth)`` averaged over ``Mean_Viewing_Incidence_Angle_List``'s
-    bands (azimuth circularly); ``NaN`` where the list is missing."""
-    means = root.findall(".//Mean_Viewing_Incidence_Angle")
-    if not means:
-        return float("nan"), float("nan")
-    zenith = numpy.array([float(m.find("ZENITH_ANGLE").text) for m in means])
-    azimuth = numpy.deg2rad([float(m.find("AZIMUTH_ANGLE").text) for m in means])
-    mean_azimuth = numpy.rad2deg(numpy.arctan2(numpy.sin(azimuth).mean(), numpy.cos(azimuth).mean())) % 360.0
-    return float(zenith.mean()), float(mean_azimuth)
 
 
 def parse_tl(source: Source) -> dict:
@@ -183,20 +152,22 @@ def parse_tl(source: Source) -> dict:
         "sun_zenith": _angle_grid(sun.find("Zenith")),
         "sun_azimuth": _angle_grid(sun.find("Azimuth")),
     }
-    # the sun grid always spans the whole tile; every field shares its axes
-    shape = grids["sun_zenith"].shape
     view = root.findall(".//Viewing_Incidence_Angles_Grids")
-    mean_view_zenith, mean_view_azimuth = _mean_view_angles(root)
-    grids["view_zenith"] = _view_grid(
-        [_angle_grid(g.find("Zenith")) for g in view], shape, mean_view_zenith,
-        circular=False, name="view_zenith",
+    grids["view_zenith"] = _mean_grids(
+        [_angle_grid(g.find("Zenith")) for g in view], circular=False
     )
-    grids["view_azimuth"] = _view_grid(
-        [_angle_grid(g.find("Azimuth")) for g in view], shape, mean_view_azimuth,
-        circular=True, name="view_azimuth",
+    grids["view_azimuth"] = _mean_grids(
+        [_angle_grid(g.find("Azimuth")) for g in view], circular=True
     )
 
-    axes = (regular_axis(shape[0], step_px), regular_axis(shape[1], step_px))
+    # each grid starts at the tile's top-left corner, 5 km apart -- but not
+    # every grid has the same shape (a product that only clips a tile's edge
+    # can carry viewing grids far smaller than the sun grid), so each gets
+    # its own axes
+    axes = {
+        name: (regular_axis(grid.shape[0], step_px), regular_axis(grid.shape[1], step_px))
+        for name, grid in grids.items()
+    }
 
     mean_sun = root.find(".//Mean_Sun_Angle")
     attrs = {

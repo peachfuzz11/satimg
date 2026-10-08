@@ -52,9 +52,8 @@ class Sentinel2L1CProduct(Product):
         return keep_open(label_bands(tci, ("red", "green", "blue")), src)
 
     def _read_metadata(self) -> Metadata:
-        rows, cols = self._tl["axes"]
         fields = {
-            name: self._field(rows, cols, grid, name=name, units="degrees")
+            name: self._field(*self._tl["axes"][name], grid, name=name, units="degrees")
             for name, grid in self._tl["grids"].items()
         }
         return Metadata(fields, self._tl["attrs"])
