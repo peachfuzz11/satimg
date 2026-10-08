@@ -96,8 +96,13 @@ def _angle_grid(node: ElementTree.Element) -> numpy.ndarray:
 
 def _mean_grids(grids: list[numpy.ndarray], *, circular: bool) -> numpy.ndarray:
     """NaN-aware mean of the per-detector grids; ``circular`` for azimuths. Cells
-    that no detector covers (tile corners) are then nearest-filled."""
-    stack = numpy.stack(grids)
+    that no detector covers (tile corners) are then nearest-filled. Every grid
+    starts at the tile's top-left corner, so grids of different shapes are
+    NaN-padded to the largest before averaging."""
+    shape = tuple(max(g.shape[axis] for g in grids) for axis in (0, 1))
+    stack = numpy.full((len(grids), *shape), numpy.nan)
+    for i, g in enumerate(grids):
+        stack[i, : g.shape[0], : g.shape[1]] = g
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices
         if not circular:
@@ -155,8 +160,14 @@ def parse_tl(source: Source) -> dict:
         [_angle_grid(g.find("Azimuth")) for g in view], circular=True
     )
 
-    shape = grids["sun_zenith"].shape
-    axes = (regular_axis(shape[0], step_px), regular_axis(shape[1], step_px))
+    # each grid starts at the tile's top-left corner, 5 km apart -- but not
+    # every grid has the same shape (a product that only clips a tile's edge
+    # can carry viewing grids far smaller than the sun grid), so each gets
+    # its own axes
+    axes = {
+        name: (regular_axis(grid.shape[0], step_px), regular_axis(grid.shape[1], step_px))
+        for name, grid in grids.items()
+    }
 
     mean_sun = root.find(".//Mean_Sun_Angle")
     attrs = {
