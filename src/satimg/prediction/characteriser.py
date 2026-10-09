@@ -8,8 +8,8 @@ for cog); the ship type is the argmax over :data:`SHIP_TYPES`.
 
 The predicted cog is the course *as it points in the image*. That is the
 compass course for a north-up optical product, but a Sentinel-1 GRD is a
-mirror image of the map, so there it is converted back through the product's
-``heading_in_image`` (its own inverse).
+mirror image of the map, so there it is converted back to true north with
+the product's ``heading_from_image``.
 """
 
 from __future__ import annotations
@@ -99,10 +99,10 @@ class Characteriser:
         :attr:`chip_size` patch from ``patches_at``. cog is returned in
         degrees clockwise from true north."""
         result = decode(self._model.predict(patch.visual.values))
-        # only SAR products define heading_in_image; optical ones are north-up
-        if hasattr(self._product, "heading_in_image"):
+        # only SAR products define heading_from_image; optical ones are north-up
+        if hasattr(self._product, "heading_from_image"):
             col, row = patch.center
-            result.cog = float(self._product.heading_in_image((row, col), result.cog))
+            result.cog = float(self._product.heading_from_image((row, col), result.cog))
         return result
 
 

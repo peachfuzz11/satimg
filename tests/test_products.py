@@ -215,6 +215,18 @@ def test_sentinel1_heading_in_image(sentinel1_iw):
     assert sentinel1_iw.heading_in_image(rowcol, (platform - 90.0) % 360.0) == pytest.approx(270.0)
 
 
+def test_sentinel1_heading_from_image(sentinel1_iw):
+    # the inverse frame: image "up" points against the platform heading,
+    # image "right" along the look direction
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    platform = _local_platform_heading(sentinel1_iw, rowcol)
+    assert sentinel1_iw.heading_from_image(rowcol, 0.0) == pytest.approx((platform + 180.0) % 360.0)
+    assert sentinel1_iw.heading_from_image(rowcol, 90.0) == pytest.approx((platform + 90.0) % 360.0)
+    for heading in (0.0, 73.0, 190.0, 300.0):
+        image = sentinel1_iw.heading_in_image(rowcol, heading)
+        assert sentinel1_iw.heading_from_image(rowcol, image) == pytest.approx(heading)
+
+
 def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
     # a descending-pass GRD scene keeps north at the top (it is flipped
     # left-to-right, not rotated); an ascending one is flipped top-to-bottom

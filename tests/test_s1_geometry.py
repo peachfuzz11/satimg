@@ -60,6 +60,9 @@ def test_sar_geometry_matches(sentinel1_iw, geometry, heading):
     assert geometry.heading_in_image(rowcol, heading) == pytest.approx(
         sentinel1_iw.heading_in_image(rowcol, heading)
     )
+    assert geometry.heading_from_image(rowcol, heading) == pytest.approx(
+        sentinel1_iw.heading_from_image(rowcol, heading)
+    )
     lat, lon = sentinel1_iw.transformer.rowcol_to_latlon(rowcol)[0]
     assert geometry.correct_position(lat, lon, 7.5, heading) == pytest.approx(
         sentinel1_iw.correct_position(lat, lon, 7.5, heading)

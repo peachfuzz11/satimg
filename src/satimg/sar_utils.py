@@ -86,6 +86,21 @@ def heading_in_image(heading_deg, platform_heading_deg):
     return (platform_heading + 180.0 - heading) % 360.0
 
 
+def heading_from_image(image_heading_deg, platform_heading_deg):
+    """Convert a direction in a SAR GRD's own pixel frame (degrees clockwise
+    from image "up", as returned by :func:`heading_in_image`) back into a
+    compass heading (degrees clockwise from true north), wrapped to
+    ``[0, 360)``.
+
+    The image is a mirror of the map, so the conversion is its own inverse:
+    this is the same arithmetic as :func:`heading_in_image`, named for the
+    direction it is used in.
+    """
+    image_heading = numpy.asarray(image_heading_deg, dtype=float)
+    platform_heading = numpy.asarray(platform_heading_deg, dtype=float)
+    return (platform_heading + 180.0 - image_heading) % 360.0
+
+
 def azimuth_shift_m(
     speed,
     heading_deg,

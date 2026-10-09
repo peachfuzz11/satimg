@@ -78,11 +78,11 @@ def test_optical_product_keeps_cog_as_predicted():
 def test_sar_product_converts_cog_out_of_the_image_frame():
     calls = []
 
-    def heading_in_image(rowcol, heading):
+    def heading_from_image(rowcol, heading):
         calls.append((rowcol, heading))
         return 123.0
 
-    product = SimpleNamespace(heading_in_image=heading_in_image)
+    product = SimpleNamespace(heading_from_image=heading_from_image)
     result = Characteriser(product, _FakeModel(_logits({"cog": [6]}))).characterise(_patch())
 
     assert result.cog == 123.0

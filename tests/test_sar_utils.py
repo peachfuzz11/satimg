@@ -8,6 +8,7 @@ import pytest
 from satimg.sar_utils import (
     azimuth_shift_m,
     ground_track_heading,
+    heading_from_image,
     heading_in_image,
     heading_to_los,
 )
@@ -102,6 +103,22 @@ class TestHeadingInImage:
     def test_vectorised(self):
         got = heading_in_image(numpy.array([30.0, 210.0, 120.0, -60.0]), 30.0)
         numpy.testing.assert_allclose(got, [180.0, 0.0, 90.0, 270.0])
+
+
+class TestHeadingFromImage:
+    @pytest.mark.parametrize("platform", [-12.3, 0.0, 192.0, 347.5])
+    def test_round_trips_through_heading_in_image(self, platform):
+        headings = numpy.array([0.0, 45.0, 90.0, 181.0, 359.0])
+        image = heading_in_image(headings, platform)
+        assert heading_from_image(image, platform) == pytest.approx(headings)
+
+    def test_image_up_points_against_the_platform_heading(self):
+        # image "up" (decreasing row) is the platform heading + 180
+        assert heading_from_image(0.0, 10.0) == pytest.approx(190.0)
+
+    def test_result_in_range(self):
+        out = heading_from_image(numpy.linspace(-720, 720, 97), 345.0)
+        assert ((out >= 0) & (out < 360)).all()
 
 
 class TestAzimuthShiftM:
