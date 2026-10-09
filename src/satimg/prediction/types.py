@@ -40,7 +40,7 @@ class Detection:
 class Characterisation:
     length: float  # metres
     width: float  # metres
-    sog: float  # m/s
+    sog: float  # knots
     cog: float  # degrees clockwise from true north
     ship_type: Label
     ship_type_code: int  # a representative AIS ship type code for ship_type

@@ -40,8 +40,8 @@ class Yolo26Model(Model):
 
 
 class CharacterisationModel(Model):
-    """Ship characterisation network: a ``(N, 3, size, size)`` uint8 RGB chip
-    in, ``(N, num_outputs)`` logits out. A 1-band (SAR) chip is repeated to
+    """Ship characterisation network: a ``(N, 3, 64, 64)`` uint8 RGB chip in,
+    ``(N, num_outputs)`` logits out. A 1-band (SAR) chip is repeated to
     three bands, as the model was trained on."""
 
     def predict(self, tile: numpy.ndarray, **kwargs) -> numpy.ndarray:
