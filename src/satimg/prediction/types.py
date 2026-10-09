@@ -34,3 +34,13 @@ class Detection:
     bbox: BBox
     label: Label
     coordinate: Coordinate
+
+
+@dataclass
+class Characterisation:
+    length: float  # metres
+    width: float  # metres
+    sog: float  # knots
+    cog: float  # degrees clockwise from true north
+    ship_type: Label
+    ship_type_code: int  # a representative AIS ship type code for ship_type

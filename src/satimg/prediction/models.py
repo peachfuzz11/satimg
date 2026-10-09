@@ -1,5 +1,7 @@
-"""ONNX detection models. ``predict`` takes a ``(band, y, x)`` uint8 tile and
-returns an ``(N, 5)`` array of ``x1, y1, x2, y2, confidence`` in tile pixels."""
+"""ONNX models. ``predict`` takes a ``(band, y, x)`` uint8 tile. A detection
+model returns an ``(N, 5)`` array of ``x1, y1, x2, y2, confidence`` in tile
+pixels; :class:`CharacterisationModel` returns raw logits, decoded by
+:mod:`satimg.prediction.characteriser`."""
 
 from __future__ import annotations
 
@@ -35,6 +37,17 @@ class Yolo26Model(Model):
             arr = _pad(arr, 2, slice_size)
         detections = self._infer(arr[numpy.newaxis, ...])
         return numpy.squeeze(detections[..., 0:5], axis=0)
+
+
+class CharacterisationModel(Model):
+    """Ship characterisation network: a ``(N, 3, 64, 64)`` uint8 RGB chip in,
+    ``(N, num_outputs)`` logits out. A 1-band (SAR) chip is repeated to
+    three bands, as the model was trained on."""
+
+    def predict(self, tile: numpy.ndarray, **kwargs) -> numpy.ndarray:
+        if tile.shape[0] == 1:
+            tile = numpy.repeat(tile, 3, axis=0)
+        return self._infer(tile.astype(numpy.uint8)[numpy.newaxis, ...])[0]
 
 
 def _pad(array: numpy.ndarray, axis: int, target: int) -> numpy.ndarray:

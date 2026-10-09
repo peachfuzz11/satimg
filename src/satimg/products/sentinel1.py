@@ -159,6 +159,14 @@ class Sentinel1Product(Product):
         """
         return self._geometry.heading_in_image(rowcol, heading_deg)
 
+    def heading_from_image(self, rowcol, image_heading_deg):
+        """Convert a direction in this GRD product's own pixel frame (degrees
+        clockwise from image "up", see :meth:`heading_in_image`) at pixel
+        ``rowcol`` back into a compass heading (degrees clockwise from true
+        north) -- e.g. a ship's course as a model read it off the raster.
+        """
+        return self._geometry.heading_from_image(rowcol, image_heading_deg)
+
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
         """Azimuth-direction pixel displacement of a moving object at ``rowcol``.
 

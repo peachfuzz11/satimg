@@ -66,6 +66,11 @@ class Sentinel1Geometry(SceneGeometry):
         result = sar_utils.heading_in_image(heading_deg, self._local_platform_heading(rowcol))
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
+    def heading_from_image(self, rowcol, image_heading_deg):
+        """See :meth:`satimg.products.sentinel1.Sentinel1Product.heading_from_image`."""
+        result = sar_utils.heading_from_image(image_heading_deg, self._local_platform_heading(rowcol))
+        return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
+
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
         """See :meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`."""
         m = self.metadata
