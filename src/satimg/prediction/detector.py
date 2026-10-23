@@ -3,7 +3,8 @@
 The product's ``visual`` view is walked in fixed-size, zero-padded tiles; each tile
 is run through the model, boxes are filtered by size / aspect / confidence,
 mapped back to full-image pixels via ``patch.window``, then to lat/lon, and
-optionally dropped if they land on shore.
+tagged with where they lie (see :mod:`satimg.prediction.context`). None are dropped
+for where they lie -- a ship at a quay is on land too -- so callers filter on the tags.
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ from dataclasses import dataclass
 
 import numpy
 
-from satimg.landmask import LandMask
 from satimg.prediction import nms
+from satimg.prediction.context import context_tags
 from satimg.prediction.models import Model
 from satimg.prediction.types import BBox, Coordinate, Detection, Label
 from satimg.product import Product
@@ -33,7 +34,6 @@ class DetectorConfig:
     min_area: float = 4
     max_area: float = 300 ** 2
     max_aspect_ratio: float = 15
-    apply_landmask: bool = True
     label: str = "ship"
 
 
@@ -41,7 +41,6 @@ class Detector:
     def __init__(self, product: Product, model: Model, **overrides):
         self._product = product
         self._model = model
-        self._land = LandMask()
         self._config = DetectorConfig(**overrides)
 
     def detect(self, **overrides) -> list[Detection]:
@@ -78,18 +77,21 @@ class Detector:
         return results
 
     def _to_detections(self, boxes: numpy.ndarray, cfg: DetectorConfig) -> list[Detection]:
+        if not len(boxes):
+            return []
+        centres = numpy.stack([(boxes[:, 1] + boxes[:, 3]) / 2, (boxes[:, 0] + boxes[:, 2]) / 2], axis=1)
+        latlon = numpy.asarray(self._product.transformer.rowcol_to_latlon(centres))
+        timestamp = self._product.timestamp
+        tags = context_tags(latlon[:, 0], latlon[:, 1], year=timestamp.year if timestamp else None)
         out = []
-        for row in boxes:
+        for row, (lat, lon), detection_tags in zip(boxes, latlon, tags):
             x1, y1, x2, y2, conf = map(float, row)
-            cx, cy = x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2
-            lat, lon = self._product.transformer.rowcol_to_latlon((cy, cx))[0]
-            if cfg.apply_landmask and self._land.contains(float(lon), float(lat)):
-                continue
             out.append(
                 Detection(
                     BBox(x1, y1, x2, y2),
                     Label(cfg.label, conf),
                     Coordinate(lat=float(lat), lon=float(lon)),
+                    detection_tags,
                 )
             )
         return out

@@ -278,6 +278,48 @@ connector.download(items[0], "/data/scene.zip")
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 
+## Land, wind farms, ports, platforms and fish farms
+
+Every mask answers `mask.contains(lat, lon)` for matching `lat`/`lon` points
+(scalars or arrays of any shape), giving booleans of that shape:
+
+```python
+from satimg.fishfarms import FishFarmMask
+from satimg.landmask import LandMask
+from satimg.platforms import PlatformMask
+from satimg.ports import HarborMask, PortMask, features_in_bbox
+from satimg.windfarms import WindfarmMask
+
+LandMask().contains(lat, lon)              # on land
+WindfarmMask(year=2025).contains(lat, lon)  # in a wind farm built by 2025 (any farm without a year)
+PortMask().contains(lat, lon)              # in a commercial port
+HarborMask().contains(lat, lon)            # in a marina or other small-boat harbor
+PlatformMask().contains(lat, lon)          # at an offshore platform
+FishFarmMask().contains(lat, lon)          # at an offshore fish farm
+
+features_in_bbox(min_lon, min_lat, max_lon, max_lat)  # the port and harbor areas, e.g. for a map
+```
+
+Each data file loads once per process (the ports take ~0.5 s), whatever the
+number of masks. Points a detection's centre would never quite hit are widened:
+an offshore turbine is a 50 m disc, a platform a 200 m disc, a fish farm a 250 m
+disc and a berth a 150 m disc, and a port is grown by 50 m to take in the ships
+at berth. Berths and oil terminals by the water count as ports.
+
+`Detector` tags every detection with where it lies, in `Detection.tags`:
+`on_land`, `turbine`, `platform`, `fishery`, `in_port` and `in_harbor` (a ship at a quay can
+be both `on_land` and `in_port`). No detection is dropped for where it lies;
+filter on the tags. `satimg.prediction.context_tags(lat,
+lon, year=None)` gives the same tags for any points.
+
+The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`,
+`scripts/build_platforms.py` and `scripts/build_fishfarms.py`.
+
+Data: ports, harbors, berths, oil terminals, platforms, and wind and fish farms
+outside EMODnet's © OpenStreetMap contributors, available under the
+[ODbL](https://opendatacommons.org/licenses/odbl/); European wind and fish farms from
+[EMODnet Human Activities](https://emodnet.ec.europa.eu/en/human-activities).
+
 ## Deep Zoom
 
 ```python

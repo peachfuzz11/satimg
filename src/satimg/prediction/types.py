@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -34,6 +34,9 @@ class Detection:
     bbox: BBox
     label: Label
     coordinate: Coordinate
+    # where it lies: satimg.prediction.context's ON_LAND, TURBINE, PLATFORM,
+    # FISHERY, IN_PORT and IN_HARBOR
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
