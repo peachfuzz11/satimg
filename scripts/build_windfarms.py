@@ -49,13 +49,13 @@ def main():
     for farm, wkt in dict(select(FARM_QUERY)).items():
         geom = polygonal(shapely.from_wkt(literal(wkt)))
         point = geom.representative_point() if not geom.is_empty else None
-        if point and not land.contains(point.x, point.y) and not len(covered.query(geom, predicate="intersects")):
+        if point and not land.contains(point.y, point.x) and not len(covered.query(geom, predicate="intersects")):
             outlines.append(geom)
             features.append(feature({"name": names.get(farm, {}).get("name"), "year": None, "source": "osm"}, geom))
 
     turbines = shapely.from_wkt([literal(wkt) for wkt, in select(TURBINE_QUERY)])
     lon, lat = shapely.get_x(turbines), shapely.get_y(turbines)
-    offshore = ~land.contains_many(lon, lat)
+    offshore = ~land.contains(lat, lon)
     inside, _ = shapely.STRtree(emodnet_geoms + outlines).query(turbines, predicate="within")
     keep = offshore & ~numpy.isin(numpy.arange(len(turbines)), inside)
     turbine_areas = shapely.union_all([disc(x, y, TURBINE_METERS) for x, y in zip(lon[keep], lat[keep])])

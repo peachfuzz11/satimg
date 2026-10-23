@@ -1,68 +1,78 @@
 import numpy
+import pytest
 
+from satimg.landmask import LandMask
 from satimg.platforms import PlatformMask
-from satimg.ports import HARBOR, PORT, PortMask
+from satimg.ports import HarborMask, PortMask, features_in_bbox
 from satimg.windfarms import WindfarmMask
 
-SAINT_NAZAIRE = (-2.6009, 47.1557)  # wind farm built 2022
-VESTERHAV_SYD = (7.961, 56.1041)  # wind farm without a build year
-CHINA_TURBINES = (120.80102, 33.16136)  # offshore Jiangsu turbine OSM maps as a point only
-JOHAN_SVERDRUP = (2.54862, 58.8361)  # production platform
-PORT_OF_LOS_ANGELES = (-118.26165, 33.74456)
-MARINA_DEL_REY = (-118.45101, 33.97245)
-BILBAO_PORT = (-3.06383, 43.34676)  # untagged in OSM, 20 ha or more
-NYHAVN = (12.59092, 55.67972)  # untagged in OSM, no port next to it
-OPEN_SEA = (-10.0, 45.0)
+# (lat, lon)
+COPENHAGEN_CITY_HALL = (55.6757, 12.5694)
+SAINT_NAZAIRE = (47.1557, -2.6009)  # wind farm built 2022
+VESTERHAV_SYD = (56.1041, 7.961)  # wind farm without a build year
+CHINA_TURBINES = (33.16136, 120.80102)  # offshore Jiangsu turbine OSM maps as a point only
+JOHAN_SVERDRUP = (58.8361, 2.54862)  # production platform
+PORT_OF_LOS_ANGELES = (33.74456, -118.26165)
+MARINA_DEL_REY = (33.97245, -118.45101)
+BILBAO_PORT = (43.34676, -3.06383)  # untagged in OSM, 20 ha or more
+NYHAVN = (55.67972, 12.59092)  # untagged in OSM, no port next to it
+OPEN_SEA = (45.0, -10.0)
 
 
-def lonlat(*points):
-    return numpy.array([p[0] for p in points]), numpy.array([p[1] for p in points])
+def contains(mask, *points):
+    return mask.contains([p[0] for p in points], [p[1] for p in points]).tolist()
+
+
+@pytest.mark.parametrize("mask", [LandMask(), WindfarmMask(), PortMask(), HarborMask(), PlatformMask()],
+                         ids=lambda m: type(m).__name__)
+class TestEveryMask:
+    def test_a_scalar_point(self, mask):
+        assert mask.contains(*OPEN_SEA).shape == ()
+
+    def test_keeps_the_shape(self, mask):
+        assert mask.contains(numpy.full((2, 3), 45.0), numpy.full((2, 3), -10.0)).shape == (2, 3)
+
+    def test_no_points(self, mask):
+        assert contains(mask) == []
+
+
+def test_land():
+    assert contains(LandMask(), COPENHAGEN_CITY_HALL, OPEN_SEA) == [True, False]
 
 
 class TestWindfarmMask:
     def test_points_inside_built_farms(self):
-        mask = WindfarmMask().contains_many(*lonlat(SAINT_NAZAIRE, OPEN_SEA, VESTERHAV_SYD), year=2026)
-        assert mask.tolist() == [True, False, True]
+        assert contains(WindfarmMask(year=2026), SAINT_NAZAIRE, OPEN_SEA, VESTERHAV_SYD) == [True, False, True]
 
     def test_farm_built_after_the_year_is_ignored(self):
-        assert WindfarmMask().contains_many(*lonlat(SAINT_NAZAIRE, VESTERHAV_SYD), year=2021).tolist() == [False, True]
+        assert contains(WindfarmMask(year=2021), SAINT_NAZAIRE, VESTERHAV_SYD) == [False, True]
 
     def test_turbines_mapped_as_points_count_whatever_the_year(self):
-        assert WindfarmMask().contains_many(*lonlat(CHINA_TURBINES), year=2000).tolist() == [True]
+        assert contains(WindfarmMask(year=2000), CHINA_TURBINES) == [True]
 
     def test_no_year_matches_every_farm(self):
-        assert WindfarmMask().contains_many(*lonlat(SAINT_NAZAIRE)).tolist() == [True]
-
-    def test_keeps_the_shape(self):
-        assert WindfarmMask().contains_many(numpy.zeros((2, 3)), numpy.zeros((2, 3))).shape == (2, 3)
-
-    def test_no_points(self):
-        assert WindfarmMask().contains_many([], []).tolist() == []
+        assert contains(WindfarmMask(), SAINT_NAZAIRE) == [True]
 
 
-class TestPortMask:
-    def test_kinds(self):
-        kinds = PortMask().kinds_many(*lonlat(PORT_OF_LOS_ANGELES, MARINA_DEL_REY, OPEN_SEA))
-        assert kinds.tolist() == [PORT, HARBOR, None]
+class TestPortsAndHarbors:
+    def test_ports(self):
+        assert contains(PortMask(), PORT_OF_LOS_ANGELES, MARINA_DEL_REY, OPEN_SEA) == [True, False, False]
+
+    def test_harbors(self):
+        assert contains(HarborMask(), PORT_OF_LOS_ANGELES, MARINA_DEL_REY, OPEN_SEA) == [False, True, False]
 
     def test_untagged_areas_take_their_kind_from_size_and_neighbours(self):
-        assert PortMask().kinds_many(*lonlat(BILBAO_PORT, NYHAVN)).tolist() == [PORT, HARBOR]
-
-    def test_no_points(self):
-        assert PortMask().kinds_many([], []).tolist() == []
+        assert contains(PortMask(), BILBAO_PORT, NYHAVN) == [True, False]
+        assert contains(HarborMask(), BILBAO_PORT, NYHAVN) == [False, True]
 
     def test_features_in_bbox(self):
-        names = [f["properties"]["name"] for f in PortMask().features_in_bbox(-118.5, 33.7, -118.2, 34.0)]
+        names = [f["properties"]["name"] for f in features_in_bbox(-118.5, 33.7, -118.2, 34.0)]
         assert "Port of Los Angeles" in names
         assert "Marina del Rey" in names
 
     def test_open_sea_has_no_features(self):
-        assert PortMask().features_in_bbox(-11, 44, -10, 45) == []
+        assert features_in_bbox(-11, 44, -10, 45) == []
 
 
-class TestPlatformMask:
-    def test_points_at_a_platform(self):
-        assert PlatformMask().contains_many(*lonlat(JOHAN_SVERDRUP, OPEN_SEA)).tolist() == [True, False]
-
-    def test_no_points(self):
-        assert PlatformMask().contains_many([], []).tolist() == []
+def test_platforms():
+    assert contains(PlatformMask(), JOHAN_SVERDRUP, OPEN_SEA) == [True, False]

@@ -9,7 +9,7 @@ import numpy
 
 from satimg.landmask import LandMask
 from satimg.platforms import PlatformMask
-from satimg.ports import HARBOR, PORT, PortMask
+from satimg.ports import HarborMask, PortMask
 from satimg.windfarms import WindfarmMask
 
 ON_LAND = "on_land"
@@ -18,24 +18,26 @@ PLATFORM = "platform"
 IN_PORT = "in_port"
 IN_HARBOR = "in_harbor"
 
-# each mask loads its data once per process
+# one instance each (the wind farms one per year), so the detector's tiles share them
 _land = cache(LandMask)
 _windfarms = cache(WindfarmMask)
 _platforms = cache(PlatformMask)
 _ports = cache(PortMask)
+_harbors = cache(HarborMask)
 
 
-def context_tags(lon, lat, year: int | None = None) -> list[list[str]]:
-    """The tags of each of the matching ``lon``/``lat`` points. A wind farm built
-    after ``year`` doesn't count (any farm does when ``year`` is None)."""
-    lon = numpy.asarray(lon, dtype=float).ravel()
+def context_tags(lat, lon, year: int | None = None) -> list[list[str]]:
+    """The tags of each of the matching ``lat``/``lon`` points. A wind farm built
+    after ``year`` doesn't count (any farm does when ``year`` is None), and a harbor
+    wins over a port around it."""
     lat = numpy.asarray(lat, dtype=float).ravel()
-    kinds = _ports().kinds_many(lon, lat)
+    lon = numpy.asarray(lon, dtype=float).ravel()
+    in_harbor = _harbors().contains(lat, lon)
     masks = [
-        (ON_LAND, _land().contains_many(lon, lat)),
-        (TURBINE, _windfarms().contains_many(lon, lat, year=year)),
-        (PLATFORM, _platforms().contains_many(lon, lat)),
-        (IN_PORT, kinds == PORT),
-        (IN_HARBOR, kinds == HARBOR),
+        (ON_LAND, _land().contains(lat, lon)),
+        (TURBINE, _windfarms(year).contains(lat, lon)),
+        (PLATFORM, _platforms().contains(lat, lon)),
+        (IN_PORT, _ports().contains(lat, lon) & ~in_harbor),
+        (IN_HARBOR, in_harbor),
     ]
-    return [[tag for tag, mask in masks if mask[i]] for i in range(lon.size)]
+    return [[tag for tag, mask in masks if mask[i]] for i in range(lat.size)]

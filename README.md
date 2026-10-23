@@ -280,32 +280,34 @@ off the archive, or extracting it for pixel access.
 
 ## Land, wind farms, ports and platforms
 
-Element-wise tests of `lon`/`lat` arrays against bundled geographic data, for
-telling ships from shore, turbines, quays and platforms:
+Every mask answers `mask.contains(lat, lon)` for matching `lat`/`lon` points
+(scalars or arrays of any shape), giving booleans of that shape:
 
 ```python
 from satimg.landmask import LandMask
 from satimg.platforms import PlatformMask
-from satimg.ports import PortMask
+from satimg.ports import HarborMask, PortMask, features_in_bbox
 from satimg.windfarms import WindfarmMask
 
-LandMask().contains_many(lon, lat)                 # bool: on land
-WindfarmMask().contains_many(lon, lat, year=2025)  # bool: in a wind farm built by 2025
-PortMask().kinds_many(lon, lat)                    # "port", "harbor" (marina / small-boat harbor) or None
-PortMask().features_in_bbox(min_lon, min_lat, max_lon, max_lat)  # GeoJSON features, e.g. for a map
-PlatformMask().contains_many(lon, lat)             # bool: at an offshore platform
+LandMask().contains(lat, lon)              # on land
+WindfarmMask(year=2025).contains(lat, lon)  # in a wind farm built by 2025 (any farm without a year)
+PortMask().contains(lat, lon)              # in a commercial port
+HarborMask().contains(lat, lon)            # in a marina or other small-boat harbor
+PlatformMask().contains(lat, lon)          # at an offshore platform
+
+features_in_bbox(min_lon, min_lat, max_lon, max_lat)  # the port and harbor areas, e.g. for a map
 ```
 
-Each mask loads its data once on construction (`PortMask` takes ~0.5 s), so
-keep an instance around. Points a detection's centre would never quite hit are
-widened: an offshore turbine is a 50 m disc, a platform a 200 m disc, and a
-port is grown by 50 m to take in the ships at berth.
+Each data file loads once per process (the ports take ~0.5 s), whatever the
+number of masks. Points a detection's centre would never quite hit are widened:
+an offshore turbine is a 50 m disc, a platform a 200 m disc, and a port is grown
+by 50 m to take in the ships at berth.
 
 `Detector` tags every detection with where it lies, in `Detection.tags`:
 `on_land`, `turbine`, `platform`, `in_port` and `in_harbor` (a ship at a quay can
 be both `on_land` and `in_port`). Detections on land are dropped unless the
 detector runs with `apply_landmask=False`. `satimg.prediction.context_tags(lon,
-lat, year=None)` gives the same tags for any points.
+lon, year=None)` gives the same tags for any points.
 
 The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`
 and `scripts/build_platforms.py`.

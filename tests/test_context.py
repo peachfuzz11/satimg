@@ -6,12 +6,13 @@ import numpy
 from satimg.prediction import Detector
 from satimg.prediction.context import IN_HARBOR, IN_PORT, ON_LAND, PLATFORM, TURBINE, context_tags
 
-COPENHAGEN_CITY_HALL = (12.5694, 55.6757)
-SAINT_NAZAIRE = (-2.6009, 47.1557)  # wind farm built 2022
-JOHAN_SVERDRUP = (2.54862, 58.8361)  # production platform
-PORT_OF_LOS_ANGELES = (-118.26165, 33.74456)
-MARINA_DEL_REY = (-118.45101, 33.97245)
-OPEN_SEA = (-10.0, 45.0)
+# (lat, lon)
+COPENHAGEN_CITY_HALL = (55.6757, 12.5694)
+SAINT_NAZAIRE = (47.1557, -2.6009)  # wind farm built 2022
+JOHAN_SVERDRUP = (58.8361, 2.54862)  # production platform
+PORT_OF_LOS_ANGELES = (33.74456, -118.26165)
+MARINA_DEL_REY = (33.97245, -118.45101)
+OPEN_SEA = (45.0, -10.0)
 
 
 def tags(*points, year=None):
@@ -41,7 +42,7 @@ class FakeTransformer:
         self._points = points
 
     def rowcol_to_latlon(self, rowcol):
-        return numpy.array([(self._points[int(row)][1], self._points[int(row)][0]) for row, _ in rowcol])
+        return numpy.array([self._points[int(row)] for row, _ in rowcol])
 
 
 def detector(points, year=2026):

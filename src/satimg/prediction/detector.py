@@ -83,7 +83,7 @@ class Detector:
         centres = numpy.stack([(boxes[:, 1] + boxes[:, 3]) / 2, (boxes[:, 0] + boxes[:, 2]) / 2], axis=1)
         latlon = numpy.asarray(self._product.transformer.rowcol_to_latlon(centres))
         timestamp = self._product.timestamp
-        tags = context_tags(latlon[:, 1], latlon[:, 0], year=timestamp.year if timestamp else None)
+        tags = context_tags(latlon[:, 0], latlon[:, 1], year=timestamp.year if timestamp else None)
         out = []
         for row, (lat, lon), detection_tags in zip(boxes, latlon, tags):
             if cfg.apply_landmask and ON_LAND in detection_tags:

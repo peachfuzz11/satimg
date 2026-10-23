@@ -1,35 +1,24 @@
-"""Offshore wind farm areas, for telling turbines from ships.
+"""Offshore wind farms, for telling turbines from ships.
 
-The polygons are EMODnet's wind farms in Production, Construction or Test site
-status, bundled as ``satimg/data/windfarms.json.gz``.
+``satimg/data/windfarms.json.gz``, built by ``scripts/build_windfarms.py``: EMODnet's
+farms (Europe) with the year they were built, and outside them OSM's offshore farm
+outlines and 50 m discs around the turbines OSM maps as points, without a year.
 """
 
 from __future__ import annotations
 
-import gzip
-import json
-from importlib.resources import files
-
 import numpy
-import shapely
+
+from satimg.mask import Mask, bundled, inside
 
 
-class WindfarmMask:
-    def __init__(self):
-        with gzip.open(files("satimg") / "data" / "windfarms.json.gz") as f:
-            features = json.load(f)["features"]
-        self._tree = shapely.STRtree([shapely.geometry.shape(f["geometry"]) for f in features])
-        # the year the farm was built; a farm without one is assumed to be standing already
-        self._years = numpy.array([f["properties"]["year"] or 0 for f in features])
+class WindfarmMask(Mask):
+    def __init__(self, year: int | None = None):
+        """The farms built by ``year`` -- every farm when it is None. A farm without a
+        build year is assumed to be standing already."""
+        features, self._tree = bundled("windfarms")
+        self._areas = None if year is None else numpy.array(
+            [(f["properties"]["year"] or 0) <= year for f in features], dtype=bool)
 
-    def contains_many(self, lon, lat, year: int | None = None) -> numpy.ndarray:
-        """Element-wise test of matching ``lon``/``lat`` arrays for lying inside a wind
-        farm built by ``year`` (any farm when ``year`` is None)."""
-        lon = numpy.asarray(lon, dtype=float)
-        lat = numpy.asarray(lat, dtype=float)
-        point_idx, farm_idx = self._tree.query(shapely.points(lon.ravel(), lat.ravel()), predicate="within")
-        if year is not None:
-            point_idx = point_idx[self._years[farm_idx] <= year]
-        mask = numpy.zeros(lon.size, dtype=bool)
-        mask[point_idx] = True
-        return mask.reshape(lon.shape)
+    def _contains(self, lat, lon) -> numpy.ndarray:
+        return inside(self._tree, lat, lon, self._areas)
