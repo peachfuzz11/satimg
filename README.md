@@ -278,6 +278,29 @@ connector.download(items[0], "/data/scene.zip")
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 
+## Land, wind farms and ports
+
+Element-wise tests of `lon`/`lat` arrays against bundled geographic data, for
+telling ships from shore, turbines and quays:
+
+```python
+from satimg.landmask import LandMask
+from satimg.ports import PortMask
+from satimg.windfarms import WindfarmMask
+
+LandMask().contains_many(lon, lat)               # bool: on land
+WindfarmMask().contains_many(lon, lat, year=2025)  # bool: in a wind farm built by 2025
+PortMask().kinds_many(lon, lat)                  # "port", "harbor" (marina / small-boat harbor) or None
+PortMask().features_in_bbox(min_lon, min_lat, max_lon, max_lat)  # GeoJSON features, e.g. for a map
+```
+
+Each mask loads its data once on construction (`PortMask` takes ~0.5 s), so
+keep an instance around. `scripts/build_ports.py` rebuilds the port data.
+
+Data: port areas © OpenStreetMap contributors, available under the
+[ODbL](https://opendatacommons.org/licenses/odbl/); wind farms from
+[EMODnet Human Activities](https://emodnet.ec.europa.eu/en/human-activities).
+
 ## Deep Zoom
 
 ```python
