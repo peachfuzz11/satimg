@@ -308,8 +308,8 @@ at berth. Berths and oil terminals by the water count as ports.
 
 `Detector` tags every detection with where it lies, in `Detection.tags`:
 `on_land`, `turbine`, `platform`, `fishery`, `in_port` and `in_harbor` (a ship at a quay can
-be both `on_land` and `in_port`). Detections on land are dropped unless the
-detector runs with `apply_landmask=False`. `satimg.prediction.context_tags(lat,
+be both `on_land` and `in_port`). No detection is dropped for where it lies;
+filter on the tags. `satimg.prediction.context_tags(lat,
 lon, year=None)` gives the same tags for any points.
 
 The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`,

@@ -58,15 +58,10 @@ def boxes(n):
 
 
 class TestDetectorTags:
-    def test_detections_are_tagged_and_those_on_land_dropped(self):
+    def test_detections_are_tagged_and_none_dropped(self):
         d = detector([OPEN_SEA, COPENHAGEN_CITY_HALL, SAINT_NAZAIRE])
         detections = d._to_detections(boxes(3), d._config)
-        assert [x.tags for x in detections] == [[], [TURBINE]]
-
-    def test_without_the_landmask_detections_on_land_are_kept(self):
-        d = detector([OPEN_SEA, COPENHAGEN_CITY_HALL])
-        cfg = type(d._config)(apply_landmask=False)
-        assert [x.tags for x in d._to_detections(boxes(2), cfg)] == [[], [ON_LAND]]
+        assert [x.tags for x in detections] == [[], [ON_LAND], [TURBINE]]
 
     def test_the_product_year_decides_the_wind_farms(self):
         d = detector([SAINT_NAZAIRE], year=2021)

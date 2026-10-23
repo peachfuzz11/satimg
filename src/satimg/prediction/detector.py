@@ -3,8 +3,8 @@
 The product's ``visual`` view is walked in fixed-size, zero-padded tiles; each tile
 is run through the model, boxes are filtered by size / aspect / confidence,
 mapped back to full-image pixels via ``patch.window``, then to lat/lon, and
-tagged with where they lie (see :mod:`satimg.prediction.context`). Those on land
-are dropped unless ``apply_landmask`` is off.
+tagged with where they lie (see :mod:`satimg.prediction.context`). None are dropped
+for where they lie -- a ship at a quay is on land too -- so callers filter on the tags.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import numpy
 
 from satimg.prediction import nms
-from satimg.prediction.context import ON_LAND, context_tags
+from satimg.prediction.context import context_tags
 from satimg.prediction.models import Model
 from satimg.prediction.types import BBox, Coordinate, Detection, Label
 from satimg.product import Product
@@ -34,7 +34,6 @@ class DetectorConfig:
     min_area: float = 4
     max_area: float = 300 ** 2
     max_aspect_ratio: float = 15
-    apply_landmask: bool = True
     label: str = "ship"
 
 
@@ -86,8 +85,6 @@ class Detector:
         tags = context_tags(latlon[:, 0], latlon[:, 1], year=timestamp.year if timestamp else None)
         out = []
         for row, (lat, lon), detection_tags in zip(boxes, latlon, tags):
-            if cfg.apply_landmask and ON_LAND in detection_tags:
-                continue
             x1, y1, x2, y2, conf = map(float, row)
             out.append(
                 Detection(
