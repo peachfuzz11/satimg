@@ -278,27 +278,35 @@ connector.download(items[0], "/data/scene.zip")
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 
-## Land, wind farms and ports
+## Land, wind farms, ports and platforms
 
 Element-wise tests of `lon`/`lat` arrays against bundled geographic data, for
-telling ships from shore, turbines and quays:
+telling ships from shore, turbines, quays and platforms:
 
 ```python
 from satimg.landmask import LandMask
+from satimg.platforms import PlatformMask
 from satimg.ports import PortMask
 from satimg.windfarms import WindfarmMask
 
-LandMask().contains_many(lon, lat)               # bool: on land
+LandMask().contains_many(lon, lat)                 # bool: on land
 WindfarmMask().contains_many(lon, lat, year=2025)  # bool: in a wind farm built by 2025
-PortMask().kinds_many(lon, lat)                  # "port", "harbor" (marina / small-boat harbor) or None
+PortMask().kinds_many(lon, lat)                    # "port", "harbor" (marina / small-boat harbor) or None
 PortMask().features_in_bbox(min_lon, min_lat, max_lon, max_lat)  # GeoJSON features, e.g. for a map
+PlatformMask().contains_many(lon, lat)             # bool: at an offshore platform
 ```
 
 Each mask loads its data once on construction (`PortMask` takes ~0.5 s), so
-keep an instance around. `scripts/build_ports.py` rebuilds the port data.
+keep an instance around. Points a detection's centre would never quite hit are
+widened: an offshore turbine is a 50 m disc, a platform a 200 m disc, and a
+port is grown by 50 m to take in the ships at berth.
 
-Data: port areas © OpenStreetMap contributors, available under the
-[ODbL](https://opendatacommons.org/licenses/odbl/); wind farms from
+The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`
+and `scripts/build_platforms.py`.
+
+Data: ports, harbors, platforms and wind farms outside EMODnet's
+© OpenStreetMap contributors, available under the
+[ODbL](https://opendatacommons.org/licenses/odbl/); European wind farms from
 [EMODnet Human Activities](https://emodnet.ec.europa.eu/en/human-activities).
 
 ## Deep Zoom

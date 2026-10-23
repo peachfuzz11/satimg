@@ -1,10 +1,13 @@
 import numpy
 
+from satimg.platforms import PlatformMask
 from satimg.ports import HARBOR, PORT, PortMask
 from satimg.windfarms import WindfarmMask
 
 SAINT_NAZAIRE = (-2.6009, 47.1557)  # wind farm built 2022
 VESTERHAV_SYD = (7.961, 56.1041)  # wind farm without a build year
+CHINA_TURBINES = (120.80102, 33.16136)  # offshore Jiangsu turbine OSM maps as a point only
+JOHAN_SVERDRUP = (2.54862, 58.8361)  # production platform
 PORT_OF_LOS_ANGELES = (-118.26165, 33.74456)
 MARINA_DEL_REY = (-118.45101, 33.97245)
 BILBAO_PORT = (-3.06383, 43.34676)  # untagged in OSM, 20 ha or more
@@ -23,6 +26,9 @@ class TestWindfarmMask:
 
     def test_farm_built_after_the_year_is_ignored(self):
         assert WindfarmMask().contains_many(*lonlat(SAINT_NAZAIRE, VESTERHAV_SYD), year=2021).tolist() == [False, True]
+
+    def test_turbines_mapped_as_points_count_whatever_the_year(self):
+        assert WindfarmMask().contains_many(*lonlat(CHINA_TURBINES), year=2000).tolist() == [True]
 
     def test_no_year_matches_every_farm(self):
         assert WindfarmMask().contains_many(*lonlat(SAINT_NAZAIRE)).tolist() == [True]
@@ -52,3 +58,11 @@ class TestPortMask:
 
     def test_open_sea_has_no_features(self):
         assert PortMask().features_in_bbox(-11, 44, -10, 45) == []
+
+
+class TestPlatformMask:
+    def test_points_at_a_platform(self):
+        assert PlatformMask().contains_many(*lonlat(JOHAN_SVERDRUP, OPEN_SEA)).tolist() == [True, False]
+
+    def test_no_points(self):
+        assert PlatformMask().contains_many([], []).tolist() == []
