@@ -1,18 +1,26 @@
 """Rebuild ``src/satimg/data/ports.json.gz`` from the OpenStreetMap port and harbour
 areas of the whole planet, each classed as a commercial port or a small-boat harbor.
-Ports are widened by 50 m to take in the ships at berth.
+Ports are widened by 50 m to take in the ships at berth. The berths OSM maps, and the
+oil terminals by the water -- whose jetties often reach far beyond any port area --
+are ports too.
 
     uv run python scripts/build_ports.py
 """
 
 import math
 
+import numpy
 import shapely
 
-from osm import feature, literal, polygonal, select, tags, widen, write_features
+from osm import disc, feature, literal, polygonal, select, tags, widen, write_features
+from satimg.landmask import LandMask
 
 # a port's outline often runs along the quay, with the ships at berth just outside it
 PORT_METERS = 50
+# a berth mapped as a point takes in a moored ship's length around it
+BERTH_METERS = 150
+# an oil terminal is by the water when the sea is within this of it
+TERMINAL_SHORE_METERS = 200
 
 AREAS = """
   { ?x osmkey:industrial "port" } UNION { ?x osmkey:landuse "harbour" } UNION
@@ -42,6 +50,30 @@ def tag_kind(tags) -> str | None:
     return None
 
 
+BERTHS = """
+  ?x <https://www.openstreetmap.org/wiki/Key:seamark:type> "berth" .
+"""
+TERMINALS = """
+  { ?x osmkey:industrial "petroleum_terminal" } UNION { ?x osmkey:industrial "oil_storage" }
+  ?x rdf:type ?type . FILTER(?type IN (osm:way, osm:relation))
+"""
+
+
+def named(pattern) -> list[tuple[str | None, shapely.Geometry]]:
+    """(name, geometry) of the elements a pattern matches."""
+    # the name asked for directly: a VALUES ?k over a UNION keeps QLever busy for minutes
+    names = {x: literal(name) for x, name in select("SELECT ?x ?name WHERE {" + pattern + "  ?x osmkey:name ?name .\n}")}
+    geometries = dict(select("SELECT ?x ?wkt WHERE {" + pattern + "  ?x geo:hasGeometry/geo:asWKT ?wkt .\n}"))
+    return [(names.get(x), shapely.from_wkt(literal(wkt))) for x, wkt in geometries.items()]
+
+
+def by_the_water(land, geom) -> bool:
+    """Whether the sea is within TERMINAL_SHORE_METERS of ``geom``."""
+    ring = widen(geom, TERMINAL_SHORE_METERS).boundary
+    points = shapely.line_interpolate_point(ring, numpy.linspace(0, 1, 32), normalized=True)
+    return not land.contains(shapely.get_y(points), shapely.get_x(points)).all()
+
+
 def main():
     area_tags = tags(TAG_QUERY)
     geometries = {area: wkt for area, wkt in select(GEOMETRY_QUERY)}
@@ -68,7 +100,17 @@ def main():
                 kind = "harbor"
         if kind == "port":
             geom = widen(geom, PORT_METERS)
-        features.append(feature({"name": area_tag.get("name"), "kind": kind}, geom))
+        features.append(feature({"name": area_tag.get("name"), "kind": kind, "source": "area"}, geom))
+
+    for name, geom in named(BERTHS):
+        geom = disc(geom.x, geom.y, BERTH_METERS) if geom.geom_type == "Point" else widen(geom, PORT_METERS)
+        features.append(feature({"name": name, "kind": "port", "source": "berth"}, geom))
+
+    land = LandMask()
+    for name, geom in named(TERMINALS):
+        geom = polygonal(geom)
+        if not geom.is_empty and by_the_water(land, geom):
+            features.append(feature({"name": name, "kind": "port", "source": "oil terminal"}, widen(geom, PORT_METERS)))
 
     # gzipped: the planet's ports are ~8 MB of JSON
     write_features("ports.json.gz", features)

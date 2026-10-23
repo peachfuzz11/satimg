@@ -4,12 +4,13 @@ from types import SimpleNamespace
 import numpy
 
 from satimg.prediction import Detector
-from satimg.prediction.context import IN_HARBOR, IN_PORT, ON_LAND, PLATFORM, TURBINE, context_tags
+from satimg.prediction.context import FISHERY, IN_HARBOR, IN_PORT, ON_LAND, PLATFORM, TURBINE, context_tags
 
 # (lat, lon)
 COPENHAGEN_CITY_HALL = (55.6757, 12.5694)
 SAINT_NAZAIRE = (47.1557, -2.6009)  # wind farm built 2022
 JOHAN_SVERDRUP = (58.8361, 2.54862)  # production platform
+BJOROYA_SALMON = (64.45463, 10.63072)  # salmon farm
 PORT_OF_LOS_ANGELES = (33.74456, -118.26165)
 MARINA_DEL_REY = (33.97245, -118.45101)
 OPEN_SEA = (45.0, -10.0)
@@ -21,8 +22,8 @@ def tags(*points, year=None):
 
 class TestContextTags:
     def test_tags_where_each_point_lies(self):
-        assert tags(COPENHAGEN_CITY_HALL, SAINT_NAZAIRE, JOHAN_SVERDRUP, OPEN_SEA) == [
-            [ON_LAND], [TURBINE], [PLATFORM], []]
+        assert tags(COPENHAGEN_CITY_HALL, SAINT_NAZAIRE, JOHAN_SVERDRUP, BJOROYA_SALMON, OPEN_SEA) == [
+            [ON_LAND], [TURBINE], [PLATFORM], [FISHERY], []]
 
     def test_ports_and_harbors(self):
         # the port point is on terminal land

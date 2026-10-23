@@ -1,6 +1,7 @@
 import numpy
 import pytest
 
+from satimg.fishfarms import FishFarmMask
 from satimg.landmask import LandMask
 from satimg.platforms import PlatformMask
 from satimg.ports import HarborMask, PortMask, features_in_bbox
@@ -12,6 +13,8 @@ SAINT_NAZAIRE = (47.1557, -2.6009)  # wind farm built 2022
 VESTERHAV_SYD = (56.1041, 7.961)  # wind farm without a build year
 CHINA_TURBINES = (33.16136, 120.80102)  # offshore Jiangsu turbine OSM maps as a point only
 JOHAN_SVERDRUP = (58.8361, 2.54862)  # production platform
+BJOROYA_SALMON = (64.45463, 10.63072)  # EMODnet salmon farm
+CHILE_SALMON = (-45.39506, -72.8679)  # OSM salmon farm
 PORT_OF_LOS_ANGELES = (33.74456, -118.26165)
 MARINA_DEL_REY = (33.97245, -118.45101)
 BILBAO_PORT = (43.34676, -3.06383)  # untagged in OSM, 20 ha or more
@@ -23,7 +26,7 @@ def contains(mask, *points):
     return mask.contains([p[0] for p in points], [p[1] for p in points]).tolist()
 
 
-@pytest.mark.parametrize("mask", [LandMask(), WindfarmMask(), PortMask(), HarborMask(), PlatformMask()],
+@pytest.mark.parametrize("mask", [LandMask(), WindfarmMask(), PortMask(), HarborMask(), PlatformMask(), FishFarmMask()],
                          ids=lambda m: type(m).__name__)
 class TestEveryMask:
     def test_a_scalar_point(self, mask):
@@ -76,3 +79,7 @@ class TestPortsAndHarbors:
 
 def test_platforms():
     assert contains(PlatformMask(), JOHAN_SVERDRUP, OPEN_SEA) == [True, False]
+
+
+def test_fish_farms():
+    assert contains(FishFarmMask(), BJOROYA_SALMON, CHILE_SALMON, OPEN_SEA) == [True, True, False]

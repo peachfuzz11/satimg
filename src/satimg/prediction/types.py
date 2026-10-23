@@ -35,7 +35,7 @@ class Detection:
     label: Label
     coordinate: Coordinate
     # where it lies: satimg.prediction.context's ON_LAND, TURBINE, PLATFORM,
-    # IN_PORT and IN_HARBOR
+    # FISHERY, IN_PORT and IN_HARBOR
     tags: list[str] = field(default_factory=list)
 
 
