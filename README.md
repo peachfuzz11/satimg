@@ -301,6 +301,12 @@ keep an instance around. Points a detection's centre would never quite hit are
 widened: an offshore turbine is a 50 m disc, a platform a 200 m disc, and a
 port is grown by 50 m to take in the ships at berth.
 
+`Detector` tags every detection with where it lies, in `Detection.tags`:
+`on_land`, `turbine`, `platform`, `in_port` and `in_harbor` (a ship at a quay can
+be both `on_land` and `in_port`). Detections on land are dropped unless the
+detector runs with `apply_landmask=False`. `satimg.prediction.context_tags(lon,
+lat, year=None)` gives the same tags for any points.
+
 The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`
 and `scripts/build_platforms.py`.
 
