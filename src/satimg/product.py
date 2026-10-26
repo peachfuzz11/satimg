@@ -15,9 +15,10 @@ it offers the same two views on the pixels --
 ``for patch in product`` is shorthand for ``product.patches()``.
 
 ``patches`` / ``patches_at`` open their own raw / visual view, separate from
-:attr:`Product.raw` / :attr:`Product.visual`, dask-chunked to exactly the
-loop's window size -- so each patch read pulls a single tile -- and close it
-when the loop ends (return, break, or an exception). Each yielded
+:attr:`Product.raw` / :attr:`Product.visual`, and close it when the loop ends
+(return, break, or an exception). ``patches`` chunks it to exactly the loop's
+window size, so each window of its grid reads a single chunk; ``patches_at``,
+whose windows sit anywhere, keeps the default chunks (see :meth:`patches_at`). Each yielded
 :class:`Patch` already carries its own window's ``raw`` / ``visual`` / ``meta``
 sliced out (still lazy -- only ``.values`` on ``raw``/``visual`` triggers real
 computation). ``product.raw`` / ``product.visual`` accessed directly (outside
@@ -144,10 +145,10 @@ class Product(abc.ABC):
         """All native bands on a common ``(band, y, x)`` grid, native dtype,
         lazy, dask-chunked to a sane default (:data:`~satimg.readers.CHUNK_PX`).
 
-        For a loop's own window size, iterate :meth:`patches` /
-        :meth:`patches_at` instead: they open their own raw chunked to exactly
-        the window size, and close it when the loop ends, rather than reusing
-        (or resizing) this one.
+        For a loop, iterate :meth:`patches` / :meth:`patches_at` instead: they
+        open their own raw (chunked to the window size, for :meth:`patches`)
+        and close it when the loop ends, rather than reusing (or resizing)
+        this one.
         """
         return self._open_raw(CHUNK_PX)
 
@@ -241,11 +242,17 @@ class Product(abc.ABC):
         """Walk the product at caller-supplied ``(col, row)`` points. See
         :func:`~satimg.geometry.windows_at`.
 
-        Opens its own raw / visual dask-chunked to exactly ``size`` and closes
-        them when the loop ends -- see :meth:`patches`.
+        Opens its own raw / visual and closes them when the loop ends -- see
+        :meth:`patches`. Unlike :meth:`patches`, it keeps the default
+        :data:`~satimg.readers.CHUNK_PX` chunks rather than chunking to
+        ``size``: a window centred on an arbitrary point straddles chunk
+        boundaries whatever their size, and chunking a whole scene to a small
+        window builds a graph of tens of thousands of chunks -- about half a
+        second before a single patch of a Sentinel-1 IW scene is read, and
+        twice as slow per patch after that.
         """
-        raw = self._open_raw(size)
-        visual = self._render_visual(raw, size)
+        raw = self._open_raw(CHUNK_PX)
+        visual = self._render_visual(raw, CHUNK_PX)
         try:
             for win in windows_at(points, size):
                 yield self._read_patch(raw, visual, win)

@@ -86,7 +86,7 @@ def open_band(path: str, overview: int = 1) -> xarray.DataArray:
 #: The one default dask chunk size (pixels) satimg falls back to wherever it
 #: needs *some* chunking but has no caller-given window size to use instead:
 #: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
-#: opened outside a ``patches()`` / ``patches_at()`` loop,
+#: opened outside a ``patches()`` loop, every ``patches_at()`` loop,
 #: :attr:`~satimg.metadata.Field.grid`, and the fixed granularity
 #: ``merge_bands`` aligns bands at internally before a ``match=`` reindex (see
 #: the note in ``merge_bands`` for why that one can't just use the caller's
@@ -107,8 +107,8 @@ def merge_bands(
     With ``match`` (an index into ``paths``) the other bands are
     nearest-neighbour reindexed onto that band's grid first. Either way, the
     returned array is dask-chunked to ``tile`` (all bands in one chunk) --
-    ``Product.patches()`` / ``patches_at()`` pass the loop's own window size,
-    so bands read chunked to precisely what will be read.
+    ``Product.patches()`` passes the loop's own window size, so bands read
+    chunked to precisely what will be read.
 
     A bare ``.chunk()`` with no size hint would collapse each band to a
     *single* whole-band chunk. Dask can't read part of an unsplit chunk, so

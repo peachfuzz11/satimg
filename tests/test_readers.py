@@ -72,7 +72,9 @@ def test_open_raw_chunks_to_the_given_tile_size(name):
 
 
 @pytest.mark.parametrize("name", PRODUCTS)
-def test_visual_builds_once_per_loop_at_the_tile_size(name):
+def test_visual_builds_once_per_loop(name):
+    # patches() chunks to its own tile, so its grid's windows each read one
+    # chunk; patches_at()'s windows sit anywhere, so it keeps CHUNK_PX
     product = _fresh(name)
     calls = []
     cls = type(product)
@@ -85,10 +87,13 @@ def test_visual_builds_once_per_loop_at_the_tile_size(name):
     cls._render_visual = spy
     try:
         patches = list(product.patches_at([(600, 600), (700, 700)], 256))
-        assert calls == [256], "visual should build once, for this loop's own tile"
+        assert calls == [CHUNK_PX], "patches_at should build visual once, at the default chunks"
         _ = patches[0].visual
         _ = patches[1].visual  # second patch of the same loop: no rebuild
-        assert calls == [256]
+        assert calls == [CHUNK_PX]
+
+        next(iter(product.patches(256)))
+        assert calls == [CHUNK_PX, 256], "patches should build visual once, for its own tile"
     finally:
         cls._render_visual = original
         product._close()
