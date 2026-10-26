@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import datetime
 
-import rioxarray
 import xarray
 
 from satimg import s2_utils
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import keep_open, load_thumbnail, merge_bands
+from satimg.readers import CHUNK_PX, keep_open, load_thumbnail, merge_bands, open_band
 from satimg.registry import register
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
@@ -33,16 +32,26 @@ class Sentinel2L1CProduct(Product):
         self._gsd = s2_utils.BAND_GSD_M[self._meta["band_names"][1]]
         self._transformer = Transformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
-    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
-        merged = merge_bands(self._meta["reflectance"], match=1, tile=tile)
+    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
+        merged = merge_bands(self._meta["reflectance"], match=1, tile=tile, overview=overview)
         da = label_bands(as_band_yx(merged), self._meta["band_names"])
         da = da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
         return keep_open(da, merged)
 
+    def _visual_paths(self) -> list[str]:
+        return [self._meta["tci"]]
+
+    def _open_visual_overview(self, factor: int) -> xarray.DataArray:
+        # the true-colour image is a file of its own: no raw needed
+        return self._open_tci(CHUNK_PX, factor)
+
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
-        src = rioxarray.open_rasterio(self._meta["tci"])
+        return self._open_tci(tile)
+
+    def _open_tci(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
+        src = open_band(self._meta["tci"], overview)
         tw, th = (tile, tile) if isinstance(tile, int) else tile
         # a plain (unchunked) DataArray's .astype() computes eagerly -- chunk
         # first so this stays lazy and windowed like every other view.

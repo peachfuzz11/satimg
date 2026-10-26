@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import os
 import re
+from functools import cached_property
 
 import numpy
 import PIL.Image
@@ -53,16 +54,23 @@ class Sentinel1Product(Product):
         m = re.search(r"_(IW|EW)_", os.path.basename(self._path))
         return m.group(1) if m else "IW"
 
-    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+    @cached_property
+    def _measurements(self) -> dict[str, str]:
+        """Each measurement raster's path to its polarisation, in band order."""
         pols = {}
         for f in self._source.listdir("measurement"):
             m = re.search(r"-(vv|vh|hh|hv)-", f)
             if m:
                 pols[self._source.raster_path(f"measurement/{f}")] = m.group(1)
-        files = sorted(pols, key=lambda f: s1_utils.POL_ORDER[pols[f]])
-        merged = merge_bands(files, tile=tile)
-        da = label_bands(as_band_yx(merged), [pols[f].upper() for f in files])
+        return {f: pols[f] for f in sorted(pols, key=lambda f: s1_utils.POL_ORDER[pols[f]])}
+
+    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
+        merged = merge_bands(list(self._measurements), tile=tile, overview=overview)
+        da = label_bands(as_band_yx(merged), [pol.upper() for pol in self._measurements.values()])
         return keep_open(da, merged)
+
+    def _visual_paths(self) -> list[str]:
+        return list(self._measurements)
 
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]

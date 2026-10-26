@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Iterable
 
+import rasterio
 import rioxarray
 import xarray
 
@@ -69,6 +70,19 @@ def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataAr
     return view
 
 
+def open_band(path: str, overview: int = 1) -> xarray.DataArray:
+    """``path`` opened lazily -- at full resolution, or at its own
+    ``overview``-times decimated overview level (a ``ValueError`` if it has
+    none)."""
+    if overview == 1:
+        return rioxarray.open_rasterio(path)
+    with rasterio.open(path) as src:
+        factors = src.overviews(1)
+    if overview not in factors:
+        raise ValueError(f"{path} has no {overview}x overview, only {factors}")
+    return rioxarray.open_rasterio(path, OVERVIEW_LEVEL=factors.index(overview))
+
+
 #: The one default dask chunk size (pixels) satimg falls back to wherever it
 #: needs *some* chunking but has no caller-given window size to use instead:
 #: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
@@ -85,8 +99,10 @@ def merge_bands(
     *,
     match: int | None = None,
     tile: int | tuple[int, int] = CHUNK_PX,
+    overview: int = 1,
 ) -> xarray.DataArray:
-    """Open each path lazily and stack them along ``band``.
+    """Open each path lazily -- at its ``overview`` (see :func:`open_band`) --
+    and stack them along ``band``.
 
     With ``match`` (an index into ``paths``) the other bands are
     nearest-neighbour reindexed onto that band's grid first. Either way, the
@@ -117,7 +133,7 @@ def merge_bands(
     returned array's ``close()`` shuts every band it opened.
     """
     tw, th = (tile, tile) if isinstance(tile, int) else tile
-    opened = [rioxarray.open_rasterio(p) for p in paths]
+    opened = [open_band(p, overview) for p in paths]
     if match is None:
         bands = [b.chunk({"x": tw, "y": th}) for b in opened]
         merged = bands[0] if len(bands) == 1 else xarray.concat(bands, dim="band")
