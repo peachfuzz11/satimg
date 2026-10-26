@@ -73,7 +73,7 @@ def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataAr
 def open_band(path: str, overview: int = 1) -> xarray.DataArray:
     """``path`` opened lazily -- at full resolution, or at its own
     ``overview``-times decimated overview level (a ``ValueError`` if it has
-    none; see :func:`overview_factors`)."""
+    none)."""
     if overview == 1:
         return rioxarray.open_rasterio(path)
     with rasterio.open(path) as src:
@@ -81,16 +81,6 @@ def open_band(path: str, overview: int = 1) -> xarray.DataArray:
     if overview not in factors:
         raise ValueError(f"{path} has no {overview}x overview, only {factors}")
     return rioxarray.open_rasterio(path, OVERVIEW_LEVEL=factors.index(overview))
-
-
-def overview_factors(paths: Iterable[str]) -> list[int]:
-    """The overview decimation factors every one of ``paths`` has, ascending."""
-    common = None
-    for path in paths:
-        with rasterio.open(path) as src:
-            factors = set(src.overviews(1))
-        common = factors if common is None else common & factors
-    return sorted(common or ())
 
 
 #: The one default dask chunk size (pixels) satimg falls back to wherever it

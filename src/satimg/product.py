@@ -51,12 +51,13 @@ from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
+import rasterio
 import xarray
 
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
-from satimg.readers import CHUNK_PX, overview_factors
+from satimg.readers import CHUNK_PX
 from satimg.scene_geometry import SceneGeometry
 from satimg.source import Source
 from satimg.tiling import read_window
@@ -160,8 +161,12 @@ class Product(abc.ABC):
     def visual_overviews(self) -> list[int]:
         """The decimation factors :meth:`visual_overview` takes, ascending: 1,
         then every overview all the rasters behind :attr:`visual` have."""
-        paths = self._visual_paths()
-        return [1] + (overview_factors(paths) if paths else [])
+        common = None
+        for path in self._visual_paths():
+            with rasterio.open(path) as src:
+                factors = set(src.overviews(1))
+            common = factors if common is None else common & factors
+        return [1] + sorted(common or ())
 
     def visual_overview(self, factor: int) -> xarray.DataArray:
         """:attr:`visual` decimated ``factor`` times (one of
