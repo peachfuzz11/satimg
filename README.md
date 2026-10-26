@@ -88,7 +88,18 @@ product.visual  # uint8 visualisation: 3-band true colour for optical    -> xarr
 ```
 
 Both are lazy `DataArray`s over the **same grid**, so a `Window` means the same
-thing in each. The `band` axis is labelled, so select by name:
+thing in each.
+
+`visual_overview(factor)` is the visual decimated `factor` times, read from the
+overviews the product's own rasters carry (Sentinel-1 GRD COGs have 2x to 64x),
+so a zoomed-out view or a thumbnail reads a fraction of the pixels.
+`visual_overviews` lists the factors on offer, starting with 1 (`visual`
+itself):
+
+```python
+product.visual_overviews       # e.g. [1, 2, 4, 8, 16, 32, 64]
+product.visual_overview(64)    # the whole scene in a few hundred pixels a side
+``` The `band` axis is labelled, so select by name:
 
 ```python
 product.raw.sel(band="red")        # Landsat / (SWIR etc.)  ; "B04" for Sentinel-2, "VV" for Sentinel-1
@@ -330,12 +341,14 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 
 ## Adding a product
 
-Subclass `Product`, implement the abstract hooks (`_open_raw(tile)`,
+Subclass `Product`, implement the abstract hooks (`_open_raw(tile, overview)`,
 `_render_visual(raw, tile)` — both return an `xarray.DataArray` dask-chunked to
 `tile`; normalise dims with `satimg.as_band_yx(...)` and name the band axis
 with `satimg.label_bands(da, [...])` — `transformer`, `timestamp`,
 `footprint`, `thumbnail`), optionally override `_read_metadata` to expose
-per-pixel metadata, and register a filename pattern:
+per-pixel metadata, and register a filename pattern. For `visual_overview`,
+`_open_raw` also takes an `overview` factor (pass it on to `merge_bands`) and
+`_visual_paths()` names the rasters the visual is read from:
 
 ```python
 from satimg.registry import register

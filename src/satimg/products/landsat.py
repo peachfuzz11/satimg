@@ -40,10 +40,13 @@ class LandsatProduct(Product):
         self._transformer = mtl["transformer"]
         self._shape = mtl["shape"]
 
-    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
-        paths = [self._source.raster_path(f"{b}.TIF") for b in BANDS]
-        merged = merge_bands(paths, match=landsat_utils.PAN, tile=tile)
+    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
+        merged = merge_bands(self._visual_paths(), match=landsat_utils.PAN, tile=tile, overview=overview)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
+
+    def _visual_paths(self) -> list[str]:
+        # visual is pan-sharpened from every band of raw
+        return [self._source.raster_path(f"{b}.TIF") for b in BANDS]
 
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]

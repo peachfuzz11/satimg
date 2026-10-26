@@ -56,7 +56,7 @@ import xarray
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
-from satimg.readers import CHUNK_PX
+from satimg.readers import CHUNK_PX, overview_factors
 from satimg.scene_geometry import SceneGeometry
 from satimg.source import Source
 from satimg.tiling import read_window
@@ -73,6 +73,8 @@ class Product(abc.ABC):
     def __init__(self, source: Source):
         self._source = source
         self._path = source.path
+        #: visual_overview's views, by factor
+        self._overviews: dict[int, xarray.DataArray] = {}
 
     @property
     def path(self) -> str:
@@ -89,8 +91,8 @@ class Product(abc.ABC):
         self._close()
 
     def _close(self) -> None:
-        """Close the rasters behind the cached :attr:`raw` / :attr:`visual`,
-        drop them, and release :attr:`_source` (e.g. a zip-native source's
+        """Close the rasters behind the cached :attr:`raw` / :attr:`visual`
+        and :meth:`visual_overview` views, drop them, and release :attr:`_source` (e.g. a zip-native source's
         open archive; a no-op for a plain directory).
 
         Each view carries a ``_close`` that shuts every band it opened -- wired
@@ -104,8 +106,9 @@ class Product(abc.ABC):
         rebuilds :attr:`raw` / :attr:`visual`: GDAL reopens a zip-native
         product's archive by path, not through the closed source.
         """
-        for name in ("raw", "visual"):
-            da = self.__dict__.pop(name, None)
+        views = [(name, self.__dict__.pop(name, None)) for name in ("raw", "visual")]
+        views += [(f"{factor}x visual", self._overviews.pop(factor)) for factor in list(self._overviews)]
+        for name, da in views:
             if da is not None:
                 try:
                     da.close()
@@ -115,10 +118,25 @@ class Product(abc.ABC):
 
     # -- pixel views ------------------------------------------------
     @abc.abstractmethod
-    def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
+    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         """Open + merge every native band onto a common ``(band, y, x)`` grid,
-        dask-chunked to ``tile`` (all bands in one chunk), native dtype, lazy.
+        dask-chunked to ``tile`` (all bands in one chunk), native dtype, lazy
+        -- read from each band's ``overview``-times decimated overview
+        (:func:`~satimg.readers.open_band`) unless that is 1.
         """
+
+    def _visual_paths(self) -> list[str]:
+        """The raster paths :attr:`visual` is read from, for
+        :attr:`visual_overviews` -- none by default, so a product that does
+        not say offers only full resolution."""
+        return []
+
+    def _open_visual_overview(self, factor: int) -> xarray.DataArray:
+        """:attr:`visual` at a ``factor``-times decimated overview: rendered
+        from raw read at that overview. A sensor whose visual reads a file of
+        its own (Sentinel-2's true-colour image) overrides this to read that
+        file's overview instead."""
+        return self._render_visual(self._open_raw(CHUNK_PX, overview=factor), CHUNK_PX)
 
     @cached_property
     def raw(self) -> xarray.DataArray:
@@ -137,6 +155,28 @@ class Product(abc.ABC):
         """The sensor's ``uint8`` visualisation, lazy: 3-band true colour for
         optical sensors, 1-band greyscale for SAR. Built from :attr:`raw`."""
         return self._render_visual(self.raw, CHUNK_PX)
+
+    @cached_property
+    def visual_overviews(self) -> list[int]:
+        """The decimation factors :meth:`visual_overview` takes, ascending: 1,
+        then every overview all the rasters behind :attr:`visual` have."""
+        paths = self._visual_paths()
+        return [1] + (overview_factors(paths) if paths else [])
+
+    def visual_overview(self, factor: int) -> xarray.DataArray:
+        """:attr:`visual` decimated ``factor`` times (one of
+        :attr:`visual_overviews`), lazy, read from the rasters' own overviews
+        -- so a whole-scene view reads a few hundred thousand pixels, not the
+        scene. Its pixel ``(row, col)`` covers :attr:`visual`'s
+        ``(row * factor, col * factor)`` onwards. Cached like :attr:`visual`,
+        and closed with the product."""
+        if factor == 1:
+            return self.visual
+        if factor not in self.visual_overviews:
+            raise ValueError(f"no {factor}x overview: {self.visual_overviews}")
+        if factor not in self._overviews:
+            self._overviews[factor] = self._open_visual_overview(factor)
+        return self._overviews[factor]
 
     @abc.abstractmethod
     def _render_visual(
