@@ -38,23 +38,24 @@ for patch in product.patches(512):
 
 A **zip archive** is read zip-native, straight off the archive — nothing is
 ever extracted to disk, and there's no temp dir to release, so a `with`
-block isn't needed just for a one-off read:
+block isn't needed just for a one-off read. Everything works, pixels
+included: metadata files are read with `zipfile`, rasters by GDAL's
+`/vsizip/`, which seeks inside the archive:
 
 ```python
 product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE.zip")
 
 product.timestamp
-product.footprint
-product.transformer
-product.metadata               # all sensors except Landsat's per-pixel angles
-product.thumbnail()
-
-product.raw                    # raises ZipNativeUnsupportedError -- no
-                                # pixels without extracting
+product.metadata
+for patch in product.patches(512):
+    ...
 ```
 
-For pixel access (`raw` / `visual` / `patches` / `patches_at`) from a zip,
-extract it first with `satimg.open_zip`:
+Copernicus downloads, and the zips the Landsat connector writes, store their
+rasters uncompressed (they are compressed already), and GDAL reads those at
+plain file speed. A deflated archive works too, but every seek re-inflates from an
+earlier point; for heavy pixel work on one, extract it first with
+`satimg.open_zip`:
 
 ```python
 with satimg.open_zip("/data/scene.zip") as product:
@@ -62,11 +63,11 @@ with satimg.open_zip("/data/scene.zip") as product:
         ...
 ```
 
-This returns a fully capable, directory-backed product exactly like
-`satimg.open` on a directory would. It extracts to a temp dir that is
-removed — along with the product's open rasters — when the block exits; read
-what you need inside the block, since a lazy view can't be rebuilt
-afterwards. Pass `dest=` to control where that temp dir is created.
+This returns a directory-backed product exactly like `satimg.open` on a
+directory would. It extracts to a temp dir that is removed — along with the
+product's open rasters — when the block exits; read what you need inside
+the block, since a lazy view can't be rebuilt afterwards. Pass `dest=` to
+control where that temp dir is created.
 
 A product's open rasters (and, for a zip-native one, its open archive) are
 released when its `with` block exits, so use `with satimg.open(path) as
@@ -253,8 +254,7 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-Landsat's angle fields are stored resampled to 32 x 32, and, like its
-`metadata`, need the product extracted (`open_zip`).
+Landsat's angle fields are stored resampled to 32 x 32.
 
 ## Downloading
 

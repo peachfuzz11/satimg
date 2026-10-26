@@ -12,7 +12,6 @@ product-facing entry point that calls these.
 from __future__ import annotations
 
 import datetime
-import os
 import re
 import warnings
 from xml.etree import ElementTree
@@ -43,11 +42,9 @@ def pad_band(name: str) -> str:
     return re.sub(r"^B(\d)$", r"B0\1", name)
 
 
-def parse_mtd(source: Source, path: str) -> dict:
-    """``path`` (a real filesystem path, unlike ``source``) is only used to
-    build ``reflectance``/``tci``'s raster paths -- raster-only, so still a
-    plain path even when ``source`` is zip-native (where those two entries
-    are then unused, since ``raw``/``visual`` are guarded off)."""
+def parse_mtd(source: Source) -> dict:
+    """``reflectance``/``tci`` are raster paths for GDAL
+    (:meth:`~satimg.source.Source.raster_path`)."""
     mtd = source.find_file("MTD_MSIL1C.xml")
     if mtd is None:
         raise FileNotFoundError(f"no MTD_MSIL1C.xml under {source.name}")
@@ -64,7 +61,7 @@ def parse_mtd(source: Source, path: str) -> dict:
 
     reflectance, tci = [], None
     for band_id, elem in enumerate(root.iter("IMAGE_FILE")):
-        file_path = os.path.join(path, elem.text) + ".jp2"
+        file_path = source.raster_path(elem.text + ".jp2")
         if physical.get(band_id) is None:
             tci = file_path
         else:

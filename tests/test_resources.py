@@ -83,12 +83,12 @@ def test_loop_over_products_does_not_leak(key):
     assert _open_fds() - base <= 1
 
 
-def _build_zip(key: str, tmp_path_factory) -> str:
+def _build_zip(key: str, tmp_path_factory, compression: int = zipfile.ZIP_STORED) -> str:
     src = Path(PRODUCT_PATHS[key])
     if not src.exists():
         pytest.skip(f"test product missing: {src}")
     out = tmp_path_factory.mktemp("zips") / (src.name + ".zip")
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(out, "w", compression) as z:
         for f in src.rglob("*"):
             if f.is_file():
                 z.write(f, arcname=str(Path(src.name) / f.relative_to(src)))
@@ -128,13 +128,12 @@ def test_open_zip_loop_does_not_leak(landsat_zip, tmp_path):
 
 def test_open_detects_a_zip_and_reads_it_zip_native(landsat_zip):
     # satimg.open() auto-detects a zip archive (by content, not extension)
-    # and reads it zip-native -- nothing extracted, raster raises.
+    # and reads it zip-native -- nothing extracted, rasters included.
     base = _open_fds()
 
     with satimg.open(landsat_zip) as p:
         assert p.timestamp
-        with pytest.raises(satimg.ZipNativeUnsupportedError):
-            p.raw
+        assert p.raw.isel(x=slice(0, 8), y=slice(0, 8)).values.shape[1:] == (8, 8)
 
     gc.collect()
     assert _open_fds() - base <= 1, "file descriptors leaked past open()"
@@ -145,7 +144,8 @@ def test_open_zip_native_never_writes_to_disk(landsat_zip):
     before = set(os.listdir(tmp_root))
 
     with satimg.open(landsat_zip) as p:
-        _ = p.timestamp, p.footprint, p.transformer, p.thumbnail()
+        _ = p.timestamp, p.footprint, p.transformer, p.thumbnail(), p.metadata
+        _ = next(iter(p.patches_at([(0, 0)], 64))).visual.values
 
     assert set(os.listdir(tmp_root)) == before, "satimg.open on a zip must never extract"
 

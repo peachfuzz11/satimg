@@ -27,14 +27,13 @@ class Sentinel2L1CProduct(Product):
 
     def __init__(self, source: Source):
         super().__init__(source)
-        self._meta = s2_utils.parse_mtd(self._source, self._path)
+        self._meta = s2_utils.parse_mtd(self._source)
         self._tl = s2_utils.parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]
         self._gsd = s2_utils.BAND_GSD_M[self._meta["band_names"][1]]
         self._transformer = Transformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
-        self._require_extracted("raw")
         merged = merge_bands(self._meta["reflectance"], match=1, tile=tile)
         da = label_bands(as_band_yx(merged), self._meta["band_names"])
         da = da.assign_coords(wavelength_nm=("band", self._meta["wavelengths"]))
@@ -43,7 +42,6 @@ class Sentinel2L1CProduct(Product):
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
-        self._require_extracted("visual")
         src = rioxarray.open_rasterio(self._meta["tci"])
         tw, th = (tile, tile) if isinstance(tile, int) else tile
         # a plain (unchunked) DataArray's .astype() computes eagerly -- chunk

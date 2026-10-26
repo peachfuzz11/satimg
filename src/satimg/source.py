@@ -1,12 +1,13 @@
-"""Where a product's metadata files live: a real directory, or an unextracted
-zip archive.
+"""Where a product's files live: a real directory, or an unextracted zip
+archive.
 
-:class:`Source` is used only for a product's metadata-path file access (XML /
-JSON manifests, thumbnails) -- raster paths are always built directly against
-:attr:`~satimg.product.Product.path` and opened with ``rasterio``/
-``rioxarray``, which need a real file on disk and so are never routed through
-a :class:`Source`. Every path a :class:`Source` method takes or returns is
-relative to the product's own root, ``"/"``-separated regardless of platform.
+Metadata files (XML / JSON manifests, thumbnails) are read through
+:meth:`Source.open`; rasters are opened by ``rasterio``/``rioxarray`` (GDAL)
+from :meth:`Source.raster_path` -- a plain file path for a directory, a
+``/vsizip/`` path into the archive for a zip, which GDAL reads in place with
+random access, nothing extracted. Every path a :class:`Source` method takes
+is relative to the product's own root, ``"/"``-separated regardless of
+platform.
 
 :func:`open_source` is the factory :func:`~satimg.product.open` uses to pick
 a :class:`DirSource` or a zip-native :class:`ZipSource` for a given path.
@@ -24,8 +25,7 @@ from satimg.readers import find_file as _walk_find_file
 
 class Source(abc.ABC):
     #: ``True`` for a real, already-extracted directory; ``False`` for an
-    #: archive member never written to disk. Gates
-    #: :meth:`~satimg.product.Product._require_extracted`.
+    #: archive never written to disk.
     is_directory: bool
 
     @property
@@ -37,10 +37,9 @@ class Source(abc.ABC):
     @property
     @abc.abstractmethod
     def path(self) -> str:
-        """A real filesystem directory, for a raster-only code path (guarded
-        by :meth:`~satimg.product.Product._require_extracted`) to build band
-        file paths against. Just :attr:`name` when :attr:`is_directory` is
-        ``False`` -- there is no real path, and nothing should ever read it."""
+        """The product directory, or just :attr:`name` when
+        :attr:`is_directory` is ``False`` -- build raster paths with
+        :meth:`raster_path`, never against this."""
 
     @abc.abstractmethod
     def find_file(self, filename: str) -> str | None:
@@ -55,6 +54,10 @@ class Source(abc.ABC):
     @abc.abstractmethod
     def open(self, relpath: str) -> BinaryIO:
         """A binary, context-manager file object for ``relpath``."""
+
+    @abc.abstractmethod
+    def raster_path(self, relpath: str) -> str:
+        """A path GDAL (``rasterio``/``rioxarray``) opens ``relpath`` by."""
 
     @abc.abstractmethod
     def exists(self, relpath: str) -> bool:
@@ -98,13 +101,20 @@ class DirSource(Source):
     def open(self, relpath: str) -> BinaryIO:
         return open(self._abs(relpath), "rb")
 
+    def raster_path(self, relpath: str) -> str:
+        return self._abs(relpath)
+
     def exists(self, relpath: str) -> bool:
         return os.path.isfile(self._abs(relpath))
 
 
 class ZipSource(Source):
-    """An unextracted zip archive. Every read goes through ``archive``
-    directly -- nothing is ever written to disk."""
+    """An unextracted zip archive. Every read goes through the archive
+    directly -- nothing is ever written to disk. Rasters are read by GDAL's
+    ``/vsizip/``: a stored (uncompressed) member at plain file speed, a
+    deflated one correctly but with each seek re-inflating from an earlier
+    point -- write archives of already-compressed rasters with
+    ``zipfile.ZIP_STORED``."""
 
     is_directory = False
 
@@ -176,6 +186,11 @@ class ZipSource(Source):
 
     def open(self, relpath: str) -> BinaryIO:
         return self._archive.open(self._full(relpath))
+
+    def raster_path(self, relpath: str) -> str:
+        # the braces delimit the archive's own path, so it needs no .zip
+        # extension and may itself contain ".zip/"
+        return f"/vsizip/{{{os.path.abspath(self._archive.filename)}}}/{self._full(relpath)}"
 
     def exists(self, relpath: str) -> bool:
         return self._full(relpath) in self._members

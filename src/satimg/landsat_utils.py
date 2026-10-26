@@ -1,9 +1,9 @@
 """Landsat Collection-2 Level-1 parsing: ``MTL.json`` (acquisition/projection
 attrs) and the per-pixel angle rasters (``SZA``/``SAA``/``VZA``/``VAA.TIF``).
 
-Pure functions taking a :class:`~satimg.source.Source` (or a real filesystem
-path, for the angle rasters -- read with ``rasterio``, so raster-only like
-:meth:`~satimg.product.Product._open_raw`) and returning plain dicts/arrays/a
+Pure functions taking a :class:`~satimg.source.Source` (or, for the angle
+rasters, a GDAL path from :meth:`~satimg.source.Source.raster_path`) and
+returning plain dicts/arrays/a
 :class:`~satimg.transform.Transformer` -- no dependency on
 :class:`~satimg.product.Product`, so they're testable independently of a full
 product open. See :class:`~satimg.products.landsat.LandsatProduct` for the

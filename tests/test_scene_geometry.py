@@ -99,17 +99,11 @@ def _affine_transformer():
     return Transformer(Affine(10, 0, 300000, 0, -10, 6200000), CRS.from_epsg(32633))
 
 
-@pytest.mark.parametrize("key", ["sentinel1_iw", "sentinel2_l1c"])
+@pytest.mark.parametrize("key", ["sentinel1_iw", "sentinel2_l1c", "landsat"])
 def test_zip_native_geometry_matches(key, request, tmp_path_factory):
     with satimg.open(_build_zip(key, tmp_path_factory)) as zip_product:
         stored = json.loads(json.dumps(zip_product.geometry.to_dict(), allow_nan=False))
     assert stored == _stored(request.getfixturevalue(key))
-
-
-def test_zip_native_landsat_geometry_needs_extraction(tmp_path_factory):
-    with satimg.open(_build_zip("landsat", tmp_path_factory)) as zip_product:
-        with pytest.raises(satimg.ZipNativeUnsupportedError):
-            zip_product.geometry
 
 
 @pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", Transformer)])
