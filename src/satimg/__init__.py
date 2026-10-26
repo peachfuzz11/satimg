@@ -26,7 +26,7 @@ from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata import Field, Metadata
 from satimg.patch import Patch
-from satimg.product import Product, ZipNativeUnsupportedError, open, open_zip
+from satimg.product import Product, open, open_zip
 from satimg.registry import UnknownProductError
 from satimg.s1_geometry import Sentinel1Geometry
 from satimg.scene_geometry import SceneGeometry
@@ -38,7 +38,6 @@ __all__ = [
     "open_zip",
     "get_connector",
     "Product",
-    "ZipNativeUnsupportedError",
     "Patch",
     "read_window",
     "as_band_yx",

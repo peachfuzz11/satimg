@@ -54,13 +54,11 @@ class Sentinel1Product(Product):
         return m.group(1) if m else "IW"
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
-        self._require_extracted("raw")
-        measurement = os.path.join(self._path, "measurement")
         pols = {}
-        for f in os.listdir(measurement):
+        for f in self._source.listdir("measurement"):
             m = re.search(r"-(vv|vh|hh|hv)-", f)
             if m:
-                pols[os.path.join(measurement, f)] = m.group(1)
+                pols[self._source.raster_path(f"measurement/{f}")] = m.group(1)
         files = sorted(pols, key=lambda f: s1_utils.POL_ORDER[pols[f]])
         merged = merge_bands(files, tile=tile)
         da = label_bands(as_band_yx(merged), [pols[f].upper() for f in files])
@@ -69,7 +67,6 @@ class Sentinel1Product(Product):
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
-        self._require_extracted("visual")
         db = (10 * numpy.log10(raw.where(raw > 0))).fillna(0).mean("band")
         u8 = (255 / (1 + numpy.exp(-((db - 20) * 0.18)))).clip(0, 255).astype("uint8")
         return label_bands(as_band_yx(u8), ("amplitude",))

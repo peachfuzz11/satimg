@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import os
 
 import numpy
 import xarray
@@ -42,15 +41,13 @@ class LandsatProduct(Product):
         self._shape = mtl["shape"]
 
     def _open_raw(self, tile: int | tuple[int, int]) -> xarray.DataArray:
-        self._require_extracted("raw")
-        paths = [os.path.join(self._path, f"{b}.TIF") for b in BANDS]
+        paths = [self._source.raster_path(f"{b}.TIF") for b in BANDS]
         merged = merge_bands(paths, match=landsat_utils.PAN, tile=tile)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
 
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
-        self._require_extracted("visual")
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
         rgb = a.isel(band=list(landsat_utils.RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
@@ -62,12 +59,10 @@ class LandsatProduct(Product):
                            ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
-        # no XML/JSON equivalent ships for these -- only ever as full rasters.
-        self._require_extracted("metadata")
         pan_transform = self._transformer._transform
         fields = {}
         for name, fname in landsat_utils.ANGLE_FILES.items():
-            path = os.path.join(self._path, fname)
+            path = self._source.raster_path(fname)
             rows, cols, values = landsat_utils.read_angle_grid(path, pan_transform)
             fields[name] = self._field(rows, cols, values, name=name, units="degrees")
 
