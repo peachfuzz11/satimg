@@ -122,9 +122,11 @@ already carries `.raw` / `.visual` / `.meta` for that window (see
 [Reading raw + visual + metadata together](#reading-raw--visual--metadata-together)) --
 `product.patches()` / `patches_at()` are the only iterators in the library.
 
-`product.patches()` / `patches_at()` open `raw` and `visual` chunked to
-exactly the window size before iterating, so each patch read decodes just the
-one tile it covers.
+`product.patches()` opens `raw` and `visual` chunked to exactly the window
+size before iterating, so each patch read decodes just the one tile it covers.
+`patches_at()`, whose windows sit wherever the points are, reads them from the
+default 1024 px chunks instead: one patch at a time, as a web request would,
+costs a fraction of a second.
 
 A product releases its rasters when its `with` block exits, so looping over
 many products never leaks file handles:
