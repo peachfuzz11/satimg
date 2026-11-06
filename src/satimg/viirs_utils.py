@@ -1,9 +1,15 @@
-"""VIIRS Day/Night Band SDR + GEO (JPSS ``SVDNB`` / ``GDNBO`` HDF5) parsing.
+"""VIIRS Day/Night Band parsing, in both of the formats it is distributed in:
 
-A granule is two files: the SDR (``SVDNB_*.h5``, calibrated radiance) and its
-geolocation (``GDNBO_*.h5``, a latitude / longitude / angle for every pixel).
-Pure functions over ``h5py`` files and plain arrays; see
-:class:`~satimg.products.viirs.ViirsDNBProduct` for the product.
+* NOAA's SDR (``SVDNB_*.h5``) + geolocation (``GDNBO_*.h5``), JPSS HDF5 --
+  on NOAA's open AWS buckets;
+* NASA's L1B (``VNP02DNB`` / ``VJ102DNB`` / ``VJ202DNB``, ``*.nc``) +
+  geolocation (``V??03DNB``), netCDF4 -- from LAADS DAAC, Earthdata login.
+
+Both give the same calibrated radiance (W / cm^2 sr) and per-pixel geolocation
+and angles; the readers here bring them to one shape: ``read_*_granule`` ->
+timestamp / footprint / attrs, ``read_*_geolocation`` -> ``lat`` / ``lon`` /
+:data:`FIELDS` / moon. Pure functions over ``h5py`` files; see
+:mod:`satimg.products.viirs` for the products.
 """
 
 from __future__ import annotations
@@ -13,27 +19,36 @@ import re
 
 import numpy
 
+from satimg import swath
 from satimg.source import Source
-
-SDR = "All_Data/VIIRS-DNB-SDR_All"
-GEO = "All_Data/VIIRS-DNB-GEO_All"
-GRANULE = "Data_Products/VIIRS-DNB-SDR/VIIRS-DNB-SDR_Gran_0"
 
 #: detector rows per VIIRS scan: geolocation is linear in row within one,
 #: but jumps between scans (the "bow-tie" overlap at the swath edges)
 SCAN_ROWS = 16
 
-#: anything at or below this is one of the JPSS float fill values (-999.3, ...)
+#: anything at or below this is one of the float fill values (-999.3, -999.9, ...)
 FILL_BELOW = -999.0
 
-#: GEO dataset -> (metadata field name, units)
-ANGLE_FIELDS = {
-    "SatelliteZenithAngle": ("satellite_zenith", "degrees"),
-    "SatelliteAzimuthAngle": ("satellite_azimuth", "degrees"),
-    "SolarZenithAngle": ("solar_zenith", "degrees"),
-    "SolarAzimuthAngle": ("solar_azimuth", "degrees"),
-    "LunarZenithAngle": ("lunar_zenith", "degrees"),
-    "LunarAzimuthAngle": ("lunar_azimuth", "degrees"),
+#: the per-pixel metadata fields, all in degrees
+FIELDS = ("satellite_zenith", "satellite_azimuth", "solar_zenith", "solar_azimuth", "lunar_zenith", "lunar_azimuth")
+
+#: JPSS platform code -> satellite
+PLATFORMS = {"npp": "snpp", "j01": "noaa-20", "j02": "noaa-21", "j03": "noaa-22", "j04": "noaa-23"}
+
+# -- NOAA SDR ----------------------------------------------------------------------
+SDR = "All_Data/VIIRS-DNB-SDR_All"
+GEO = "All_Data/VIIRS-DNB-GEO_All"
+GRANULE = "Data_Products/VIIRS-DNB-SDR/VIIRS-DNB-SDR_Gran_0"
+SDR_RADIANCE = f"{SDR}/Radiance"
+
+#: GDNBO dataset -> field
+_SDR_ANGLES = {
+    "SatelliteZenithAngle": "satellite_zenith",
+    "SatelliteAzimuthAngle": "satellite_azimuth",
+    "SolarZenithAngle": "solar_zenith",
+    "SolarAzimuthAngle": "solar_azimuth",
+    "LunarZenithAngle": "lunar_zenith",
+    "LunarAzimuthAngle": "lunar_azimuth",
 }
 
 _NAME = re.compile(
@@ -64,32 +79,30 @@ def granule_key(name: str) -> str:
     return f"{m['sat']}_d{m['date']}_t{m['start']}_e{m['end']}_b{m['orbit']}"
 
 
-#: JPSS platform code -> satellite
-PLATFORMS = {"npp": "snpp", "j01": "noaa-20", "j02": "noaa-21", "j03": "noaa-22", "j04": "noaa-23"}
+def _pick(source: Source, prefix: str, suffix: str) -> str:
+    """The source itself if it is one ``prefix*suffix`` file, else the first
+    such file at its root."""
+    if source.name.startswith(prefix) and source.name.endswith(suffix):
+        return source.name
+    names = sorted(n for n in source.listdir() if n.startswith(prefix) and n.endswith(suffix))
+    if not names:
+        raise FileNotFoundError(f"no {prefix}*{suffix} under {source.name}")
+    return names[0]
 
 
-def find_pair(source: Source) -> tuple[str, str]:
-    """Root-relative ``(sdr, geo)`` paths: the source itself (one ``SVDNB``
-    file) or the ``SVDNB`` at its root (a folder / zip holding both); the
-    GEO by the name the SDR's ``N_GEO_Ref`` gives, falling back to any
-    ``GDNBO`` of the same granule (platform, date, start, end, orbit)."""
-    names = source.listdir()
-    if source.name.startswith("SVDNB_") and source.name.endswith(".h5"):
-        sdr = source.name
-    else:
-        sdrs = sorted(n for n in names if n.startswith("SVDNB_") and n.endswith(".h5"))
-        if not sdrs:
-            raise FileNotFoundError(f"no SVDNB_*.h5 under {source.name}")
-        sdr = sdrs[0]
+def find_sdr_pair(source: Source) -> tuple[str, str]:
+    """Root-relative ``(sdr, geo)``: the ``SVDNB`` (the source itself, or at
+    its root) and the ``GDNBO`` of the same granule beside it."""
+    sdr = _pick(source, "SVDNB_", ".h5")
     key = granule_key(sdr)
-    geos = sorted(n for n in names if n.startswith("GDNBO_") and n.endswith(".h5") and granule_key(n) == key)
+    geos = sorted(n for n in source.listdir() if n.startswith("GDNBO_") and n.endswith(".h5") and granule_key(n) == key)
     if not geos:
         raise FileNotFoundError(f"no GDNBO geolocation file next to {sdr}")
     return sdr, geos[0]
 
 
 def _attr(attrs, name):
-    value = attrs[name].ravel()[0]
+    value = numpy.asarray(attrs[name]).ravel()[0]
     return value.decode() if isinstance(value, bytes) else value
 
 
@@ -98,7 +111,7 @@ def _when(date: str, time: str) -> datetime.datetime:
     return datetime.datetime.strptime(f"{date}{time.rstrip('Z')}", "%Y%m%d%H%M%S.%f")
 
 
-def read_granule(sdr_h5) -> dict:
+def read_sdr_granule(sdr_h5) -> dict:
     """Timestamp (granule centre), GeoJSON footprint (the G-ring) and
     scene-wide attrs from the SDR granule's own attributes."""
     attrs = sdr_h5[GRANULE].attrs
@@ -119,75 +132,130 @@ def read_granule(sdr_h5) -> dict:
     }
 
 
-def _unit(lat, lon) -> numpy.ndarray:
-    lat, lon = numpy.deg2rad(lat), numpy.deg2rad(lon)
-    return numpy.stack([numpy.cos(lat) * numpy.cos(lon), numpy.cos(lat) * numpy.sin(lon), numpy.sin(lat)])
-
-
-def scan_edge_rows(height: int) -> numpy.ndarray:
-    """The first and last row of every scan: within a scan, geolocation is
-    linear in row, so these are the only rows a node grid needs."""
-    starts = numpy.arange(0, height, SCAN_ROWS)
-    return numpy.unique(numpy.r_[starts, numpy.minimum(starts + SCAN_ROWS - 1, height - 1)])
-
-
-def node_columns(lat: numpy.ndarray, lon: numpy.ndarray, tolerance_m: float) -> numpy.ndarray:
-    """The fewest columns (greedily) between which linear interpolation of
-    ``lat`` / ``lon`` (rows, all columns) stays within ``tolerance_m`` metres
-    of the truth on every row given. The DNB's ground sampling changes in
-    steps across the swath (its aggregation zones), so evenly spaced columns
-    need several times more nodes for the same accuracy."""
-    width = lat.shape[1]
-    truth = _unit(lat, lon)  # (3, rows, width)
-    nodes = numpy.array([0, width - 1])
-    every = numpy.arange(width)
-    while True:
-        k = numpy.clip(numpy.searchsorted(nodes, every, side="right") - 1, 0, len(nodes) - 2)
-        t = (every - nodes[k]) / (nodes[k + 1] - nodes[k])
-        guess = truth[:, :, nodes[k]] * (1 - t) + truth[:, :, nodes[k + 1]] * t
-        guess /= numpy.linalg.norm(guess, axis=0)
-        error = numpy.nan_to_num(numpy.linalg.norm(guess - truth, axis=0) * 6_371_000.0).max(axis=0)
-        bad = numpy.flatnonzero(error > tolerance_m)
-        if not len(bad):
-            return nodes
-        # the worst column in every interval still out of tolerance
-        order = bad[numpy.lexsort((-error[bad], k[bad]))]
-        _, first = numpy.unique(k[order], return_index=True)
-        nodes = numpy.union1d(nodes, order[first])
-
-
-def read_geolocation(geo_h5) -> dict:
-    """The GEO file's full-resolution latitude / longitude (ellipsoid: the
-    sea surface, where boats are) and per-pixel angles, fills as ``NaN``."""
+def read_sdr_geolocation(geo_h5) -> dict:
+    """The GDNBO file's full-resolution latitude / longitude (ellipsoid: the
+    sea surface, where boats are) and :data:`FIELDS`, fills as ``NaN``."""
     group = geo_h5[GEO]
-
-    def read(name):
-        data = group[name][()].astype(float)
-        data[data <= FILL_BELOW] = numpy.nan
-        return data
-
-    out = {"lat": read("Latitude"), "lon": read("Longitude")}
-    for name in ANGLE_FIELDS:
-        out[name] = read(name)
+    out = {
+        "lat": swath.read_scaled(group["Latitude"], FILL_BELOW),
+        "lon": swath.read_scaled(group["Longitude"], FILL_BELOW),
+    }
+    for dataset, field in _SDR_ANGLES.items():
+        out[field] = swath.read_scaled(group[dataset], FILL_BELOW)
     out["moon_illumination"] = float(group["MoonIllumFraction"][()].ravel()[0]) / 100.0
     out["moon_phase_angle"] = float(group["MoonPhaseAngle"][()].ravel()[0])
     return out
 
 
-def nodes(geolocation: dict, tolerance_m: float) -> dict:
-    """A node grid for :class:`~satimg.transform.SwathTransformer` and the
-    angle fields: scan-edge rows, :func:`node_columns` at ``tolerance_m``,
-    as pixel-centre coordinates (``i + 0.5``), with each array sampled there."""
-    lat, lon = geolocation["lat"], geolocation["lon"]
-    rows = scan_edge_rows(lat.shape[0])
-    cols = node_columns(lat[rows], lon[rows], tolerance_m)
-    sample = numpy.ix_(rows, cols)
-    out = {"rows": rows + 0.5, "cols": cols + 0.5, "lat": lat[sample], "lon": lon[sample]}
-    for name in ANGLE_FIELDS:
-        out[name] = geolocation[name][sample]
+# -- NASA L1B ------------------------------------------------------------------------
+L1B_RADIANCE = "observation_data/DNB_observations"
+
+#: VNP03DNB geolocation_data variable -> field
+_L1B_ANGLES = {
+    "sensor_zenith": "satellite_zenith",
+    "sensor_azimuth": "satellite_azimuth",
+    "solar_zenith": "solar_zenith",
+    "solar_azimuth": "solar_azimuth",
+    "lunar_zenith": "lunar_zenith",
+    "lunar_azimuth": "lunar_azimuth",
+}
+
+#: L1B short-name prefix -> satellite
+L1B_PLATFORMS = {"VNP": "snpp", "VJ1": "noaa-20", "VJ2": "noaa-21", "VJ3": "noaa-22"}
+
+_L1B_NAME = re.compile(
+    r"^(?P<platform>VNP|VJ\d)0(?P<kind>[23])DNB(?P<nrt>_NRT)?\.A(?P<date>\d{7})\.(?P<time>\d{4})\.(?P<collection>\d{3})"
+)
+
+
+def l1b_key(name: str) -> str:
+    """What pairs a V??02DNB with its V??03DNB: platform, date, time,
+    collection, NRT or not."""
+    m = _L1B_NAME.match(name)
+    if not m:
+        raise ValueError(f"not a VIIRS L1B DNB file name: {name!r}")
+    return f"{m['platform']}{m['nrt'] or ''}.A{m['date']}.{m['time']}.{m['collection']}"
+
+
+def find_l1b_pair(source: Source) -> tuple[str, str]:
+    """Root-relative ``(l1b, geo)``: the ``V??02DNB`` (the source itself, or
+    at its root) and the ``V??03DNB`` of the same granule beside it."""
+    names = source.listdir()
+    if _L1B_NAME.match(source.name) and source.name.endswith(".nc"):
+        l1b = source.name
+    else:
+        l1bs = sorted(n for n in names if n.endswith(".nc") and (m := _L1B_NAME.match(n)) and m["kind"] == "2")
+        if not l1bs:
+            raise FileNotFoundError(f"no V??02DNB*.nc under {source.name}")
+        l1b = l1bs[0]
+    key = l1b_key(l1b)
+    geos = sorted(
+        n for n in names
+        if n.endswith(".nc") and (m := _L1B_NAME.match(n)) and m["kind"] == "3" and l1b_key(n) == key
+    )
+    if not geos:
+        raise FileNotFoundError(f"no V??03DNB geolocation file next to {l1b}")
+    return l1b, geos[0]
+
+
+def _iso(text: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(text.rstrip("Z"))
+
+
+def read_l1b_granule(l1b_h5, name: str) -> dict:
+    """Timestamp (coverage centre), footprint (the G-ring) and scene-wide
+    attrs from the L1B file's global attributes."""
+    attrs = l1b_h5.attrs
+    start, stop = _iso(_attr(attrs, "time_coverage_start")), _iso(_attr(attrs, "time_coverage_end"))
+    lats, lons = numpy.asarray(attrs["GRingPointLatitude"]).ravel(), numpy.asarray(attrs["GRingPointLongitude"]).ravel()
+    ring = [(float(lon), float(lat)) for lat, lon in zip(lats, lons)]
+    orbit = _attr(attrs, "orbit_number") if "orbit_number" in attrs else _attr(attrs, "OrbitNumber")
+    return {
+        "timestamp": start + (stop - start) / 2,
+        "footprint": {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [ring + ring[:1]]}},
+        "attrs": {
+            "satellite": L1B_PLATFORMS.get(_L1B_NAME.match(name)["platform"], "unknown"),
+            "orbit": int(orbit),
+            "day_night": _attr(attrs, "DayNightFlag").lower(),
+            "pass": _attr(attrs, "startDirection").lower(),
+        },
+    }
+
+
+def read_l1b_geolocation(geo_h5) -> dict:
+    """The V??03DNB file's latitude / longitude (terrain corrected -- the
+    ellipsoid at sea) and :data:`FIELDS`, scaled, fills as ``NaN``. The moon
+    illumination is per pixel there; its median stands for the granule."""
+    group = geo_h5["geolocation_data"]
+    out = {
+        "lat": swath.read_scaled(group["latitude"], FILL_BELOW),
+        "lon": swath.read_scaled(group["longitude"], FILL_BELOW),
+    }
+    for variable, field in _L1B_ANGLES.items():
+        out[field] = swath.read_scaled(group[variable])
+    # percent, per pixel
+    out["moon_illumination"] = float(numpy.nanmedian(swath.read_scaled(group["moon_illumination_fraction"]))) / 100.0
+    out["moon_phase_angle"] = (
+        float(numpy.nanmedian(swath.read_scaled(group["moon_phase_angle"]))) if "moon_phase_angle" in group else float("nan")
+    )
     return out
 
 
-def radiance_path(raster_path: str) -> str:
-    return f'HDF5:"{raster_path}"://{SDR}/Radiance'
+# -- both ---------------------------------------------------------------------------
+def nodes(geolocation: dict, tolerance_m: float) -> dict:
+    """A node grid for :class:`~satimg.transform.SwathTransformer` and the
+    angle fields: scan-edge rows, :func:`~satimg.swath.node_columns` at
+    ``tolerance_m``, as pixel-centre coordinates (``i + 0.5``), with each
+    array sampled there."""
+    lat, lon = geolocation["lat"], geolocation["lon"]
+    rows = swath.scan_edge_rows(lat.shape[0], SCAN_ROWS)
+    cols = swath.node_columns(lat[rows], lon[rows], tolerance_m)
+    sample = numpy.ix_(rows, cols)
+    out = {"rows": rows + 0.5, "cols": cols + 0.5, "lat": lat[sample], "lon": lon[sample]}
+    for field in FIELDS:
+        out[field] = geolocation[field][sample]
+    return out
 
+
+def gdal_path(raster_path: str, dataset: str) -> str:
+    return f'HDF5:"{raster_path}"://{dataset}'

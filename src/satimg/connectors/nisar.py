@@ -19,32 +19,15 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-from urllib.parse import urlparse
 
 import requests
 
-from satimg.connectors._credentials import Credentials, CredentialsError
 from satimg.connectors.base import Connector
+from satimg.connectors.earthdata import EarthdataLogin, stream
 
 logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://api.daac.asf.alaska.edu/services/search/param"
-EDL_HOST = "urs.earthdata.nasa.gov"
-
-
-class _EarthdataSession(requests.Session):
-    """Keeps basic auth on the redirect to Earthdata Login (and only there):
-    ``requests`` drops credentials on any cross-host redirect, which is
-    exactly the hop EDL's OAuth flow needs them on."""
-
-    def rebuild_auth(self, prepared_request, response):
-        if "Authorization" in prepared_request.headers:
-            new = urlparse(prepared_request.url).hostname
-            old = urlparse(response.request.url).hostname
-            if new != old and EDL_HOST not in (new, old):
-                del prepared_request.headers["Authorization"]
-
-
 def _wkt(geojson: dict) -> str:
     """A GeoJSON Polygon / Feature / single-feature FeatureCollection as WKT."""
     if geojson.get("type") == "FeatureCollection":
@@ -60,13 +43,11 @@ def _wkt(geojson: dict) -> str:
     return f"POLYGON(({ring}))"
 
 
-class NisarConnector(Connector):
+class NisarConnector(EarthdataLogin, Connector):
     """NISAR L-band products from the ASF DAAC; GCOV by default (pass
     ``processing_level=`` for another, e.g. ``"RSLC"`` -- though only GCOV
     opens as a product)."""
 
-    ENV_PREFIX = "EARTHDATA"
-    SERVICE = "NASA Earthdata"
     collection = "nisar-gcov"
 
     def __init__(
@@ -76,9 +57,7 @@ class NisarConnector(Connector):
         token: str | None = None,
         processing_level: str = "GCOV",
     ):
-        self._username = username
-        self._password = password
-        self._token = token
+        super().__init__(username, password, token)
         self.processing_level = processing_level
 
     def search(
@@ -127,24 +106,6 @@ class NisarConnector(Connector):
         logger.debug("ASF search returned %d item(s)", len(items))
         return items
 
-    def _get_session(self, *args, **kwargs) -> requests.Session:
-        session = _EarthdataSession()
-        token = self._token or os.environ.get(f"{self.ENV_PREFIX}_TOKEN")
-        if token:
-            logger.debug("using an %s bearer token", self.SERVICE)
-            session.headers["Authorization"] = f"Bearer {token}"
-            return session
-        try:
-            creds = Credentials.resolve(
-                self._username, self._password, service=self.SERVICE, env_prefix=self.ENV_PREFIX
-            )
-        except CredentialsError as e:
-            raise CredentialsError(
-                f"{e} Or pass token= / set {self.ENV_PREFIX}_TOKEN to an Earthdata Login bearer token."
-            ) from None
-        session.auth = (creds.username, creds.password)
-        return session
-
     def download(self, item: dict, save_path: str) -> str:
         """Stream the granule's ``.h5`` to ``save_path`` (a GCOV frame is
         several GB), via a ``.part`` file so an interrupted download never
@@ -153,11 +114,8 @@ class NisarConnector(Connector):
         logger.info("downloading %s -> %s", item["id"], save_path)
         session = self._get_session()
         partial = save_path + ".part"
-        with session.get(url, stream=True, timeout=300) as response:
-            response.raise_for_status()
-            with open(partial, "wb") as f:
-                for block in response.iter_content(chunk_size=8 << 20):
-                    f.write(block)
+        with open(partial, "wb") as f:
+            stream(session, url, f)
         os.replace(partial, save_path)
         logger.info("wrote %s", save_path)
         return save_path

@@ -13,10 +13,11 @@ from satimg import ViirsGeometry
 from satimg.connectors import ViirsDNBConnector, get_connector
 from satimg.connectors.viirs import HttpRangeFile, rings_intersect
 from satimg.prediction import ViirsBoatDetector
-from satimg.products import ViirsDNBProduct
+from satimg.products import ViirsDNBProduct, ViirsSDRProduct
 from satimg.registry import resolve
+from satimg.swath import node_columns
 from satimg.transform import SwathTransformer
-from satimg.viirs_utils import granule_key, granule_times, node_columns
+from satimg.viirs_utils import granule_key, granule_times
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 
@@ -49,7 +50,7 @@ def _metres(a, b):
 # -- names ----------------------------------------------------------------------
 @pytest.mark.parametrize("name", [NAME, f"{NAME}.h5", "SVDNB_npp_d20261101_t0000035_e0001277_b77784_c20261101004425633000_oebc_ops.h5"])
 def test_resolves(name):
-    assert resolve(name) is ViirsDNBProduct
+    assert resolve(name) is ViirsSDRProduct
 
 
 def test_granule_times_roll_over_midnight():
@@ -267,3 +268,142 @@ def test_http_range_file_reads_hdf5_attributes_without_the_whole_file():
     raw.seek(-10, io.SEEK_END)
     assert raw.read() == open(SDR, "rb").read()[-10:]
     assert os.path.getsize(SDR) == raw.tell()
+
+
+# -- NASA L1B (VJ102DNB + VJ103DNB) ----------------------------------------------------
+@pytest.fixture(scope="module")
+def l1b_folder(tmp_path_factory):
+    from tests import viirs_l1b_fixture
+
+    folder = tmp_path_factory.mktemp("l1b") / viirs_l1b_fixture.L1B[:-3]
+    folder.mkdir()
+    viirs_l1b_fixture.build(SDR, GEO, folder)
+    return folder
+
+
+@pytest.fixture(scope="module")
+def l1b(l1b_folder):
+    with satimg.open(str(l1b_folder)) as p:
+        yield p
+
+
+@pytest.mark.parametrize("name", [
+    "VJ102DNB.A2026305.1630.021.2026305232544.nc",
+    "VNP02DNB.A2026305.1630.002.2026305232544.nc",
+    "VJ202DNB_NRT.A2026305.1630.021.nc",
+    "VJ102DNB.A2026305.1630.021.2026305232544",  # a folder / zip of it
+])
+def test_l1b_resolves(name):
+    from satimg.products import ViirsL1BProduct
+
+    assert resolve(name) is ViirsL1BProduct
+
+
+def test_l1b_pairs_by_granule_not_production_time():
+    from satimg.viirs_utils import l1b_key
+
+    assert l1b_key("VJ102DNB.A2026305.1630.021.2026305232544.nc") == l1b_key("VJ103DNB.A2026305.1630.021.2026305223722.nc")
+    assert l1b_key("VJ102DNB.A2026305.1630.021.x.nc") != l1b_key("VJ102DNB_NRT.A2026305.1630.021.nc")
+
+
+def test_l1b_reads_like_the_sdr(l1b, product):
+    from satimg.products import ViirsL1BProduct
+
+    assert isinstance(l1b, ViirsL1BProduct)
+    assert l1b.shape == product.shape
+    numpy.testing.assert_array_equal(l1b.raw.values, product.raw.values)  # NaN where the SDR has its fill
+    attrs = l1b.metadata.attrs
+    assert (attrs["satellite"], attrs["orbit"], attrs["day_night"], attrs["pass"]) == ("noaa-20", 46398, "night", "descending")
+    assert attrs["moon_illumination"] == pytest.approx(product.metadata.attrs["moon_illumination"], abs=1e-3)
+    assert l1b.timestamp == datetime.datetime(2026, 11, 1, 16, 30, 48)
+    assert l1b.metadata.solar_zenith.at((32, 128)) == pytest.approx(product.metadata.solar_zenith.at((32, 128)), abs=0.01)
+
+
+def test_l1b_transformer_matches_the_sdr(l1b, product):
+    rc = numpy.array([(0.5, 0.5), (15.5, 100.5), (40.5, 200.5), (63.5, 255.5)])
+    assert _metres(l1b.transformer.rowcol_to_latlon(rc), product.transformer.rowcol_to_latlon(rc)).max() < 1
+
+
+@pytest.mark.parametrize("how", ["bare", "zip"])
+def test_l1b_opens_bare_and_zipped(how, l1b_folder, tmp_path):
+    from tests import viirs_l1b_fixture
+
+    if how == "bare":
+        path = l1b_folder / viirs_l1b_fixture.L1B
+    else:
+        path = tmp_path / f"{l1b_folder.name}.zip"
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
+            for f in l1b_folder.iterdir():
+                z.write(f, f"{l1b_folder.name}/{f.name}")
+    with satimg.open(str(path)) as p:
+        assert p.raw.values[0, fx.BOATS[0][0], fx.BOATS[0][1]] > 50e-9
+
+
+def test_l1b_boat_lights(l1b):
+    pixels = _pixels(ViirsBoatDetector(l1b).detect())
+    assert set(fx.BOATS) <= pixels
+    assert fx.PARTICLE not in pixels
+
+
+def _cmr_entry(name, day_night="NIGHT"):
+    base = "https://data.laadsdaac.earthdatacloud.nasa.gov/prod-lads"
+    return {
+        "time_start": "2026-11-01T16:30:00.000Z",
+        "day_night_flag": day_night,
+        "links": [
+            {"href": f"s3://prod-lads/{name}"},
+            {"href": f"{base}/{name.split('.')[0]}/{name}"},
+            {"href": f"https://ladsweb.modaps.eosdis.nasa.gov/opendap/{name}.html"},
+        ],
+    }
+
+
+def test_l1b_connector_pairs_cmr_granules(monkeypatch):
+    from satimg.connectors import ViirsL1BConnector, earthdata
+
+    feeds = {
+        "VJ102DNB": [_cmr_entry("VJ102DNB.A2026305.1630.021.2026305232544.nc"),
+                     _cmr_entry("VJ102DNB.A2026305.1636.021.2026305232600.nc")],
+        "VJ103DNB": [_cmr_entry("VJ103DNB.A2026305.1630.021.2026305223724.nc")],  # 1636 has no GEO yet
+    }
+    calls = []
+
+    class Response:
+        def __init__(self, body):
+            self.body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.body
+
+    def get(url, params, timeout):
+        calls.append(params)
+        return Response({"feed": {"entry": feeds[params["short_name"]]}})
+
+    monkeypatch.setattr(earthdata.requests, "get", get)
+    aoi = {"type": "Polygon", "coordinates": [[[123, 33], [135, 33], [135, 40], [123, 33]]]}
+    items = ViirsL1BConnector().search(
+        geojson=aoi, start_datetime=datetime.datetime(2026, 11, 1, 15), stop_datetime=datetime.datetime(2026, 11, 1, 18),
+        day_night="night",
+    )
+    assert [i["id"] for i in items] == ["VJ102DNB.A2026305.1630.021.2026305232544"]
+    assert set(items[0]["assets"]) == {"VJ102DNB", "VJ103DNB"}
+    assert all(a["href"].startswith("https://data.laads") for a in items[0]["assets"].values())
+    assert calls[0]["bounding_box"] == "123,33,135,40"
+    assert calls[0]["temporal"] == "2026-11-01T15:00:00Z,2026-11-01T18:00:00Z"
+    assert calls[0]["day_night_flag"] == "night"
+    assert resolve(items[0]["id"]).__name__ == "ViirsL1BProduct"
+
+
+def test_l1b_connector_needs_earthdata_login(monkeypatch):
+    from satimg.connectors import ViirsL1BConnector
+    from satimg.connectors._credentials import CredentialsError
+
+    for var in ("EARTHDATA_TOKEN", "EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
+        monkeypatch.delenv(var, raising=False)
+    assert get_connector("viirs-dnb-l1b", satellite="snpp").short_names == ("VNP02DNB", "VNP03DNB")
+    with pytest.raises(CredentialsError):
+        ViirsL1BConnector()._get_session()
+    assert ViirsL1BConnector(token="t")._get_session().headers["Authorization"] == "Bearer t"

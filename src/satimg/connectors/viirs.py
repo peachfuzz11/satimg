@@ -14,6 +14,10 @@ filter on ``geojson`` or ``night_only``, reads each candidate's footprint and
 day/night flag straight out of its HDF5 attributes with HTTP range requests
 -- a few hundred KB per granule, never the whole file. Keep the time window
 to hours, not weeks.
+
+:class:`ViirsL1BConnector` (``"viirs-dnb-l1b"``) fetches NASA's L1B format
+of the same data from LAADS instead: catalogued (CMR search, footprints and
+day/night flags included), 6-minute granules, but needs an Earthdata Login.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ import requests
 
 from satimg.connectors._auth import make_session
 from satimg.connectors.base import Connector
+from satimg.connectors.earthdata import CMRConnector
 from satimg.viirs_utils import granule_key, granule_times
 
 logger = logging.getLogger(__name__)
@@ -271,3 +276,35 @@ class ViirsDNBConnector(Connector):
                             out.write(block)
         logger.info("wrote %s", save_path)
         return save_path
+
+
+#: satellite -> (L1B short name, geolocation short name), NASA LAADS
+L1B_SHORT_NAMES = {
+    "snpp": ("VNP02DNB", "VNP03DNB"),
+    "noaa-20": ("VJ102DNB", "VJ103DNB"),
+    "noaa-21": ("VJ202DNB", "VJ203DNB"),
+}
+
+
+class ViirsL1BConnector(CMRConnector):
+    """NASA's VIIRS DNB L1B granules (6 minutes, ``V??02DNB`` + its
+    ``V??03DNB`` geolocation) from LAADS DAAC: found through CMR
+    (anonymous), downloaded with an Earthdata Login (see
+    :mod:`satimg.connectors.earthdata`) into one zip ``satimg.open`` reads.
+    ``day_night="night"`` keeps the granules boat lights show in."""
+
+    collection = "viirs-dnb-l1b"
+
+    def __init__(
+        self,
+        satellite: str = "noaa-20",
+        username: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+    ):
+        try:
+            self.short_names = L1B_SHORT_NAMES[satellite]
+        except KeyError:
+            raise ValueError(f"unknown satellite {satellite!r}; known: {sorted(L1B_SHORT_NAMES)}") from None
+        super().__init__(username, password, token)
+        self.satellite = satellite

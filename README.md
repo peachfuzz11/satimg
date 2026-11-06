@@ -6,7 +6,7 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV, VIIRS Day/Night Band SDR.
+NISAR L2 GCOV, VIIRS Day/Night Band (NOAA SDR and NASA L1B).
 
 ## Concepts
 
@@ -310,13 +310,17 @@ straits and sea ice are where its coverage is.
 
 The JPSS satellites' VIIRS Day/Night Band sees light at night down to a few
 nW / (cm^2 sr): towns, gas flares -- and lit boats, above all the squid
-jiggers and other light-luring fleets, at ~750 m, every night, worldwide. A
-granule (~85 s of orbit, 768 x 4064 pixels) is two HDF5 files, the SDR
-(`SVDNB_*`) and its geolocation (`GDNBO_*`); open the SDR with its GEO next to
-it, or a folder / zip holding both:
+jiggers and other light-luring fleets, at ~750 m, every night, worldwide.
+It comes in two formats, both read the same way -- the data file with its
+geolocation file next to it, or a folder / zip holding both:
+
+| Format | Files | Granule | From |
+| --- | --- | --- | --- |
+| NOAA SDR (`ViirsSDRProduct`) | `SVDNB_*.h5` + `GDNBO_*.h5` | ~85 s, 768 x 4064 | NOAA's open AWS buckets, no account |
+| NASA L1B (`ViirsL1BProduct`) | `V??02DNB.*.nc` + `V??03DNB.*.nc` | 6 min, ~3232 x 4064 | LAADS DAAC, Earthdata login |
 
 ```python
-product = satimg.open("SVDNB_j01_d20261101_t1630064_..._oebc_ops.h5")
+product = satimg.open("SVDNB_j01_d20261101_t1630064_..._oebc_ops.h5")   # or "VJ102DNB.A2026305.1630.021....nc"
 
 product.raw            # radiance, W / (cm^2 sr), float32 -- x 1e9 for nW
 product.visual         # log stretch, moonlit cloud to boat lights
@@ -355,6 +359,10 @@ connector.download(items[0], "/data/granule.zip")
 
 There is no catalogue, so search lists granules by time and reads each one's
 footprint out of its HDF5 by range requests: keep the window to hours.
+
+`get_connector("viirs-dnb-l1b")` fetches the NASA L1B pairs instead: CMR
+search (anonymous, catalogued, `day_night="night"`), download with an
+Earthdata login (`EARTHDATA_TOKEN` etc., as for NISAR).
 
 ## Downloading
 

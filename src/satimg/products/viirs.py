@@ -45,36 +45,33 @@ class ViirsGeometry(SceneGeometry):
     transformer_cls = SwathTransformer
 
 
-@register(r"^SVDNB_(npp|j0\d)_d\d{8}_t\d{7}_e\d{7}_b\d+")
 class ViirsDNBProduct(Product):
-    """One VIIRS Day/Night Band granule: about 85 seconds of orbit, 768 x 4064
-    pixels of ~750 m, in sensor (swath) geometry -- not map projected.
-
-    Open the ``SVDNB_*.h5`` itself (its ``GDNBO_*.h5`` geolocation next to
-    it), or a folder / zip named for it holding both, as the ``viirs-dnb``
-    connector downloads.
+    """One VIIRS Day/Night Band granule, ~750 m pixels in sensor (swath)
+    geometry -- not map projected -- in either distribution format:
+    :class:`ViirsSDRProduct` (NOAA's SDR, ~85 s of orbit, 768 x 4064 pixels)
+    or :class:`ViirsL1BProduct` (NASA's L1B, 6 minutes, ~3232 x 4064). The
+    two differ only in how they are read.
 
     ``raw`` is the calibrated radiance, W / (cm^2 sr), ``float32`` (times 1e9
-    for the nW / (cm^2 sr) night-lights work quotes), ``NaN`` where the SDR
+    for the nW / (cm^2 sr) night-lights work quotes), ``NaN`` where the file
     has a fill value. ``visual`` is a log stretch, one greyscale band,
     spanning moonlit cloud to boat lights at night. ``metadata`` carries the
     satellite / solar / lunar zenith and azimuth angles, and ``attrs`` the
     moon's illumination -- what decides how dark the background is.
 
-    The transformer interpolates the GEO file's per-pixel positions to within
-    :data:`TRANSFORMER_TOLERANCE_M`. Boats show up at night as their lights,
-    a pixel or two each, not as hulls: see
-    :func:`satimg.prediction.viirs.detect_boats` rather than the image-model
+    The transformer interpolates the geolocation file's per-pixel positions
+    to within :data:`TRANSFORMER_TOLERANCE_M`. Boats show up at night as
+    their lights, a pixel or two each, not as hulls: see
+    :class:`~satimg.prediction.ViirsBoatDetector` rather than the image-model
     :class:`~satimg.prediction.Detector`.
     """
 
+    #: the radiance dataset's path in the file :meth:`_read` names
+    _radiance_dataset: str
+
     def __init__(self, source: Source):
         super().__init__(source)
-        self._sdr, self._geo = viirs_utils.find_pair(self._source)
-        with open_h5(self._source, self._sdr) as h5:
-            granule = viirs_utils.read_granule(h5)
-        with open_h5(self._source, self._geo) as h5:
-            geolocation = viirs_utils.read_geolocation(h5)
+        self._radiance_file, granule, geolocation = self._read()
         self._timestamp = granule["timestamp"]
         self._footprint = granule["footprint"]
         self._shape = geolocation["lat"].shape
@@ -93,10 +90,16 @@ class ViirsDNBProduct(Product):
         )
         self._angles = coarse
 
+    def _read(self) -> tuple[str, dict, dict]:
+        """``(radiance file, granule, geolocation)`` -- the root-relative
+        file :attr:`_radiance_dataset` is in, and the ``viirs_utils``
+        ``read_*_granule`` / ``read_*_geolocation`` dicts."""
+        raise NotImplementedError
+
     # -- pixels ---------------------------------------------------------------
     @cached_property
     def _radiance_path(self) -> str:
-        """The SDR's radiance through a VRT carrying a few GCPs -- just so
+        """The radiance through a VRT carrying a few GCPs -- just so
         GDAL sees it as georeferenced; satimg's own :attr:`transformer` is
         what maps it."""
         t = self._coarse_transformer
@@ -108,11 +111,12 @@ class ViirsDNBProduct(Product):
             GroundControlPoint(row=r, col=c, x=lon, y=lat)
             for r, c, (lat, lon) in zip(rr, cc, latlon)
         ]
-        return vrt(viirs_utils.radiance_path(self._source.raster_path(self._sdr)), self._shape, gcps=gcps)
+        path = viirs_utils.gdal_path(self._source.raster_path(self._radiance_file), self._radiance_dataset)
+        return vrt(path, self._shape, gcps=gcps)
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         if overview != 1:
-            raise ValueError("a VIIRS SDR has no overviews")
+            raise ValueError("a VIIRS granule has no overviews")
         merged = merge_bands([self._radiance_path], tile=tile)
         da = label_bands(as_band_yx(merged), ("DNB",))
         return keep_open(da.where(da > viirs_utils.FILL_BELOW), merged)
@@ -126,16 +130,15 @@ class ViirsDNBProduct(Product):
         return label_bands(as_band_yx(u8), ("radiance",))
 
     def thumbnail(self) -> PIL.Image.Image:
-        """Rendered from :attr:`visual` -- a whole granule is only ~12 MB;
-        an SDR ships no quick-look of its own."""
+        """Rendered from :attr:`visual` -- neither format ships a quick-look."""
         return fit_thumbnail(PIL.Image.fromarray(self.visual.values[0], mode="L"))
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
         a = self._angles
         fields = {
-            name: self._field(a["rows"], a["cols"], a[dataset], name=name, units=units)
-            for dataset, (name, units) in viirs_utils.ANGLE_FIELDS.items()
+            name: self._field(a["rows"], a["cols"], a[name], name=name, units="degrees")
+            for name in viirs_utils.FIELDS
         }
         return Metadata(fields, self._attrs)
 
@@ -168,3 +171,38 @@ class ViirsDNBProduct(Product):
     @property
     def footprint(self) -> dict:
         return self._footprint
+
+
+@register(r"^SVDNB_(npp|j0\d)_d\d{8}_t\d{7}_e\d{7}_b\d+")
+class ViirsSDRProduct(ViirsDNBProduct):
+    """NOAA's VIIRS DNB SDR: open the ``SVDNB_*.h5`` itself (its
+    ``GDNBO_*.h5`` geolocation next to it), or a folder / zip named for it
+    holding both, as the ``viirs-dnb`` connector downloads."""
+
+    _radiance_dataset = viirs_utils.SDR_RADIANCE
+
+    def _read(self):
+        sdr, geo = viirs_utils.find_sdr_pair(self._source)
+        with open_h5(self._source, sdr) as h5:
+            granule = viirs_utils.read_sdr_granule(h5)
+        with open_h5(self._source, geo) as h5:
+            geolocation = viirs_utils.read_sdr_geolocation(h5)
+        return sdr, granule, geolocation
+
+
+@register(r"^V(NP|J\d)02DNB(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
+class ViirsL1BProduct(ViirsDNBProduct):
+    """NASA's VIIRS DNB L1B: open the ``VNP02DNB`` / ``VJ102DNB`` /
+    ``VJ202DNB`` ``.nc`` itself (its ``V??03DNB`` geolocation next to it), or
+    a folder / zip named for it holding both, as the ``viirs-dnb-l1b``
+    connector downloads."""
+
+    _radiance_dataset = viirs_utils.L1B_RADIANCE
+
+    def _read(self):
+        l1b, geo = viirs_utils.find_l1b_pair(self._source)
+        with open_h5(self._source, l1b) as h5:
+            granule = viirs_utils.read_l1b_granule(h5, l1b)
+        with open_h5(self._source, geo) as h5:
+            geolocation = viirs_utils.read_l1b_geolocation(h5)
+        return l1b, granule, geolocation
