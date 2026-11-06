@@ -248,8 +248,11 @@ class SwathTransformer(Transformer):
         target = _unit_vectors(ll[:, 0], ll[:, 1])
         nodes = numpy.nan_to_num(self._xyz.reshape(-1, 3), nan=0.0)
         out = numpy.full((len(ll), 2), numpy.nan)
-        for start in range(0, len(ll), 4096):
-            t = target[start:start + 4096]
+        # the nearest-node search is a (points x nodes) product: bound it to
+        # ~20M entries, whatever the node grid's size
+        chunk = int(max(64, min(4096, 20_000_000 // max(len(nodes), 1))))
+        for start in range(0, len(ll), chunk):
+            t = target[start:start + chunk]
             nearest = (t @ nodes.T).argmax(axis=1)
             r0 = self._rows[nearest // len(self._cols)]
             c0 = self._cols[nearest % len(self._cols)]
@@ -268,5 +271,5 @@ class SwathTransformer(Transformer):
             r, c, miss, pixel = best
             off = ~(miss <= pixel)  # NaN counts as off
             r[off], c[off] = numpy.nan, numpy.nan
-            out[start:start + 4096] = numpy.column_stack((r, c))
+            out[start:start + chunk] = numpy.column_stack((r, c))
         return out
