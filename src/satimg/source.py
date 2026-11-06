@@ -57,6 +57,12 @@ class Source(abc.ABC):
     def open(self, relpath: str) -> BinaryIO:
         """A binary, context-manager file object for ``relpath``."""
 
+    def open_detached(self, relpath: str) -> BinaryIO:
+        """Like :meth:`open`, but a handle of its own that does not depend on
+        this source staying open -- for lazy readers that reopen a file after
+        the product (and its source) were closed, as GDAL does by path."""
+        return self.open(relpath)
+
     @abc.abstractmethod
     def raster_path(self, relpath: str) -> str:
         """A path GDAL (``rasterio``/``rioxarray``) opens ``relpath`` by."""
@@ -216,6 +222,18 @@ class ZipSource(Source):
 
     def open(self, relpath: str) -> BinaryIO:
         return self._archive.open(self._full(relpath))
+
+    def open_detached(self, relpath: str) -> BinaryIO:
+        archive = zipfile.ZipFile(self._archive.filename)
+        member = archive.open(self._full(relpath))
+        close_member = member.close
+
+        def close():
+            close_member()
+            archive.close()
+
+        member.close = close
+        return member
 
     def raster_path(self, relpath: str) -> str:
         # the braces delimit the archive's own path, so it needs no .zip
