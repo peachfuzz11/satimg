@@ -5,7 +5,8 @@ directory and you get the same interface regardless of sensor: two views on the
 pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
-Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1.
+Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
+NISAR L2 GCOV.
 
 ## Concepts
 
