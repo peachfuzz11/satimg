@@ -84,7 +84,7 @@ product = satimg.open("/data/S2A_MSIL1C_20220114T103401_..._T33UUB_....SAFE")
 product.raw     # every native band, merged onto one grid, native dtype  -> xarray.DataArray
 product.visual  # uint8 visualisation: 3-band true colour for optical    -> xarray.DataArray
                 # sensors (Sentinel-2, Landsat), 1-band greyscale for SAR
-                # (Sentinel-1)
+                # (Sentinel-1, NISAR)
 ```
 
 Both are lazy `DataArray`s over the **same grid**, so a `Window` means the same
@@ -227,6 +227,7 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-1 | `incidence_angle`, `elevation_angle`, `slant_range_time` (seconds), `height` (metres) |
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+| NISAR GCOV | `incidence_angle`, `elevation_angle`, `slant_range` (metres), `los_east` / `los_north` / `along_track_east` / `along_track_north` (unit vectors), `ground_track_velocity` (m/s) |
 
 This is per-pixel geometry (varies across the scene). Per-*band* identity lives
 on `product.raw` instead — the labelled `band` coordinate, plus `wavelength_nm`
@@ -267,14 +268,48 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-Landsat's angle fields are stored resampled to 32 x 32.
+For NISAR, load it as a `NisarGeometry` the same way.
+
+Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
+
+## NISAR
+
+A NISAR L2 GCOV granule is a single `.h5` file; `satimg.open` takes it as it
+is (or a zip holding it):
+
+```python
+product = satimg.open("NISAR_L2_PR_GCOV_..._001.h5")
+
+product.raw.band.values    # ['HHHH', 'HVHV'] -- frequency A diagonal terms, linear gamma-0 power, NaN off-swath
+product.visual             # 1-band dB stretch, like Sentinel-1
+```
+
+GCOV is geocoded -- a north-up UTM (or polar stereographic) grid -- not a
+radar-geometry GRD, so it is neither rotated into the flight direction nor
+mirrored. A moving ship's Doppler displacement still runs along the ground
+track, which crosses the image at an angle; NISAR also looks *left*. Both are
+read from the product's own line-of-sight and along-track vectors, so:
+
+```python
+product.doppler_azimuth_shift_m(rowcol, speed_mps, heading_deg)  # metres along track
+product.doppler_pixel_shift(rowcol, speed_mps, heading_deg)      # (d_row, d_col)
+product.correct_position(lat, lon, speed_mps, heading_deg)       # same as Sentinel-1
+product.heading_in_image(rowcol, heading_deg)                    # grid convergence only, no mirroring
+```
+
+The detection / characterisation models were trained on Sentinel-1; NISAR's
+`visual` is stretched so open sea is dark and ships bright in the same way,
+but L-band at 10-20 m is a different look -- expect to fine-tune before
+trusting them on it. NISAR also images the open ocean only sparsely; coasts,
+straits and sea ice are where its coverage is.
 
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive.
 Pass credentials to the connector, or set environment variables
 (`CDSE_USERNAME` / `CDSE_PASSWORD` for Copernicus, `USGS_USERNAME` /
-`USGS_PASSWORD` / optional `USGS_TOKEN` for USGS).
+`USGS_PASSWORD` / optional `USGS_TOKEN` for USGS, `EARTHDATA_TOKEN` -- or
+`EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD` -- for NISAR via NASA Earthdata).
 
 ```python
 from satimg import get_connector
@@ -287,7 +322,9 @@ connector = get_connector("sentinel-2-l1c",
 connector.download(items[0], "/data/scene.zip")
 ```
 
-`download` always gives you a zip archive — see
+`get_connector("nisar-gcov")` searches the ASF DAAC; its `download` writes the
+granule's own `.h5` rather than a zip. Every other `download` gives you a zip
+archive — see
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 

@@ -45,6 +45,7 @@ dependencies = [
     "shapely>=2.0.0",
     "roaring-landmask>=0.10.1",
     "xarray>=2025.10.1",
+    "h5py>=3.16.0",
 ]
 
 [project.urls]
