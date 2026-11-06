@@ -33,6 +33,7 @@ from satimg.s1_geometry import Sentinel1Geometry
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 from satimg.products.modis import ModisGeometry
+from satimg.products.olci import OlciGeometry
 from satimg.products.viirs import ViirsGeometry
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "NisarGeometry",
     "ViirsGeometry",
     "ModisGeometry",
+    "OlciGeometry",
     "UnknownProductError",
     "CredentialsError",
 ]

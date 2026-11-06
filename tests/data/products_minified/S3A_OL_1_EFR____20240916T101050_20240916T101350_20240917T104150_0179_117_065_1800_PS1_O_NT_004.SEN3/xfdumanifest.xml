@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xfdu:XFDU xmlns:xfdu="urn:ccsds:schema:xfdu:1" xmlns:gml="http://www.opengis.net/gml" xmlns:sentinel-safe="http://www.esa.int/safe/sentinel/1.1"><metadataSection><metadataObject ID="measurementFrameSet"><metadataWrap><xmlData><sentinel-safe:frameSet><sentinel-safe:footPrint><gml:posList>65.53827 21.88202 65.24414 23.19453 64.94890 22.81069 65.24000 21.50915 65.53827 21.88202</gml:posList></sentinel-safe:footPrint></sentinel-safe:frameSet></xmlData></metadataWrap></metadataObject></metadataSection></xfdu:XFDU>

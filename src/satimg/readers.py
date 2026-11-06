@@ -58,7 +58,9 @@ def fit_thumbnail(img: "PIL.Image.Image") -> "PIL.Image.Image":
     return covered.crop((left, top, left + target_w, top + target_h))
 
 
-def vrt(path: str, shape: tuple[int, int], *, transform=None, crs=None, gcps=None) -> str:
+def vrt(
+    path: str, shape: tuple[int, int], *, transform=None, crs=None, gcps=None, dtype: str = "Float32", nodata="nan"
+) -> str:
     """``path`` -- a ``float32`` raster GDAL opens but cannot georeference,
     e.g. an HDF5 dataset -- wrapped in an in-memory VRT that carries the
     georeferencing satimg knows instead: an affine ``transform`` and ``crs``,
@@ -82,7 +84,7 @@ def vrt(path: str, shape: tuple[int, int], *, transform=None, crs=None, gcps=Non
         georef = f'<GCPList Projection="EPSG:4326">{points}</GCPList>'
     return (
         f'<VRTDataset rasterXSize="{width}" rasterYSize="{height}">{georef}'
-        f'<VRTRasterBand dataType="Float32" band="1"><NoDataValue>nan</NoDataValue>'
+        f'<VRTRasterBand dataType="{dtype}" band="1"><NoDataValue>{nodata}</NoDataValue>'
         f'<SimpleSource><SourceFilename relativeToVRT="0">{escape(path, {chr(34): "&quot;"})}</SourceFilename>'
         f"<SourceBand>1</SourceBand></SimpleSource></VRTRasterBand></VRTDataset>"
     )
