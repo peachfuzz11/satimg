@@ -126,6 +126,40 @@ class CMRConnector(EarthdataLogin, Connector):
         parts = filename.split(".")
         return ".".join(parts[1:4])
 
+    def _groups(self) -> list[tuple[str, ...]]:
+        """The products to search: each a tuple of short names whose files
+        pair into one granule. One product -- :attr:`short_names` -- unless a
+        subclass offers alternatives (NOAA-20 / NOAA-21, Terra / Aqua)."""
+        return [self.short_names]
+
+    def _search_group(self, short_names: tuple[str, ...], params: dict) -> list[dict]:
+        found: dict[str, dict] = {}
+        for short_name in short_names:
+            for entry in self._query(short_name, params):
+                url = _file_url(entry, self.suffix)
+                if url is None:
+                    continue
+                name = url.rsplit("/", 1)[-1]
+                item = found.setdefault(self._pair_key(name), {"assets": {}, "entry": entry})
+                item["assets"][short_name] = {"href": url}
+        items = []
+        for item in found.values():
+            if len(item["assets"]) < len(short_names):
+                continue  # a granule missing one of its files
+            entry = item.pop("entry")
+            first = item["assets"][short_names[0]]["href"].rsplit("/", 1)[-1]
+            item.update({
+                "id": first[: -len(self.suffix)],
+                "type": "Feature",
+                "properties": {
+                    "datetime": entry.get("time_start"),
+                    "day_night": (entry.get("day_night_flag") or "").lower() or None,
+                },
+                "geometry": None,
+            })
+            items.append(item)
+        return items
+
     def _query(self, short_name: str, params: dict) -> list[dict]:
         entries, page = [], 1
         while True:
@@ -165,36 +199,14 @@ class CMRConnector(EarthdataLogin, Connector):
             )
         if day_night:
             params["day_night_flag"] = day_night
-        found: dict[str, dict] = {}
-        for short_name in self.short_names:
-            for entry in self._query(short_name, params):
-                url = _file_url(entry, self.suffix)
-                if url is None:
-                    continue
-                name = url.rsplit("/", 1)[-1]
-                item = found.setdefault(self._pair_key(name), {"assets": {}, "entry": entry})
-                item["assets"][short_name] = {"href": url}
         items = []
-        for item in found.values():
-            if len(item["assets"]) < len(self.short_names):
-                continue  # a granule missing one of its files
-            entry = item.pop("entry")
-            first = item["assets"][self.short_names[0]]["href"].rsplit("/", 1)[-1]
-            item.update({
-                "id": first[: -len(self.suffix)],
-                "type": "Feature",
-                "properties": {
-                    "datetime": entry.get("time_start"),
-                    "day_night": (entry.get("day_night_flag") or "").lower() or None,
-                },
-                "geometry": None,
-            })
-            items.append(item)
+        for group in self._groups():
+            items += self._search_group(group, params)
         if ids:
             items = [i for i in items if i["id"] in ids]
         if exclude_ids:
             items = [i for i in items if i["id"] not in exclude_ids]
-        items.sort(key=lambda i: i["id"])
+        items.sort(key=lambda i: (i["properties"]["datetime"] or "", i["id"]))
         logger.debug("CMR search returned %d granule(s)", len(items))
         return items
 

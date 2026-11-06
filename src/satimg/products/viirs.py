@@ -1,4 +1,4 @@
-"""VIIRS Day/Night Band L1B reader (NASA ``VNP02DNB`` + ``VNP03DNB``, netCDF4)."""
+"""VIIRS Day/Night Band L1B reader (NASA ``V??02DNB`` + ``V??03DNB``, netCDF4)."""
 
 from __future__ import annotations
 
@@ -47,12 +47,14 @@ class ViirsGeometry(SceneGeometry):
 
 @register(r"^V(NP|J\d)02DNB(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
 class ViirsDNBProduct(Product):
-    """One VIIRS Day/Night Band L1B granule -- NASA's ``VNP02DNB`` (SNPP;
-    ``VJ102DNB`` / ``VJ202DNB`` from NOAA-20 / -21, the same format) with its
-    ``V??03DNB`` geolocation: 6 minutes of orbit, ~3232 x 4064 pixels of
-    ~750 m, in sensor (swath) geometry -- not map projected.
+    """One VIIRS Day/Night Band L1B granule -- NASA's radiance file with its
+    geolocation file: NOAA-20's ``VJ102DNB_NRT`` + ``VJ103DNB_NRT`` or
+    NOAA-21's ``VJ202DNB_NRT`` + ``VJ203DNB_NRT`` (near-real-time), or the
+    same pairs from the standard archive (no ``_NRT``; SNPP's ``VNP02DNB`` /
+    ``VNP03DNB`` share the format). 6 minutes of orbit, ~3232 x 4064 pixels
+    of ~750 m, in sensor (swath) geometry -- not map projected.
 
-    Open the ``V??02DNB`` ``.nc`` itself (its ``V??03DNB`` next to it), or a
+    Open the radiance ``.nc`` itself (its geolocation file next to it), or a
     folder / zip named for it holding both, as the ``viirs-dnb`` connector
     downloads.
 

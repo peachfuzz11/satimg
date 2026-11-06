@@ -1,6 +1,7 @@
-"""VIIRS Day/Night Band L1B parsing: NASA's ``VNP02DNB`` (SNPP; ``VJ102DNB`` /
-``VJ202DNB`` for NOAA-20 / -21, same layout) calibrated radiance plus its
-``V??03DNB`` per-pixel geolocation, netCDF4, from LAADS DAAC.
+"""VIIRS Day/Night Band L1B parsing: NASA's calibrated radiance plus its
+per-pixel geolocation, netCDF4 -- ``VJ102DNB_NRT`` + ``VJ103DNB_NRT``
+(NOAA-20) and ``VJ202DNB_NRT`` + ``VJ203DNB_NRT`` (NOAA-21) from LANCE, or
+the standard-archive pairs of the same layout from LAADS.
 
 Paths, types, scaling and fills follow the LAADS VNP02DNB / VNP03DNB file
 specifications. Pure functions over ``h5py`` files; see

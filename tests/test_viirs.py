@@ -49,8 +49,9 @@ def _metres(a, b):
 @pytest.mark.parametrize("name", [
     f"{NAME}.nc",
     NAME,  # a folder / zip of it
+    "VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc",
+    "VJ202DNB_NRT.A2026309.1600.021.2026309173950.nc",
     "VNP02DNB.A2026305.1630.002.2026305232544.nc",
-    "VJ202DNB_NRT.A2026305.1630.021.nc",
 ])
 def test_resolves(name):
     assert resolve(name) is ViirsDNBProduct
@@ -58,6 +59,7 @@ def test_resolves(name):
 
 def test_pairs_by_granule_not_production_time():
     assert granule_key("VNP02DNB.A2026305.1630.002.2026305232544.nc") == granule_key("VNP03DNB.A2026305.1630.002.2026305223724.nc")
+    assert granule_key("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc") == granule_key("VJ103DNB_NRT.A2026309.1654.021.2026309181114.nc")
     assert granule_key("VNP02DNB.A2026305.1630.002.x.nc") != granule_key("VNP02DNB_NRT.A2026305.1630.002.nc")
     assert granule_key("VNP02DNB.A2026305.1630.002.x.nc") != granule_key("VJ103DNB.A2026305.1630.002.x.nc")
 
@@ -222,13 +224,15 @@ def _cmr_entry(name, day_night="NIGHT"):
     }
 
 
-def test_connector_pairs_cmr_granules(monkeypatch):
+def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
     from satimg.connectors import earthdata
 
     feeds = {
-        "VNP02DNB": [_cmr_entry("VNP02DNB.A2026305.1630.002.2026305232544.nc"),
-                     _cmr_entry("VNP02DNB.A2026305.1636.002.2026305232600.nc")],
-        "VNP03DNB": [_cmr_entry("VNP03DNB.A2026305.1630.002.2026305223724.nc")],  # 1636 has no GEO yet
+        "VJ102DNB_NRT": [_cmr_entry("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc"),
+                         _cmr_entry("VJ102DNB_NRT.A2026309.1700.021.2026309190000.nc")],
+        "VJ103DNB_NRT": [_cmr_entry("VJ103DNB_NRT.A2026309.1654.021.2026309181114.nc")],  # 1700 has no GEO yet
+        "VJ202DNB_NRT": [_cmr_entry("VJ202DNB_NRT.A2026309.1600.021.2026309173950.nc")],
+        "VJ203DNB_NRT": [_cmr_entry("VJ203DNB_NRT.A2026309.1600.021.2026309173033.nc")],
     }
     calls = []
 
@@ -249,25 +253,29 @@ def test_connector_pairs_cmr_granules(monkeypatch):
     monkeypatch.setattr(earthdata.requests, "get", get)
     aoi = {"type": "Polygon", "coordinates": [[[123, 33], [135, 33], [135, 40], [123, 33]]]}
     items = ViirsDNBConnector().search(
-        geojson=aoi, start_datetime=datetime.datetime(2026, 11, 1, 15), stop_datetime=datetime.datetime(2026, 11, 1, 18),
+        geojson=aoi, start_datetime=datetime.datetime(2026, 11, 5, 15), stop_datetime=datetime.datetime(2026, 11, 5, 18),
         day_night="night",
     )
-    assert [i["id"] for i in items] == ["VNP02DNB.A2026305.1630.002.2026305232544"]
-    assert set(items[0]["assets"]) == {"VNP02DNB", "VNP03DNB"}
-    assert all(a["href"].startswith("https://data.laads") for a in items[0]["assets"].values())
+    assert sorted(i["id"] for i in items) == [
+        "VJ102DNB_NRT.A2026309.1654.021.2026309185751", "VJ202DNB_NRT.A2026309.1600.021.2026309173950",
+    ]
+    assert {frozenset(i["assets"]) for i in items} == {
+        frozenset({"VJ102DNB_NRT", "VJ103DNB_NRT"}), frozenset({"VJ202DNB_NRT", "VJ203DNB_NRT"}),
+    }
     assert calls[0]["bounding_box"] == "123,33,135,40"
-    assert calls[0]["temporal"] == "2026-11-01T15:00:00Z,2026-11-01T18:00:00Z"
+    assert calls[0]["temporal"] == "2026-11-05T15:00:00Z,2026-11-05T18:00:00Z"
     assert calls[0]["day_night_flag"] == "night"
-    assert resolve(items[0]["id"]) is ViirsDNBProduct
+    assert all(resolve(i["id"]) is ViirsDNBProduct for i in items)
 
 
-def test_connector_satellites_and_login(monkeypatch):
+def test_connector_satellites_archive_and_login(monkeypatch):
     for var in ("EARTHDATA_TOKEN", "EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
         monkeypatch.delenv(var, raising=False)
-    assert get_connector("viirs-dnb").short_names == ("VNP02DNB", "VNP03DNB")
-    assert get_connector("viirs-dnb", satellite="noaa-20").short_names == ("VJ102DNB", "VJ103DNB")
+    assert get_connector("viirs-dnb").short_names == ("VJ102DNB_NRT", "VJ103DNB_NRT", "VJ202DNB_NRT", "VJ203DNB_NRT")
+    assert get_connector("viirs-dnb", satellite="noaa-21").short_names == ("VJ202DNB_NRT", "VJ203DNB_NRT")
+    assert get_connector("viirs-dnb", satellite="noaa-20", nrt=False).short_names == ("VJ102DNB", "VJ103DNB")
     with pytest.raises(ValueError, match="unknown satellite"):
-        ViirsDNBConnector("goes-16")
+        ViirsDNBConnector("snpp")
     with pytest.raises(CredentialsError):
         ViirsDNBConnector()._get_session()
     assert ViirsDNBConnector(token="t")._get_session().headers["Authorization"] == "Bearer t"

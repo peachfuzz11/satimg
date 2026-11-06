@@ -6,7 +6,7 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV, VIIRS Day/Night Band L1B (VNP02DNB).
+NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time).
 
 ## Concepts
 
@@ -311,13 +311,20 @@ straits and sea ice are where its coverage is.
 The VIIRS Day/Night Band sees light at night down to a few nW / (cm^2 sr):
 towns, gas flares -- and lit boats, above all the squid jiggers and other
 light-luring fleets, at ~750 m, every night, worldwide. satimg reads NASA's
-L1B granules -- `VNP02DNB` calibrated radiance with its `VNP03DNB`
-geolocation (6 minutes, ~3232 x 4064 pixels; `VJ102DNB` / `VJ202DNB` from
-NOAA-20 / -21 are the same format). Open the `VNP02DNB` with its `VNP03DNB`
+L1B granules -- a radiance file with its geolocation file, 6 minutes, ~3232 x
+4064 pixels:
+
+| Satellite | Radiance | Geolocation |
+| --- | --- | --- |
+| NOAA-20 | `VJ102DNB_NRT` | `VJ103DNB_NRT` |
+| NOAA-21 | `VJ202DNB_NRT` | `VJ203DNB_NRT` |
+
+(the standard-archive pairs without `_NRT`, and SNPP's `VNP02DNB`, are the
+same format and open too). Open the radiance file with its geolocation file
 next to it, or a folder / zip holding both:
 
 ```python
-product = satimg.open("VNP02DNB.A2026305.1630.002.2026305232544.nc")
+product = satimg.open("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc")
 
 product.raw            # radiance, W / (cm^2 sr), float32 -- x 1e9 for nW
 product.visual         # log stretch, moonlit cloud to boat lights
@@ -345,9 +352,11 @@ through thin cloud only (the light is blurred, often lost), can be fooled by
 lightning and moonlit cloud edges, and the moon's glint raises the floor --
 treat it as a lead, not a census.
 
-`get_connector("viirs-dnb")` (SNPP; `satellite="noaa-20"` / `"noaa-21"` for
-the VJ1 / VJ2 pairs) searches NASA's CMR anonymously and downloads from LAADS
-with an Earthdata login (`EARTHDATA_TOKEN` etc., as for NISAR):
+`get_connector("viirs-dnb")` searches NOAA-20 and NOAA-21 near-real-time
+granules together (`satellite="noaa-20"` / `"noaa-21"` for one; `nrt=False`
+for the standard archive, for older dates) through NASA's CMR, anonymously,
+and downloads from LANCE / LAADS with an Earthdata login (`EARTHDATA_TOKEN`
+etc., as for NISAR):
 
 ```python
 connector = get_connector("viirs-dnb")
