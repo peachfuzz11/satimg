@@ -6,7 +6,7 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV.
+NISAR L2 GCOV, VIIRS Day/Night Band SDR.
 
 ## Concepts
 
@@ -228,6 +228,7 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-1 | `incidence_angle`, `elevation_angle`, `slant_range_time` (seconds), `height` (metres) |
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+| VIIRS DNB | `satellite_zenith`, `satellite_azimuth`, `solar_zenith`, `solar_azimuth`, `lunar_zenith`, `lunar_azimuth` |
 | NISAR GCOV | `incidence_angle`, `elevation_angle`, `slant_range` (metres), `los_east` / `los_north` / `along_track_east` / `along_track_north` (unit vectors), `ground_track_velocity` (m/s) |
 
 This is per-pixel geometry (varies across the scene). Per-*band* identity lives
@@ -269,7 +270,8 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-For NISAR, load it as a `NisarGeometry` the same way.
+For NISAR, load it as a `NisarGeometry` the same way; for VIIRS, as a
+`ViirsGeometry` (its swath transformer stored to within 250 m, ~350 KB).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 
@@ -304,6 +306,56 @@ but L-band at 10-20 m is a different look -- expect to fine-tune before
 trusting them on it. NISAR also images the open ocean only sparsely; coasts,
 straits and sea ice are where its coverage is.
 
+## VIIRS Day/Night Band
+
+The JPSS satellites' VIIRS Day/Night Band sees light at night down to a few
+nW / (cm^2 sr): towns, gas flares -- and lit boats, above all the squid
+jiggers and other light-luring fleets, at ~750 m, every night, worldwide. A
+granule (~85 s of orbit, 768 x 4064 pixels) is two HDF5 files, the SDR
+(`SVDNB_*`) and its geolocation (`GDNBO_*`); open the SDR with its GEO next to
+it, or a folder / zip holding both:
+
+```python
+product = satimg.open("SVDNB_j01_d20261101_t1630064_..._oebc_ops.h5")
+
+product.raw            # radiance, W / (cm^2 sr), float32 -- x 1e9 for nW
+product.visual         # log stretch, moonlit cloud to boat lights
+product.metadata.attrs["moon_illumination"]   # 0-1: how bright the background is
+```
+
+The image is in sensor (swath) geometry, not map projected: `transformer` is a
+`SwathTransformer` over the GEO file's per-pixel positions, scan by scan, to
+within 50 m. Boats show up as their lights, a pixel or two each, so they are
+found by a spike detector rather than the image model:
+
+```python
+from satimg.prediction import ViirsBoatDetector
+
+lights = ViirsBoatDetector(product).detect()          # every light, tagged
+boats = [d for d in lights if "on_land" not in d.tags and "platform" not in d.tags]
+```
+
+It finds local spikes well clear of the local background and its noise,
+drops energetic-particle hits (single pixels, frequent in the South Atlantic
+Anomaly) and the noisy swath-edge columns, and skips anything not dark
+enough. In the spirit of NOAA's VIIRS Boat Detection, not a reimplementation;
+thresholds were set on a few NOAA-20 granules. It does not see unlit vessels,
+sees through thin cloud only (the light is blurred, often lost), can be
+fooled by lightning and moonlit cloud edges, and the moon's glint raises the
+floor -- treat it as a lead, not a census.
+
+`get_connector("viirs-dnb")` (or `satellite="snpp"` / `"noaa-21"`) reads NOAA's
+open buckets on AWS -- no account for search or download:
+
+```python
+connector = get_connector("viirs-dnb")
+items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1)   # night only by default
+connector.download(items[0], "/data/granule.zip")
+```
+
+There is no catalogue, so search lists granules by time and reads each one's
+footprint out of its HDF5 by range requests: keep the window to hours.
+
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive.
@@ -324,8 +376,9 @@ connector.download(items[0], "/data/scene.zip")
 ```
 
 `get_connector("nisar-gcov")` searches the ASF DAAC; its `download` writes the
-granule's own `.h5` rather than a zip. Every other `download` gives you a zip
-archive — see
+granule's own `.h5` rather than a zip. `get_connector("viirs-dnb")` needs no
+account at all (see [VIIRS](#viirs-daynight-band)). Every other `download`
+gives you a zip archive — see
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 

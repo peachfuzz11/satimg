@@ -5,6 +5,7 @@ from satimg.prediction.context import (
 from satimg.prediction.detector import Detector, DetectorConfig
 from satimg.prediction.models import CharacterisationModel, Model, Yolo26Model
 from satimg.prediction.types import BBox, Characterisation, Coordinate, Detection, Label
+from satimg.prediction.viirs import ViirsBoatConfig, ViirsBoatDetector
 
 __all__ = [
     "Characteriser",
@@ -25,4 +26,6 @@ __all__ = [
     "Coordinate",
     "Detection",
     "Label",
+    "ViirsBoatConfig",
+    "ViirsBoatDetector",
 ]

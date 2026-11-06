@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Iterable
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 import rasterio
 import rioxarray
 import xarray
 
 if TYPE_CHECKING:  # pragma: no cover
+    import h5py
     import PIL.Image
 
     from satimg.source import Source
@@ -37,7 +39,13 @@ def load_thumbnail(
     with source.open(relpath) as f:
         img = PIL.Image.open(f)
         img.load()
-    img = img.convert("L" if greyscale else "RGB")
+    return fit_thumbnail(img.convert("L" if greyscale else "RGB"))
+
+
+def fit_thumbnail(img: "PIL.Image.Image") -> "PIL.Image.Image":
+    """``img`` resized to exactly :data:`THUMBNAIL_SIZE` -- covered, then
+    centre-cropped (see :func:`load_thumbnail`)."""
+    import PIL.Image
 
     target_w, target_h = THUMBNAIL_SIZE
     scale = max(target_w / img.width, target_h / img.height)
@@ -48,6 +56,50 @@ def load_thumbnail(
     left = (covered.width - target_w) // 2
     top = (covered.height - target_h) // 2
     return covered.crop((left, top, left + target_w, top + target_h))
+
+
+def vrt(path: str, shape: tuple[int, int], *, transform=None, crs=None, gcps=None) -> str:
+    """``path`` -- a ``float32`` raster GDAL opens but cannot georeference,
+    e.g. an HDF5 dataset -- wrapped in an in-memory VRT that carries the
+    georeferencing satimg knows instead: an affine ``transform`` and ``crs``,
+    or a list of ``rasterio`` ``GroundControlPoint`` s (WGS84). So it opens
+    georeferenced rather than as a bare array that every lazy read warns
+    about, and with an affine transform ``x`` / ``y`` are real map
+    coordinates."""
+    from xml.sax.saxutils import escape
+
+    height, width = shape
+    georef = ""
+    if transform is not None:
+        georef = (
+            f"<SRS>{escape(crs.to_wkt())}</SRS>"
+            f"<GeoTransform>{', '.join(repr(v) for v in transform.to_gdal())}</GeoTransform>"
+        )
+    elif gcps:
+        points = "".join(
+            f'<GCP Id="{i}" Pixel="{g.col}" Line="{g.row}" X="{g.x}" Y="{g.y}"/>' for i, g in enumerate(gcps)
+        )
+        georef = f'<GCPList Projection="EPSG:4326">{points}</GCPList>'
+    return (
+        f'<VRTDataset rasterXSize="{width}" rasterYSize="{height}">{georef}'
+        f'<VRTRasterBand dataType="Float32" band="1"><NoDataValue>nan</NoDataValue>'
+        f'<SimpleSource><SourceFilename relativeToVRT="0">{escape(path, {chr(34): "&quot;"})}</SourceFilename>'
+        f"<SourceBand>1</SourceBand></SimpleSource></VRTRasterBand></VRTDataset>"
+    )
+
+
+@contextmanager
+def open_h5(source: Source, relpath: str) -> Iterator["h5py.File"]:
+    """``relpath`` opened read-only with ``h5py`` -- by path where the file is
+    on disk, else (zip-native) through the archive's file object."""
+    import h5py
+
+    if source.is_directory:
+        with h5py.File(source.raster_path(relpath), "r") as f:
+            yield f
+    else:
+        with source.open(relpath) as raw, h5py.File(raw, "r") as f:
+            yield f
 
 
 def find_file(directory: str, filename: str) -> str | None:

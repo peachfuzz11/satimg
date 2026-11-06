@@ -14,7 +14,14 @@ from satimg import nisar_utils
 from satimg.metadata import Metadata
 from satimg.nisar_geometry import NisarGeometry
 from satimg.product import Product
-from satimg.readers import THUMBNAIL_SIZE, keep_open, load_thumbnail, merge_bands
+from satimg.readers import (
+    THUMBNAIL_SIZE,
+    keep_open,
+    load_thumbnail,
+    merge_bands,
+    open_h5,
+    vrt,
+)
 from satimg.registry import register
 from satimg.scene_geometry import coarsen
 from satimg.source import Source
@@ -55,7 +62,7 @@ class NisarGCOVProduct(Product):
     def __init__(self, source: Source):
         super().__init__(source)
         self._h5 = nisar_utils.find_h5(self._source)
-        with nisar_utils.open_h5(self._source, self._h5) as h5:
+        with open_h5(self._source, self._h5) as h5:
             ident = nisar_utils.read_identification(h5)
             grid = nisar_utils.read_grid(h5)
             cube = nisar_utils.read_radar_grid(h5, grid["transform"])
@@ -83,9 +90,9 @@ class NisarGCOVProduct(Product):
     def _term_paths(self) -> list[str]:
         t = self.transformer
         return [
-            nisar_utils.georeferenced(
+            vrt(
                 nisar_utils.gdal_path(self._source, self._h5, f"{nisar_utils.GRID}/{term}"),
-                (self.height, self.width), t._transform, t._crs,
+                (self.height, self.width), transform=t._transform, crs=t._crs,
             )
             for term in self._terms
         ]
