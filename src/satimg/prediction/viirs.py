@@ -23,8 +23,8 @@ Elvidge et al. 2015, *Remote Sensing* 7(3)) -- not a reimplementation of it:
 Every light is returned, tagged with where it lies like any detection
 (:mod:`satimg.prediction.context`) -- on land is a town, at a platform
 likely a gas flare -- so filter on the tags. Thresholds were set by eye on
-NOAA-20 granules over the Sea of Japan / Yellow Sea and off Peru (November
-2026); expect to tune them, and see the limitations in the README.
+NOAA-20 data over the Sea of Japan / Yellow Sea and off Peru (November
+2026) -- the same instrument and calibration as SNPP's VNP02DNB; expect to tune them, and see the limitations in the README.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from satimg.prediction.types import BBox, Coordinate, Detection, Label
 
 logger = logging.getLogger(__name__)
 
-#: nW / (cm^2 sr) per the SDR's W / (cm^2 sr)
+#: nW / (cm^2 sr) per the L1B's W / (cm^2 sr)
 NANOWATTS = 1e9
 
 
@@ -107,8 +107,7 @@ def find_spikes(radiance: numpy.ndarray, cfg: ViirsBoatConfig, block: int = 128)
 
 
 class ViirsBoatDetector:
-    """Boat lights over a :class:`~satimg.products.viirs.ViirsDNBProduct`
-    (either format);
+    """Boat lights over a :class:`~satimg.products.viirs.ViirsDNBProduct`;
     the same shape of API as :class:`~satimg.prediction.Detector`."""
 
     def __init__(self, product, **overrides):

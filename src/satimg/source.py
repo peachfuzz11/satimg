@@ -111,8 +111,8 @@ class DirSource(Source):
 
 
 class FileSource(DirSource):
-    """A product that is a single file (e.g. a NISAR GCOV or VIIRS SDR
-    ``.h5``) rather than a directory. Its root is the file's own directory, so
+    """A product that is a single file (e.g. a NISAR GCOV or VIIRS L1B
+    ``.h5`` / ``.nc``) rather than a directory. Its root is the file's own directory, so
     the file and any sibling it pairs with (a VIIRS geolocation file) are
     reached by their bare names; :attr:`name` and :attr:`path` are the file's
     own, so :func:`~satimg.registry.resolve` matches the file name.

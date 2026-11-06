@@ -1,11 +1,17 @@
-"""Cut a real VIIRS DNB granule (SVDNB + GDNBO) down to a test fixture: the
-first :data:`ROWS` rows (whole scans) and :data:`COLS` columns -- real
-attributes, geolocation, angles and radiance, so the swath-edge noise columns
-and scan structure are the real thing -- then inject known boat lights, a
-particle hit and a fill value at :data:`BOATS` / :data:`PARTICLE` /
-:data:`FILL`.
+"""Cut a real VIIRS DNB L1B granule pair (``V??02DNB`` + ``V??03DNB``) down to
+a test fixture: the first :data:`ROWS` rows (whole scans) and :data:`COLS`
+columns -- real attributes, geolocation, angles and radiance, so the
+swath-edge noise columns and scan structure are the real thing -- then inject
+known boat lights, a particle hit and a fill value at :data:`BOATS` /
+:data:`PARTICLE` / :data:`FILL`.
 
-    uv run python -m tests.minify_viirs SVDNB_....h5 GDNBO_....h5 OUT_DIR
+    uv run python -m tests.minify_viirs VJ102DNB....nc VJ103DNB....nc OUT_DIR
+
+The committed fixture (``VJ102DNB.A2026305.1630.021...``) holds a real
+NOAA-20 pass -- 2026-11-01 16:30 UTC over the Sea of Japan -- cut this way,
+its radiance, geolocation and angles taken from NOAA's distribution of the
+same granule (no Earthdata login was to hand) and written in the LAADS
+VNP02DNB / VNP03DNB layout.
 """
 
 import os
@@ -22,9 +28,10 @@ PARTICLE = (30, 140)
 #: (row, col) of an injected fill value
 FILL = (10, 200)
 
+_RADIANCE = "observation_data/DNB_observations"
 _GEO_KEEP = (
-    "Latitude", "Longitude", "SatelliteZenithAngle", "SatelliteAzimuthAngle", "SolarZenithAngle",
-    "SolarAzimuthAngle", "LunarZenithAngle", "LunarAzimuthAngle", "MoonIllumFraction", "MoonPhaseAngle",
+    "latitude", "longitude", "sensor_zenith", "sensor_azimuth", "solar_zenith", "solar_azimuth",
+    "lunar_zenith", "lunar_azimuth", "moon_illumination_fraction", "moon_phase_angle",
 )
 
 
@@ -33,28 +40,28 @@ def _copy_attrs(src, dst):
         dst.attrs[key] = value
 
 
-def minify(sdr_path, geo_path, out_dir):
+def minify(l1b_path, geo_path, out_dir):
     import h5py
 
     os.makedirs(out_dir, exist_ok=True)
-    with h5py.File(sdr_path) as src, h5py.File(os.path.join(out_dir, os.path.basename(sdr_path)), "w") as dst:
+    with h5py.File(l1b_path) as src, h5py.File(os.path.join(out_dir, os.path.basename(l1b_path)), "w") as dst:
         _copy_attrs(src, dst)
-        gran = "Data_Products/VIIRS-DNB-SDR/VIIRS-DNB-SDR_Gran_0"
-        dst.create_dataset(gran, data=numpy.zeros(1, "uint8"))
-        _copy_attrs(src[gran], dst[gran])
-        radiance = src["All_Data/VIIRS-DNB-SDR_All/Radiance"][:ROWS, :COLS].astype("float32")
+        radiance = src[_RADIANCE][:ROWS, :COLS].astype("float32")
         spot = numpy.array([[0.1, 0.3, 0.1], [0.3, 1.0, 0.3], [0.1, 0.3, 0.1]], "float32") * BOAT_PEAK * 1e-9
         for r, c in BOATS:
             radiance[r - 1:r + 2, c - 1:c + 2] += spot
         radiance[PARTICLE] += BOAT_PEAK * 1e-9
-        radiance[FILL] = -999.3
-        dst.create_dataset("All_Data/VIIRS-DNB-SDR_All/Radiance", data=radiance, compression="gzip", shuffle=True)
+        radiance[FILL] = -999.9
+        out = dst.create_dataset(_RADIANCE, data=radiance, compression="gzip", shuffle=True)
+        _copy_attrs(src[_RADIANCE], out)
     with h5py.File(geo_path) as src, h5py.File(os.path.join(out_dir, os.path.basename(geo_path)), "w") as dst:
         _copy_attrs(src, dst)
         for name in _GEO_KEEP:
-            data = src[f"All_Data/VIIRS-DNB-GEO_All/{name}"]
-            data = data[:ROWS, :COLS] if data.ndim == 2 else data[()]
-            dst.create_dataset(f"All_Data/VIIRS-DNB-GEO_All/{name}", data=data, compression="gzip", shuffle=True)
+            path = f"geolocation_data/{name}"
+            if path not in src:
+                continue
+            out = dst.create_dataset(path, data=src[path][:ROWS, :COLS], compression="gzip", shuffle=True)
+            _copy_attrs(src[path], out)
 
 
 if __name__ == "__main__":

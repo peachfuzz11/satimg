@@ -1,7 +1,6 @@
 """Remote archive connectors, keyed by STAC collection name.
 
-``search`` is anonymous; ``download`` needs an account (except VIIRS DNB,
-which is public end to end) -- pass ``username=`` /
+``search`` is anonymous; ``download`` needs an account -- pass ``username=`` /
 ``password=`` (and ``token=`` for USGS / NASA Earthdata) or set the service's environment
 variables (see :mod:`satimg.connectors._credentials`).
 """
@@ -13,7 +12,7 @@ from satimg.connectors.base import Connector, STACConnector
 from satimg.connectors.landsat import LandsatConnector
 from satimg.connectors.nisar import NisarConnector
 from satimg.connectors.sentinel import Sentinel1Connector, Sentinel2Connector
-from satimg.connectors.viirs import ViirsDNBConnector, ViirsL1BConnector
+from satimg.connectors.viirs import ViirsDNBConnector
 
 _CONNECTORS: dict[str, type[Connector]] = {
     "sentinel-1-grd": Sentinel1Connector,
@@ -21,7 +20,6 @@ _CONNECTORS: dict[str, type[Connector]] = {
     "landsat-c2l1": LandsatConnector,
     "nisar-gcov": NisarConnector,
     "viirs-dnb": ViirsDNBConnector,
-    "viirs-dnb-l1b": ViirsL1BConnector,
 }
 
 
@@ -48,7 +46,6 @@ __all__ = [
     "LandsatConnector",
     "NisarConnector",
     "ViirsDNBConnector",
-    "ViirsL1BConnector",
     "Credentials",
     "CredentialsError",
     "get_connector",

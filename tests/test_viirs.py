@@ -1,7 +1,5 @@
 import datetime
-import io
 import json
-import os
 import zipfile
 
 import h5py
@@ -11,20 +9,20 @@ import pytest
 import satimg
 from satimg import ViirsGeometry
 from satimg.connectors import ViirsDNBConnector, get_connector
-from satimg.connectors.viirs import HttpRangeFile, rings_intersect
+from satimg.connectors._credentials import CredentialsError
 from satimg.prediction import ViirsBoatDetector
-from satimg.products import ViirsDNBProduct, ViirsSDRProduct
+from satimg.products import ViirsDNBProduct
 from satimg.registry import resolve
 from satimg.swath import node_columns
 from satimg.transform import SwathTransformer
-from satimg.viirs_utils import granule_key, granule_times
+from satimg.viirs_utils import granule_key
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 
-NAME = "SVDNB_j01_d20261101_t1630064_e1631309_b46398_c20261101171011472000_oebc_ops"
+NAME = "VJ102DNB.A2026305.1630.021.2026305232544"
 FOLDER = _PRODUCTS / NAME
-SDR = FOLDER / f"{NAME}.h5"
-GEO = next(FOLDER.glob("GDNBO_*.h5")) if FOLDER.exists() else None
+L1B = FOLDER / f"{NAME}.nc"
+GEO = next(FOLDER.glob("VJ103DNB*.nc")) if FOLDER.exists() else None
 
 pytestmark = pytest.mark.skipif(not FOLDER.exists(), reason="VIIRS test granule missing")
 
@@ -38,7 +36,7 @@ def product():
 @pytest.fixture(scope="module")
 def truth():
     with h5py.File(GEO) as g:
-        return g["All_Data/VIIRS-DNB-GEO_All/Latitude"][()].astype(float), g["All_Data/VIIRS-DNB-GEO_All/Longitude"][()].astype(float)
+        return g["geolocation_data/latitude"][()].astype(float), g["geolocation_data/longitude"][()].astype(float)
 
 
 def _metres(a, b):
@@ -48,32 +46,33 @@ def _metres(a, b):
 
 
 # -- names ----------------------------------------------------------------------
-@pytest.mark.parametrize("name", [NAME, f"{NAME}.h5", "SVDNB_npp_d20261101_t0000035_e0001277_b77784_c20261101004425633000_oebc_ops.h5"])
+@pytest.mark.parametrize("name", [
+    f"{NAME}.nc",
+    NAME,  # a folder / zip of it
+    "VNP02DNB.A2026305.1630.002.2026305232544.nc",
+    "VJ202DNB_NRT.A2026305.1630.021.nc",
+])
 def test_resolves(name):
-    assert resolve(name) is ViirsSDRProduct
+    assert resolve(name) is ViirsDNBProduct
 
 
-def test_granule_times_roll_over_midnight():
-    start, end = granule_times("SVDNB_j01_d20261101_t2359301_e0000546_b46400_c1_oebc_ops.h5")
-    assert start == datetime.datetime(2026, 11, 1, 23, 59, 30, 100000)
-    assert end == datetime.datetime(2026, 11, 2, 0, 0, 54, 600000)
-
-
-def test_granule_key_pairs_sdr_and_geo():
-    assert granule_key(SDR.name) == granule_key(GEO.name)
+def test_pairs_by_granule_not_production_time():
+    assert granule_key("VNP02DNB.A2026305.1630.002.2026305232544.nc") == granule_key("VNP03DNB.A2026305.1630.002.2026305223724.nc")
+    assert granule_key("VNP02DNB.A2026305.1630.002.x.nc") != granule_key("VNP02DNB_NRT.A2026305.1630.002.nc")
+    assert granule_key("VNP02DNB.A2026305.1630.002.x.nc") != granule_key("VJ103DNB.A2026305.1630.002.x.nc")
 
 
 # -- product ----------------------------------------------------------------------
-@pytest.mark.parametrize("how", ["folder", "bare_sdr", "zip"])
+@pytest.mark.parametrize("how", ["folder", "bare", "zip"])
 def test_opens_every_layout(how, tmp_path):
     if how == "folder":
         path = FOLDER
-    elif how == "bare_sdr":
-        path = SDR
+    elif how == "bare":
+        path = L1B
     else:
         path = tmp_path / f"{NAME}.zip"
         with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
-            for f in (SDR, GEO):
+            for f in (L1B, GEO):
                 z.write(f, f"{NAME}/{f.name}")
     with satimg.open(str(path)) as p:
         assert isinstance(p, ViirsDNBProduct)
@@ -84,7 +83,7 @@ def test_shape_time_attrs(product):
     assert product.shape == (1, fx.ROWS, fx.COLS)
     assert list(product.raw.band.values) == ["DNB"]
     assert product.dtype == numpy.float32
-    assert product.timestamp.replace(microsecond=0) == datetime.datetime(2026, 11, 1, 16, 30, 48)
+    assert product.timestamp == datetime.datetime(2026, 11, 1, 16, 30, 48)
     attrs = product.metadata.attrs
     assert (attrs["satellite"], attrs["orbit"], attrs["day_night"], attrs["pass"]) == ("noaa-20", 46398, "night", "descending")
     assert 0 < attrs["moon_illumination"] < 1
@@ -210,141 +209,6 @@ def test_daytime_granule_has_no_boat_lights(product, monkeypatch):
 
 
 # -- connector ------------------------------------------------------------------------
-def test_connector_factory_is_offline():
-    assert get_connector("viirs-dnb").satellite == "noaa-20"
-    assert get_connector("viirs-dnb", satellite="snpp")._bucket == "noaa-nesdis-snpp-pds"
-    with pytest.raises(ValueError, match="unknown satellite"):
-        ViirsDNBConnector("goes-16")
-
-
-def test_connector_needs_a_time_window():
-    with pytest.raises(ValueError, match="start_datetime"):
-        ViirsDNBConnector().search()
-
-
-def test_rings_intersect():
-    square = [(0, 0), (2, 0), (2, 2), (0, 2), (0, 0)]
-    assert rings_intersect(square, [(1, 1), (3, 1), (3, 3), (1, 3), (1, 1)])
-    assert rings_intersect(square, [(0.5, 0.5), (1, 0.5), (1, 1), (0.5, 0.5)])  # inside
-    assert not rings_intersect(square, [(5, 5), (6, 5), (6, 6), (5, 5)])
-    east = [(179, 0), (179.9, 0), (179.9, 1), (179, 1), (179, 0)]
-    west = [(-179.95, 0.5), (-179, 0.5), (-179, 0.8), (-179.95, 0.5)]
-    assert not rings_intersect(east, west)
-    across = [(179.5, 0.2), (-179.5, 0.2), (-179.5, 0.6), (179.5, 0.6), (179.5, 0.2)]
-    assert rings_intersect(east, across)
-
-
-class _FileSession:
-    """Stands in for a requests session over a local file, honouring Range."""
-
-    def __init__(self, path):
-        self.data = open(path, "rb").read()
-        self.requests = 0
-
-    def head(self, url, timeout=None):
-        return _Response(b"", {"Content-Length": str(len(self.data))})
-
-    def get(self, url, headers=None, timeout=None):
-        self.requests += 1
-        start, stop = (int(v) for v in headers["Range"].split("=")[1].split("-"))
-        return _Response(self.data[start:stop + 1], {})
-
-
-class _Response:
-    def __init__(self, content, headers):
-        self.content, self.headers = content, headers
-
-    def raise_for_status(self):
-        pass
-
-
-def test_http_range_file_reads_hdf5_attributes_without_the_whole_file():
-    session = _FileSession(SDR)
-    with HttpRangeFile("https://example.invalid/x.h5", session, block=4096) as raw, h5py.File(raw, "r") as h5:
-        flag = h5["Data_Products/VIIRS-DNB-SDR/VIIRS-DNB-SDR_Gran_0"].attrs["N_Day_Night_Flag"]
-    assert flag.ravel()[0] == b"Night"
-    assert session.requests * 4096 < len(session.data)
-    raw = HttpRangeFile("u", _FileSession(SDR))
-    raw.seek(-10, io.SEEK_END)
-    assert raw.read() == open(SDR, "rb").read()[-10:]
-    assert os.path.getsize(SDR) == raw.tell()
-
-
-# -- NASA L1B (VJ102DNB + VJ103DNB) ----------------------------------------------------
-@pytest.fixture(scope="module")
-def l1b_folder(tmp_path_factory):
-    from tests import viirs_l1b_fixture
-
-    folder = tmp_path_factory.mktemp("l1b") / viirs_l1b_fixture.L1B[:-3]
-    folder.mkdir()
-    viirs_l1b_fixture.build(SDR, GEO, folder)
-    return folder
-
-
-@pytest.fixture(scope="module")
-def l1b(l1b_folder):
-    with satimg.open(str(l1b_folder)) as p:
-        yield p
-
-
-@pytest.mark.parametrize("name", [
-    "VJ102DNB.A2026305.1630.021.2026305232544.nc",
-    "VNP02DNB.A2026305.1630.002.2026305232544.nc",
-    "VJ202DNB_NRT.A2026305.1630.021.nc",
-    "VJ102DNB.A2026305.1630.021.2026305232544",  # a folder / zip of it
-])
-def test_l1b_resolves(name):
-    from satimg.products import ViirsL1BProduct
-
-    assert resolve(name) is ViirsL1BProduct
-
-
-def test_l1b_pairs_by_granule_not_production_time():
-    from satimg.viirs_utils import l1b_key
-
-    assert l1b_key("VJ102DNB.A2026305.1630.021.2026305232544.nc") == l1b_key("VJ103DNB.A2026305.1630.021.2026305223722.nc")
-    assert l1b_key("VJ102DNB.A2026305.1630.021.x.nc") != l1b_key("VJ102DNB_NRT.A2026305.1630.021.nc")
-
-
-def test_l1b_reads_like_the_sdr(l1b, product):
-    from satimg.products import ViirsL1BProduct
-
-    assert isinstance(l1b, ViirsL1BProduct)
-    assert l1b.shape == product.shape
-    numpy.testing.assert_array_equal(l1b.raw.values, product.raw.values)  # NaN where the SDR has its fill
-    attrs = l1b.metadata.attrs
-    assert (attrs["satellite"], attrs["orbit"], attrs["day_night"], attrs["pass"]) == ("noaa-20", 46398, "night", "descending")
-    assert attrs["moon_illumination"] == pytest.approx(product.metadata.attrs["moon_illumination"], abs=1e-3)
-    assert l1b.timestamp == datetime.datetime(2026, 11, 1, 16, 30, 48)
-    assert l1b.metadata.solar_zenith.at((32, 128)) == pytest.approx(product.metadata.solar_zenith.at((32, 128)), abs=0.01)
-
-
-def test_l1b_transformer_matches_the_sdr(l1b, product):
-    rc = numpy.array([(0.5, 0.5), (15.5, 100.5), (40.5, 200.5), (63.5, 255.5)])
-    assert _metres(l1b.transformer.rowcol_to_latlon(rc), product.transformer.rowcol_to_latlon(rc)).max() < 1
-
-
-@pytest.mark.parametrize("how", ["bare", "zip"])
-def test_l1b_opens_bare_and_zipped(how, l1b_folder, tmp_path):
-    from tests import viirs_l1b_fixture
-
-    if how == "bare":
-        path = l1b_folder / viirs_l1b_fixture.L1B
-    else:
-        path = tmp_path / f"{l1b_folder.name}.zip"
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
-            for f in l1b_folder.iterdir():
-                z.write(f, f"{l1b_folder.name}/{f.name}")
-    with satimg.open(str(path)) as p:
-        assert p.raw.values[0, fx.BOATS[0][0], fx.BOATS[0][1]] > 50e-9
-
-
-def test_l1b_boat_lights(l1b):
-    pixels = _pixels(ViirsBoatDetector(l1b).detect())
-    assert set(fx.BOATS) <= pixels
-    assert fx.PARTICLE not in pixels
-
-
 def _cmr_entry(name, day_night="NIGHT"):
     base = "https://data.laadsdaac.earthdatacloud.nasa.gov/prod-lads"
     return {
@@ -358,13 +222,13 @@ def _cmr_entry(name, day_night="NIGHT"):
     }
 
 
-def test_l1b_connector_pairs_cmr_granules(monkeypatch):
-    from satimg.connectors import ViirsL1BConnector, earthdata
+def test_connector_pairs_cmr_granules(monkeypatch):
+    from satimg.connectors import earthdata
 
     feeds = {
-        "VJ102DNB": [_cmr_entry("VJ102DNB.A2026305.1630.021.2026305232544.nc"),
-                     _cmr_entry("VJ102DNB.A2026305.1636.021.2026305232600.nc")],
-        "VJ103DNB": [_cmr_entry("VJ103DNB.A2026305.1630.021.2026305223724.nc")],  # 1636 has no GEO yet
+        "VNP02DNB": [_cmr_entry("VNP02DNB.A2026305.1630.002.2026305232544.nc"),
+                     _cmr_entry("VNP02DNB.A2026305.1636.002.2026305232600.nc")],
+        "VNP03DNB": [_cmr_entry("VNP03DNB.A2026305.1630.002.2026305223724.nc")],  # 1636 has no GEO yet
     }
     calls = []
 
@@ -384,26 +248,26 @@ def test_l1b_connector_pairs_cmr_granules(monkeypatch):
 
     monkeypatch.setattr(earthdata.requests, "get", get)
     aoi = {"type": "Polygon", "coordinates": [[[123, 33], [135, 33], [135, 40], [123, 33]]]}
-    items = ViirsL1BConnector().search(
+    items = ViirsDNBConnector().search(
         geojson=aoi, start_datetime=datetime.datetime(2026, 11, 1, 15), stop_datetime=datetime.datetime(2026, 11, 1, 18),
         day_night="night",
     )
-    assert [i["id"] for i in items] == ["VJ102DNB.A2026305.1630.021.2026305232544"]
-    assert set(items[0]["assets"]) == {"VJ102DNB", "VJ103DNB"}
+    assert [i["id"] for i in items] == ["VNP02DNB.A2026305.1630.002.2026305232544"]
+    assert set(items[0]["assets"]) == {"VNP02DNB", "VNP03DNB"}
     assert all(a["href"].startswith("https://data.laads") for a in items[0]["assets"].values())
     assert calls[0]["bounding_box"] == "123,33,135,40"
     assert calls[0]["temporal"] == "2026-11-01T15:00:00Z,2026-11-01T18:00:00Z"
     assert calls[0]["day_night_flag"] == "night"
-    assert resolve(items[0]["id"]).__name__ == "ViirsL1BProduct"
+    assert resolve(items[0]["id"]) is ViirsDNBProduct
 
 
-def test_l1b_connector_needs_earthdata_login(monkeypatch):
-    from satimg.connectors import ViirsL1BConnector
-    from satimg.connectors._credentials import CredentialsError
-
+def test_connector_satellites_and_login(monkeypatch):
     for var in ("EARTHDATA_TOKEN", "EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
         monkeypatch.delenv(var, raising=False)
-    assert get_connector("viirs-dnb-l1b", satellite="snpp").short_names == ("VNP02DNB", "VNP03DNB")
+    assert get_connector("viirs-dnb").short_names == ("VNP02DNB", "VNP03DNB")
+    assert get_connector("viirs-dnb", satellite="noaa-20").short_names == ("VJ102DNB", "VJ103DNB")
+    with pytest.raises(ValueError, match="unknown satellite"):
+        ViirsDNBConnector("goes-16")
     with pytest.raises(CredentialsError):
-        ViirsL1BConnector()._get_session()
-    assert ViirsL1BConnector(token="t")._get_session().headers["Authorization"] == "Bearer t"
+        ViirsDNBConnector()._get_session()
+    assert ViirsDNBConnector(token="t")._get_session().headers["Authorization"] == "Bearer t"

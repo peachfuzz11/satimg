@@ -6,7 +6,7 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV, VIIRS Day/Night Band (NOAA SDR and NASA L1B).
+NISAR L2 GCOV, VIIRS Day/Night Band L1B (VNP02DNB).
 
 ## Concepts
 
@@ -271,7 +271,7 @@ geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-
 ```
 
 For NISAR, load it as a `NisarGeometry` the same way; for VIIRS, as a
-`ViirsGeometry` (its swath transformer stored to within 250 m, ~350 KB).
+`ViirsGeometry` (its swath transformer stored to within 250 m).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 
@@ -308,19 +308,16 @@ straits and sea ice are where its coverage is.
 
 ## VIIRS Day/Night Band
 
-The JPSS satellites' VIIRS Day/Night Band sees light at night down to a few
-nW / (cm^2 sr): towns, gas flares -- and lit boats, above all the squid
-jiggers and other light-luring fleets, at ~750 m, every night, worldwide.
-It comes in two formats, both read the same way -- the data file with its
-geolocation file next to it, or a folder / zip holding both:
-
-| Format | Files | Granule | From |
-| --- | --- | --- | --- |
-| NOAA SDR (`ViirsSDRProduct`) | `SVDNB_*.h5` + `GDNBO_*.h5` | ~85 s, 768 x 4064 | NOAA's open AWS buckets, no account |
-| NASA L1B (`ViirsL1BProduct`) | `V??02DNB.*.nc` + `V??03DNB.*.nc` | 6 min, ~3232 x 4064 | LAADS DAAC, Earthdata login |
+The VIIRS Day/Night Band sees light at night down to a few nW / (cm^2 sr):
+towns, gas flares -- and lit boats, above all the squid jiggers and other
+light-luring fleets, at ~750 m, every night, worldwide. satimg reads NASA's
+L1B granules -- `VNP02DNB` calibrated radiance with its `VNP03DNB`
+geolocation (6 minutes, ~3232 x 4064 pixels; `VJ102DNB` / `VJ202DNB` from
+NOAA-20 / -21 are the same format). Open the `VNP02DNB` with its `VNP03DNB`
+next to it, or a folder / zip holding both:
 
 ```python
-product = satimg.open("SVDNB_j01_d20261101_t1630064_..._oebc_ops.h5")   # or "VJ102DNB.A2026305.1630.021....nc"
+product = satimg.open("VNP02DNB.A2026305.1630.002.2026305232544.nc")
 
 product.raw            # radiance, W / (cm^2 sr), float32 -- x 1e9 for nW
 product.visual         # log stretch, moonlit cloud to boat lights
@@ -328,9 +325,9 @@ product.metadata.attrs["moon_illumination"]   # 0-1: how bright the background i
 ```
 
 The image is in sensor (swath) geometry, not map projected: `transformer` is a
-`SwathTransformer` over the GEO file's per-pixel positions, scan by scan, to
-within 50 m. Boats show up as their lights, a pixel or two each, so they are
-found by a spike detector rather than the image model:
+`SwathTransformer` over the geolocation file's per-pixel positions, scan by
+scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
+they are found by a spike detector rather than the image model:
 
 ```python
 from satimg.prediction import ViirsBoatDetector
@@ -343,26 +340,20 @@ It finds local spikes well clear of the local background and its noise,
 drops energetic-particle hits (single pixels, frequent in the South Atlantic
 Anomaly) and the noisy swath-edge columns, and skips anything not dark
 enough. In the spirit of NOAA's VIIRS Boat Detection, not a reimplementation;
-thresholds were set on a few NOAA-20 granules. It does not see unlit vessels,
-sees through thin cloud only (the light is blurred, often lost), can be
-fooled by lightning and moonlit cloud edges, and the moon's glint raises the
-floor -- treat it as a lead, not a census.
+thresholds were set on a few granules. It does not see unlit vessels, sees
+through thin cloud only (the light is blurred, often lost), can be fooled by
+lightning and moonlit cloud edges, and the moon's glint raises the floor --
+treat it as a lead, not a census.
 
-`get_connector("viirs-dnb")` (or `satellite="snpp"` / `"noaa-21"`) reads NOAA's
-open buckets on AWS -- no account for search or download:
+`get_connector("viirs-dnb")` (SNPP; `satellite="noaa-20"` / `"noaa-21"` for
+the VJ1 / VJ2 pairs) searches NASA's CMR anonymously and downloads from LAADS
+with an Earthdata login (`EARTHDATA_TOKEN` etc., as for NISAR):
 
 ```python
 connector = get_connector("viirs-dnb")
-items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1)   # night only by default
-connector.download(items[0], "/data/granule.zip")
+items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1, day_night="night")
+connector.download(items[0], "/data/granule.zip")       # both files, one zip
 ```
-
-There is no catalogue, so search lists granules by time and reads each one's
-footprint out of its HDF5 by range requests: keep the window to hours.
-
-`get_connector("viirs-dnb-l1b")` fetches the NASA L1B pairs instead: CMR
-search (anonymous, catalogued, `day_night="night"`), download with an
-Earthdata login (`EARTHDATA_TOKEN` etc., as for NISAR).
 
 ## Downloading
 
@@ -384,9 +375,8 @@ connector.download(items[0], "/data/scene.zip")
 ```
 
 `get_connector("nisar-gcov")` searches the ASF DAAC; its `download` writes the
-granule's own `.h5` rather than a zip. `get_connector("viirs-dnb")` needs no
-account at all (see [VIIRS](#viirs-daynight-band)). Every other `download`
-gives you a zip archive — see
+granule's own `.h5` rather than a zip. Every other `download` gives you a zip
+archive — see
 [Opening a product](#opening-a-product) for reading its metadata straight
 off the archive, or extracting it for pixel access.
 
