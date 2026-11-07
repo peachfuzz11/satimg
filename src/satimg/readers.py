@@ -102,6 +102,72 @@ def open_h5(source: Source, relpath: str) -> Iterator["h5py.File"]:
             yield f
 
 
+class _LazyH5Dataset:
+    """An HDF5 dataset dask can slice, opening its file on first read and
+    again after :meth:`close` -- so a lazy view outlives the loop that made
+    it, as GDAL-backed ones do (they reopen by path). Reads hold a lock:
+    HDF5 is not thread-safe."""
+
+    def __init__(self, source: "Source", relpath: str, dataset: str):
+        import threading
+
+        self._source, self._relpath, self._dataset = source, relpath, dataset
+        self._lock = threading.Lock()
+        self._handle = self._file = None
+        with self._open() as f:
+            ds = f[dataset]
+            self.shape, self.dtype, self.ndim = ds.shape, ds.dtype, ds.ndim
+            self.chunks = ds.chunks
+
+    def _open(self):
+        import h5py
+
+        self._handle = (
+            open(self._source.raster_path(self._relpath), "rb")
+            if self._source.is_directory
+            else self._source.open_detached(self._relpath)
+        )
+        self._file = h5py.File(self._handle, "r")
+        return self
+
+    def __enter__(self):
+        return self._file
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __getitem__(self, key):
+        with self._lock:
+            if self._file is None:
+                self._open()
+            return self._file[self._dataset][key]
+
+    def close(self):
+        with self._lock:
+            if self._file is not None:
+                self._file.close()
+                self._handle.close()
+            self._file = self._handle = None
+
+
+def open_h5_array(source: "Source", relpath: str, dataset: str, tile: int | tuple[int, int]) -> xarray.DataArray:
+    """HDF5 / netCDF4 ``dataset`` of ``relpath`` as a lazy ``(band, y, x)``
+    (or ``(y, x)``) array read by ``h5py`` through dask, chunked to ``tile``
+    with every band in one chunk -- for datasets GDAL's HDF5 driver cannot
+    name (groups with spaces, as in HDF-EOS5 swaths). Works zip-native too.
+    ``close()`` closes the file; a later read reopens it.
+    """
+    import dask.array
+
+    tw, th = (tile, tile) if isinstance(tile, int) else tile
+    lazy = _LazyH5Dataset(source, relpath, dataset)
+    chunks = (th, tw) if lazy.ndim == 2 else (-1, th, tw)
+    arr = dask.array.from_array(lazy, chunks=chunks, lock=False, asarray=True)
+    da = xarray.DataArray(arr, dims=("y", "x") if lazy.ndim == 2 else ("band", "y", "x"))
+    da.set_close(lazy.close)
+    return da
+
+
 def find_file(directory: str, filename: str) -> str | None:
     """Return the full path of the first ``filename`` found under ``directory``."""
     for root, _dirs, files in os.walk(directory):

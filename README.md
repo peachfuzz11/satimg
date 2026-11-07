@@ -6,7 +6,8 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time).
+NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time),
+MODIS 250 m L1B (Terra and Aqua).
 
 ## Concepts
 
@@ -229,6 +230,7 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | VIIRS DNB | `satellite_zenith`, `satellite_azimuth`, `solar_zenith`, `solar_azimuth`, `lunar_zenith`, `lunar_azimuth` |
+| MODIS (with its M?D03) | `solar_zenith`, `solar_azimuth`, `satellite_zenith`, `satellite_azimuth` |
 | NISAR GCOV | `incidence_angle`, `elevation_angle`, `slant_range` (metres), `los_east` / `los_north` / `along_track_east` / `along_track_north` (unit vectors), `ground_track_velocity` (m/s) |
 
 This is per-pixel geometry (varies across the scene). Per-*band* identity lives
@@ -363,6 +365,29 @@ connector = get_connector("viirs-dnb")
 items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1, day_night="night")
 connector.download(items[0], "/data/granule.zip")       # both files, one zip
 ```
+
+## MODIS
+
+Terra and Aqua MODIS 250 m L1B -- `MOD02QKM` / `MYD02QKM`, Collection 7
+(netCDF4; Collection 6.1's HDF4 is refused with a clear error) -- with its
+`MOD03` / `MYD03` geolocation file beside it, or a folder / zip holding both:
+
+```python
+product = satimg.open("MOD02QKM.A2026305.1035.007.2026305170237.nc")
+
+product.raw                       # uint16 scaled integers, bands B01 (red) / B02 (NIR)
+product.reflectance(product.raw)  # TOA reflectance x cos(sun zenith), fills NaN
+product.visual                    # the NIR band: water darkest, ships / wakes / cloud bright
+product.metadata.solar_zenith     # sun / view angles, from the M?D03 file
+```
+
+Daytime only (night granules carry no 250 m data). Like VIIRS it is a swath
+in sensor geometry with overlapping scans, so `transformer` is a scan-aware
+`SwathTransformer` over the 1 km geolocation, placed with MODIS's 1.5-pixel
+track offset. At 250 m only large ships and wakes show; the image models
+were not trained on MODIS. `get_connector("modis-qkm")` searches Terra and
+Aqua together (`satellite="terra"` / `"aqua"` for one), pairing each granule
+with its geolocation file; download needs an Earthdata login.
 
 ## Downloading
 

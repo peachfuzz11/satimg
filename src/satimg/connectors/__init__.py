@@ -10,6 +10,7 @@ from __future__ import annotations
 from satimg.connectors._credentials import Credentials, CredentialsError
 from satimg.connectors.base import Connector, STACConnector
 from satimg.connectors.landsat import LandsatConnector
+from satimg.connectors.modis import ModisConnector
 from satimg.connectors.nisar import NisarConnector
 from satimg.connectors.sentinel import Sentinel1Connector, Sentinel2Connector
 from satimg.connectors.viirs import ViirsDNBConnector
@@ -18,6 +19,7 @@ _CONNECTORS: dict[str, type[Connector]] = {
     "sentinel-1-grd": Sentinel1Connector,
     "sentinel-2-l1c": Sentinel2Connector,
     "landsat-c2l1": LandsatConnector,
+    "modis-qkm": ModisConnector,
     "nisar-gcov": NisarConnector,
     "viirs-dnb": ViirsDNBConnector,
 }
@@ -44,6 +46,7 @@ __all__ = [
     "Sentinel1Connector",
     "Sentinel2Connector",
     "LandsatConnector",
+    "ModisConnector",
     "NisarConnector",
     "ViirsDNBConnector",
     "Credentials",
