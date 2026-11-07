@@ -71,6 +71,26 @@ class Transformer:
         cols, rows = ~self._transform * (lons, lats)
         return numpy.column_stack((numpy.asarray(rows), numpy.asarray(cols)))
 
+    def north_angle(self, coords: Coords) -> numpy.ndarray:
+        """The direction true north points in the image at each ``(row, col)``,
+        in degrees clockwise from image "up" (decreasing row), ``[0, 360)``
+        -- an ``(N,)`` array.
+
+        ``0`` for a north-up geographic grid; a few degrees either way across
+        a UTM zone (grid convergence); anything at all on a polar
+        stereographic grid. Found by stepping a short way north from each
+        point and seeing where that lands in pixels, so it holds for any CRS.
+        (Not for a :class:`GCPTransformer`, whose ``latlon_to_rowcol`` snaps
+        to whole pixels.)
+        """
+        rc = _as_n2(coords)
+        latlon = self.rowcol_to_latlon(rc)
+        # ~10 m north; towards the equator instead right at a pole
+        step = numpy.where(latlon[:, 0] > 89.9, -1e-4, 1e-4)
+        ahead = self.latlon_to_rowcol(numpy.column_stack((latlon[:, 0] + step, latlon[:, 1])))
+        d_row, d_col = (ahead - rc).T * numpy.sign(step)
+        return numpy.rad2deg(numpy.arctan2(d_col, -d_row)) % 360.0
+
 
 class GCPTransformer(Transformer):
     """Coordinate transform backed by ground control points."""

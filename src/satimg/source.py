@@ -10,7 +10,9 @@ is relative to the product's own root, ``"/"``-separated regardless of
 platform.
 
 :func:`open_source` is the factory :func:`~satimg.product.open` uses to pick
-a :class:`DirSource` or a zip-native :class:`ZipSource` for a given path.
+a :class:`DirSource`, a :class:`FileSource` (a product that is one file,
+e.g. a NISAR or VIIRS HDF5) or a zip-native :class:`ZipSource` for a given
+path.
 """
 
 from __future__ import annotations
@@ -106,6 +108,34 @@ class DirSource(Source):
 
     def exists(self, relpath: str) -> bool:
         return os.path.isfile(self._abs(relpath))
+
+
+class FileSource(DirSource):
+    """A product that is a single file (e.g. a NISAR GCOV or VIIRS SDR
+    ``.h5``) rather than a directory. Its root is the file's own directory, so
+    the file and any sibling it pairs with (a VIIRS geolocation file) are
+    reached by their bare names; :attr:`name` and :attr:`path` are the file's
+    own, so :func:`~satimg.registry.resolve` matches the file name.
+
+    Unlike a :class:`DirSource`, :meth:`find_file` looks only at the file's
+    immediate siblings -- the directory a single file sits in (a downloads
+    folder, say) is not the product, so walking it would be wasted work.
+    """
+
+    def __init__(self, path: str):
+        self._file = os.path.abspath(str(path))
+        super().__init__(os.path.dirname(self._file))
+
+    @property
+    def name(self) -> str:
+        return os.path.basename(self._file)
+
+    @property
+    def path(self) -> str:
+        return self._file
+
+    def find_file(self, filename: str) -> str | None:
+        return filename if self.exists(filename) else None
 
 
 class ZipSource(Source):
@@ -227,9 +257,12 @@ def zip_source(zip_path: str) -> ZipSource:
 
 def open_source(path: str) -> Source:
     """The :class:`Source` for ``path`` -- a :class:`DirSource` for a
-    directory, or a zip-native :class:`ZipSource` (see :func:`zip_source`,
-    nothing extracted) for a zip archive. A zip is detected by content
+    directory, a zip-native :class:`ZipSource` (see :func:`zip_source`,
+    nothing extracted) for a zip archive, or a :class:`FileSource` for any
+    other single file. A zip is detected by content
     (:func:`zipfile.is_zipfile`), not by extension."""
     if zipfile.is_zipfile(path):
         return zip_source(path)
+    if os.path.isfile(path):
+        return FileSource(path)
     return DirSource(path)

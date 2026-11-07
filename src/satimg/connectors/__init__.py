@@ -1,7 +1,7 @@
 """Remote archive connectors, keyed by STAC collection name.
 
 ``search`` is anonymous; ``download`` needs an account -- pass ``username=`` /
-``password=`` (and ``token=`` for USGS) or set the service's environment
+``password=`` (and ``token=`` for USGS / NASA Earthdata) or set the service's environment
 variables (see :mod:`satimg.connectors._credentials`).
 """
 
@@ -10,12 +10,14 @@ from __future__ import annotations
 from satimg.connectors._credentials import Credentials, CredentialsError
 from satimg.connectors.base import Connector, STACConnector
 from satimg.connectors.landsat import LandsatConnector
+from satimg.connectors.nisar import NisarConnector
 from satimg.connectors.sentinel import Sentinel1Connector, Sentinel2Connector
 
 _CONNECTORS: dict[str, type[Connector]] = {
     "sentinel-1-grd": Sentinel1Connector,
     "sentinel-2-l1c": Sentinel2Connector,
     "landsat-c2l1": LandsatConnector,
+    "nisar-gcov": NisarConnector,
 }
 
 
@@ -40,6 +42,7 @@ __all__ = [
     "Sentinel1Connector",
     "Sentinel2Connector",
     "LandsatConnector",
+    "NisarConnector",
     "Credentials",
     "CredentialsError",
     "get_connector",
