@@ -88,11 +88,13 @@ def open_h5_array(source: Source, relpath: str, dataset: str, tile: int | tuple[
     return da
 
 
-def read_scaled(dataset, fill_below: float | None = None) -> numpy.ndarray:
-    """An HDF5 / netCDF4 variable as ``float``, its CF ``_FillValue`` (and
+def read_scaled(dataset, fill_below: float | None = None, key=()) -> numpy.ndarray:
+    """An HDF5 / netCDF4 variable -- or just its ``key`` selection (rows,
+    slices: anything ``h5py`` indexes by), so a full-resolution variable
+    need not be read whole -- as ``float``, its CF ``_FillValue`` (and
     anything at or below ``fill_below``) as ``NaN``, ``scale_factor`` /
     ``add_offset`` applied -- ``h5py`` applies none of them itself."""
-    raw = dataset[()]
+    raw = dataset[key]
     data = raw.astype(float)
     attrs = dataset.attrs
     if "_FillValue" in attrs:

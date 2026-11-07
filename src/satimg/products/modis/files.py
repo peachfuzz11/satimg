@@ -149,36 +149,46 @@ def read_granule(h5, name: str) -> dict:
     }
 
 
-def read_geolocation(h5, angles: bool = False) -> dict:
-    """The 1 km ``Latitude`` / ``Longitude``, fills as ``NaN`` -- and, from an
-    ``M?D03`` file (``angles=True``), the :data:`ANGLES` fields, scaled."""
-    out = {
-        "lat": read_scaled(h5[find_dataset(h5, "Latitude")], -999.0),
-        "lon": read_scaled(h5[find_dataset(h5, "Longitude")], -999.0),
+def read_geolocation(h5) -> dict:
+    """The 1 km ``Latitude`` / ``Longitude``, fills as ``NaN`` -- on their
+    scan-edge rows only (``"rows"``), all a node grid needs (see
+    :func:`nodes`), so the rest is never read. ``"shape"`` is the 1 km
+    grid's."""
+    lat = h5[find_dataset(h5, "Latitude")]
+    rows = swath.scan_edge_rows(lat.shape[0], SCAN_ROWS // RATIO)
+    return {
+        "shape": lat.shape,
+        "rows": rows,
+        "lat": read_scaled(lat, -999.0, rows),
+        "lon": read_scaled(h5[find_dataset(h5, "Longitude")], -999.0, rows),
     }
-    if angles:
-        for dataset, (field, _units) in ANGLES.items():
-            out[field] = read_scaled(h5[find_dataset(h5, dataset)])
-    return out
 
 
 def nodes(geolocation: dict, offsets: tuple[float, float], tolerance_m: float) -> dict:
     """A :class:`~satimg.transform.swath.SwathTransformer` node grid in 250 m pixel
-    coordinates: the 1 km geolocation's scan-edge rows and
+    coordinates: :func:`read_geolocation`'s scan-edge rows and
     :func:`~satimg.products.swath.node_columns`, each 1 km pixel placed at
-    ``4 i + offset`` (pixel centres at ``+ 0.5``)."""
-    lat, lon = geolocation["lat"], geolocation["lon"]
-    rows = swath.scan_edge_rows(lat.shape[0], SCAN_ROWS // RATIO)
-    cols = swath.node_columns(lat[rows], lon[rows], tolerance_m)
-    sample = numpy.ix_(rows, cols)
+    ``4 i + offset`` (pixel centres at ``+ 0.5``); ``"row_index"`` /
+    ``"col_index"`` are the 1 km pixels, for :func:`read_angles`."""
+    lat, lon, rows = geolocation["lat"], geolocation["lon"], geolocation["rows"]
+    cols = swath.node_columns(lat, lon, tolerance_m)
     track, scan = offsets
-    out = {
+    return {
         "rows": RATIO * rows + track + 0.5,
         "cols": RATIO * cols + scan + 0.5,
-        "lat": lat[sample],
-        "lon": lon[sample],
+        "lat": lat[:, cols],
+        "lon": lon[:, cols],
+        "row_index": rows,
+        "col_index": cols,
     }
-    for _dataset, (field, _units) in ANGLES.items():
-        if field in geolocation:
-            out[field] = geolocation[field][sample]
-    return out
+
+
+def read_angles(h5, node_grid: dict) -> dict:
+    """An ``M?D03`` file's :data:`ANGLES` fields at ``node_grid``'s
+    (:func:`nodes`) pixels, scaled -- read a dataset's node rows at a time,
+    never whole."""
+    rows, cols = node_grid["row_index"], node_grid["col_index"]
+    return {
+        field: read_scaled(h5[find_dataset(h5, dataset)], key=rows)[:, cols]
+        for dataset, (field, _units) in ANGLES.items()
+    }
