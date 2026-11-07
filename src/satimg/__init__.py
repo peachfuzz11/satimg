@@ -25,11 +25,12 @@ except PackageNotFoundError:  # a source tree without an install
 from satimg import products as _products  # noqa: F401  (populates the registry)
 from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
-from satimg.metadata import Field, Metadata
+from satimg.metadata.collection import Metadata
+from satimg.metadata.field import Field
 from satimg.patch import Patch
 from satimg.product import Product, open, open_zip
-from satimg.products.nisar import NisarGeometry
-from satimg.products.sentinel1 import Sentinel1Geometry
+from satimg.products.nisar.geometry import NisarGeometry
+from satimg.products.sentinel1.geometry import Sentinel1Geometry
 from satimg.registry import UnknownProductError
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window

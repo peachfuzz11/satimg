@@ -11,13 +11,14 @@ import numpy
 import PIL.Image
 import xarray
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.sentinel1 import files
 from satimg.products.sentinel1.geometry import Sentinel1Geometry
-from satimg.readers import keep_open, load_thumbnail, merge_bands
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 
 
@@ -130,7 +131,7 @@ class Sentinel1Product(Product):
         object's bearing relative to the radar line of sight at ``rowcol``.
 
         ``rowcol`` is a ``(row, col)`` pixel pair (or a list of pairs / an
-        ``(N, 2)`` array, matching :meth:`~satimg.metadata.Field.at`) -- needed
+        ``(N, 2)`` array, matching :meth:`~satimg.metadata.field.Field.at`) -- needed
         because the local satellite heading varies (slightly) with latitude across
         a scene. See :func:`satimg.sar.heading_to_los` for the convention and
         equations.
@@ -176,7 +177,7 @@ class Sentinel1Product(Product):
         """Azimuth-direction pixel displacement of a moving object at ``rowcol``.
 
         ``rowcol`` is a ``(row, col)`` pixel pair (or a list of pairs / an ``(N, 2)``
-        array, matching :meth:`~satimg.metadata.Field.at`), ``speed`` is the
+        array, matching :meth:`~satimg.metadata.field.Field.at`), ``speed`` is the
         object's ground speed in m/s, and ``heading_deg`` its compass heading in
         degrees clockwise from true north. Returns the estimated shift in pixels
         along the azimuth (row) axis -- positive towards higher row indices. See

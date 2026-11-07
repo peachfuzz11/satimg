@@ -20,8 +20,8 @@ import re
 import numpy
 
 from satimg.products import swath
-from satimg.readers import find_dataset, read_scaled
-from satimg.source import Source
+from satimg.readers.hdf5 import find_dataset, read_scaled
+from satimg.source.base import Source
 
 DATA = "EV_250_RefSB"
 
@@ -163,7 +163,7 @@ def read_geolocation(h5, angles: bool = False) -> dict:
 
 
 def nodes(geolocation: dict, offsets: tuple[float, float], tolerance_m: float) -> dict:
-    """A :class:`~satimg.transform.SwathTransformer` node grid in 250 m pixel
+    """A :class:`~satimg.transform.swath.SwathTransformer` node grid in 250 m pixel
     coordinates: the 1 km geolocation's scan-edge rows and
     :func:`~satimg.products.swath.node_columns`, each 1 km pixel placed at
     ``4 i + offset`` (pixel centres at ``+ 0.5``)."""

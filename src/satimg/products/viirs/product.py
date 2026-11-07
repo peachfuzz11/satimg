@@ -10,15 +10,18 @@ import PIL.Image
 import xarray
 from rasterio.control import GroundControlPoint
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.viirs import files
-from satimg.readers import fit_thumbnail, keep_open, merge_bands, open_h5, vrt
+from satimg.readers.hdf5 import open_h5
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import fit_thumbnail
+from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 
 #: metres the product's own transformer may be off the GEO file's per-pixel
 #: positions (a DNB pixel is ~750 m)

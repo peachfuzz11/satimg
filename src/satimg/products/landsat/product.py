@@ -7,16 +7,17 @@ import datetime
 import numpy
 import xarray
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.landsat import files
 from satimg.products.landsat.files import BANDS
-from satimg.readers import keep_open, load_thumbnail, merge_bands
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import AffineTransformer
+from satimg.transform.affine import AffineTransformer
 
 #: side of the square grid :attr:`LandsatProduct.geometry` stores each angle field on
 GEOMETRY_GRID = 32

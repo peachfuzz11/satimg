@@ -1,11 +1,11 @@
 """Sentinel-1 SAFE parsing: manifest, annotation XML, geolocation grid, and
 the GCP transformer built from it.
 
-Pure functions taking a :class:`~satimg.source.Source` (or already-parsed XML)
-and returning plain dicts/lists/a :class:`~satimg.transform.GCPTransformer` --
+Pure functions taking a :class:`~satimg.source.base.Source` (or already-parsed XML)
+and returning plain dicts/lists/a :class:`~satimg.transform.gcp.GCPTransformer` --
 no dependency on :class:`~satimg.product.Product`, so they're testable
 independently of a full product open. See
-:class:`~satimg.products.sentinel1.Sentinel1Product` for the product-facing
+:class:`~satimg.products.sentinel1.product.Sentinel1Product` for the product-facing
 entry points that call these.
 """
 
@@ -18,8 +18,8 @@ import numpy
 from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 
-from satimg.source import Source
-from satimg.transform import GCPTransformer
+from satimg.source.base import Source
+from satimg.transform.gcp import GCPTransformer
 
 #: measurement-file polarisation -> sort order (co-pol before cross-pol).
 POL_ORDER = {"vv": 0, "vh": 1, "hh": 2, "hv": 3}
@@ -97,7 +97,7 @@ def read_geolocation(
 ) -> tuple[list[dict], dict, tuple[int, int]]:
     """The annotation XML's geolocation grid points (row/col plus each
     :data:`GEOLOC_FIELDS` value, and -- for building GCPs, not exposed in
-    :class:`~satimg.metadata.Metadata` -- latitude/longitude/height), the
+    :class:`~satimg.metadata.collection.Metadata` -- latitude/longitude/height), the
     scene-wide attrs, and the full measurement grid's ``(lines, samples)``
     shape (``imageAnnotation/imageInformation``)."""
     with source.open(relpath) as f:
@@ -130,7 +130,7 @@ def read_geolocation(
 
 
 def build_transformer(points: list[dict]) -> GCPTransformer:
-    """A :class:`~satimg.transform.GCPTransformer` (WGS84) from
+    """A :class:`~satimg.transform.gcp.GCPTransformer` (WGS84) from
     :func:`read_geolocation`'s geolocation grid points."""
     gcps = [
         GroundControlPoint(

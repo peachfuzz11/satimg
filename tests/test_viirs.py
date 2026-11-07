@@ -14,8 +14,9 @@ from satimg.prediction import ViirsBoatDetector
 from satimg.products import ViirsDNBProduct
 from satimg.products.swath import node_columns
 from satimg.products.viirs.files import granule_key
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 
@@ -104,7 +105,7 @@ def test_visual_stretches_lights_bright(product):
     assert v[fx.BOATS[0]] > 150
     assert numpy.median(v) < 100
     assert v[fx.FILL] == 0
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert product.thumbnail().size == THUMBNAIL_SIZE
 
 
 def test_metadata_is_night(product):

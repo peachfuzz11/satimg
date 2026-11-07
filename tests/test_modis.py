@@ -9,8 +9,9 @@ import satimg
 from satimg import SceneGeometry
 from satimg.connectors import ModisConnector, get_connector
 from satimg.products import ModisProduct
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 from tests import modis_fixture as fx
 
 
@@ -84,7 +85,7 @@ def test_reflectance_and_visual(terra):
     assert v[fx.SHIP] > 200
     assert v[60, 20] < 100
     assert (v[fx.FILL_ROWS] == 0).all()
-    assert terra.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert terra.thumbnail().size == THUMBNAIL_SIZE
 
 
 def test_patches_and_zip(terra, folder, tmp_path):

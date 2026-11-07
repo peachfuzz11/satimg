@@ -8,16 +8,17 @@ import numpy
 import PIL.Image
 import xarray
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products import swath
 from satimg.products.modis import files
-from satimg.readers import find_dataset, fit_thumbnail, open_h5, open_h5_array
+from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
+from satimg.readers.thumbnail import fit_thumbnail
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 
 #: metres the transformer may be off the 1 km geolocation between its nodes
 TRANSFORMER_TOLERANCE_M = 30.0

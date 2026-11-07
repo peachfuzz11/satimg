@@ -24,7 +24,7 @@ CORNER_KEYS = ("top_left", "top_right", "bottom_left", "bottom_right", "center")
 
 def corner_center(height: float, width: float) -> list[tuple[float, float]]:
     """The five ``(row, col)`` points for a ``height`` x ``width`` grid: the four
-    corner pixels, then the centre (matching :meth:`~satimg.metadata.PatchMeta.sample`)."""
+    corner pixels, then the centre (matching :meth:`~satimg.metadata.patch.PatchMeta.sample`)."""
     h, w = height - 1, width - 1
     return [(0.0, 0.0), (0.0, w), (h, 0.0), (h, w), (height / 2, width / 2)]
 

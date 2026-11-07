@@ -6,9 +6,9 @@ import re
 import numpy
 import pytest
 
-from satimg.metadata import Field
+from satimg.metadata.field import Field
 from satimg.products.sentinel2 import files as s2_files
-from satimg.source import DirSource
+from satimg.source.local import DirSource
 from tests.conftest import PRODUCT_PATHS
 
 _MTD_TL = next((PRODUCT_PATHS["sentinel2_l1c"] / "GRANULE").glob("*/MTD_TL.xml"))

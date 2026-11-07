@@ -2,10 +2,10 @@
 ``MTD_TL.xml`` (acquisition time, sun/viewing angle grids, per-resolution
 geocoding).
 
-Pure functions taking a :class:`~satimg.source.Source` and returning plain
+Pure functions taking a :class:`~satimg.source.base.Source` and returning plain
 dicts/arrays -- no dependency on :class:`~satimg.product.Product`, so they're
 testable independently of a full product open. See
-:class:`~satimg.products.sentinel2.Sentinel2L1CProduct` for the
+:class:`~satimg.products.sentinel2.product.Sentinel2L1CProduct` for the
 product-facing entry point that calls these.
 """
 
@@ -20,15 +20,15 @@ import numpy
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.metadata import fill_nan_nearest, regular_axis
-from satimg.source import Source
+from satimg.metadata.grids import fill_nan_nearest, regular_axis
+from satimg.source.base import Source
 
 #: spacing of the MTD_TL.xml angle grids, metres.
 ANGLE_STEP_M = 5000.0
 
 #: Sentinel-2 L1C per-band native ground sample distance, metres -- picks the
 #: ``Tile_Geocoding/Geoposition`` (and matching ``Size``) that
-#: ``band_names[1]`` (the :func:`~satimg.readers.merge_bands` ``match=``
+#: ``band_names[1]`` (the :func:`~satimg.readers.raster.merge_bands` ``match=``
 #: target) was actually shot at, so the zip-native transformer/grid-shape
 #: agree exactly with opening that band's own JP2.
 BAND_GSD_M = {
@@ -44,7 +44,7 @@ def pad_band(name: str) -> str:
 
 def parse_mtd(source: Source) -> dict:
     """``reflectance``/``tci`` are raster paths for GDAL
-    (:meth:`~satimg.source.Source.raster_path`)."""
+    (:meth:`~satimg.source.base.Source.raster_path`)."""
     mtd = source.find_file("MTD_MSIL1C.xml")
     if mtd is None:
         raise FileNotFoundError(f"no MTD_MSIL1C.xml under {source.name}")

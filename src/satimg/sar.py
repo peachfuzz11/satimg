@@ -8,10 +8,10 @@ re-expresses a compass heading in the image's own rotated *and mirrored*,
 native-sensor-geometry pixel frame -- a SAR-only concern, since a map-projected
 optical raster is already north-up. The functions here are pure geometry, taking already-extracted scalars,
 so they're reusable and testable independently of any product class; see
-:meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`,
-:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_to_los`,
-:meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image` and
-:meth:`~satimg.products.sentinel1.Sentinel1Product.correct_position` for the
+:meth:`satimg.products.sentinel1.product.Sentinel1Product.doppler_azimuth_shift`,
+:meth:`~satimg.products.sentinel1.product.Sentinel1Product.heading_to_los`,
+:meth:`~satimg.products.sentinel1.product.Sentinel1Product.heading_in_image` and
+:meth:`~satimg.products.sentinel1.product.Sentinel1Product.correct_position` for the
 product-facing entry points.
 """
 
@@ -73,7 +73,7 @@ def heading_in_image(heading_deg, platform_heading_deg):
     right-looking sensor (image "right"). The raster is therefore a *mirror
     image* of the map -- "right" sits counter-clockwise of "up" -- so the sense
     of every angle reverses, and this is not a plain subtraction of a rotation.
-    See :meth:`~satimg.products.sentinel1.Sentinel1Product.heading_in_image`.
+    See :meth:`~satimg.products.sentinel1.product.Sentinel1Product.heading_in_image`.
 
     Returns degrees wrapped to ``[0, 360)`` measured clockwise from image
     "up": ``0``/``360`` means the object points towards the top of the image

@@ -6,14 +6,15 @@ import datetime
 
 import xarray
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.sentinel2 import files
-from satimg.readers import CHUNK_PX, keep_open, load_thumbnail, merge_bands, open_band
+from satimg.readers.raster import CHUNK_PX, keep_open, merge_bands, open_band
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import AffineTransformer
+from satimg.transform.affine import AffineTransformer
 
 
 @register(r"^S2[ABCD]_MSIL1C_\d{8}T\d{6}_.*_\d{8}T\d{6}\.SAFE$")

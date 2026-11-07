@@ -36,7 +36,7 @@ class NisarGeometry(SceneGeometry):
 
     Needs the ``los_east`` / ``los_north`` / ``along_track_east`` /
     ``along_track_north`` / ``slant_range`` fields and the
-    ``platform_velocity`` attr :class:`~satimg.products.nisar.NisarGCOVProduct`
+    ``platform_velocity`` attr :class:`~satimg.products.nisar.product.NisarGCOVProduct`
     reads.
     """
 
@@ -45,7 +45,7 @@ class NisarGeometry(SceneGeometry):
         """A compass heading (degrees clockwise from true north) as a
         direction in the image (degrees clockwise from image "up"), at pixel
         ``rowcol`` -- the compass heading turned by the grid convergence (see
-        :meth:`~satimg.transform.Transformer.north_angle`). The image is a
+        :meth:`~satimg.transform.base.Transformer.north_angle`). The image is a
         plain map, so this is a rotation only: never mirrored."""
         north = self.transformer.north_angle(rowcol)
         return _scalar_or_array((numpy.asarray(heading_deg, dtype=float) + north) % 360.0, rowcol)
@@ -106,7 +106,7 @@ class NisarGeometry(SceneGeometry):
         """A moving target's true ``(lat, lon)`` from where it was read off
         the image -- the inverse of :meth:`doppler_pixel_shift`. Same
         signature as
-        :meth:`satimg.products.sentinel1.Sentinel1Product.correct_position`."""
+        :meth:`satimg.products.sentinel1.product.Sentinel1Product.correct_position`."""
         rowcol = self.transformer.latlon_to_rowcol((lat, lon))[0]
         true_rowcol = rowcol - self.doppler_pixel_shift(rowcol, speed, heading_deg)
         true_lat, true_lon = self.transformer.rowcol_to_latlon(true_rowcol)[0]

@@ -13,7 +13,7 @@ import numpy
 import shapely
 from osm import disc, feature, literal, polygonal, select, tags, widen, write_features
 
-from satimg.masks import LandMask
+from satimg.masks.land import LandMask
 
 # a port's outline often runs along the quay, with the ships at berth just outside it
 PORT_METERS = 50

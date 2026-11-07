@@ -107,7 +107,7 @@ def find_spikes(radiance: numpy.ndarray, cfg: ViirsBoatConfig, block: int = 128)
 
 
 class ViirsBoatDetector:
-    """Boat lights over a :class:`~satimg.products.viirs.ViirsDNBProduct`;
+    """Boat lights over a :class:`~satimg.products.viirs.product.ViirsDNBProduct`;
     the same shape of API as :class:`~satimg.prediction.Detector`."""
 
     def __init__(self, product, **overrides):

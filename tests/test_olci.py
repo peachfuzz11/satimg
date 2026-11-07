@@ -10,10 +10,11 @@ import pytest
 import satimg
 from satimg import SceneGeometry
 from satimg.connectors import OlciConnector, get_connector
-from satimg.masks import LandMask
+from satimg.masks.land import LandMask
 from satimg.products import OlciEFRProduct
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 from tests import minify_olci as fx
 from tests.conftest import _PRODUCTS
 
@@ -80,7 +81,7 @@ def test_visual_true_colour(product):
     assert list(product.visual.band.values) == ["red", "green", "blue"]
     assert (v[:, fx.TARGET[0], fx.TARGET[1]] == 255).all()
     assert (v[:, fx.FILL[0], fx.FILL[1]] == 0).all()
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
+    assert product.thumbnail().size == THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
 
 
 def test_metadata_angles_from_the_tie_points(product):

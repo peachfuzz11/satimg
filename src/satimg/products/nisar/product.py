@@ -10,23 +10,19 @@ import PIL.Image
 import rasterio
 import xarray
 
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.nisar import files
 from satimg.products.nisar.geometry import NisarGeometry
-from satimg.readers import (
-    THUMBNAIL_SIZE,
-    keep_open,
-    load_thumbnail,
-    merge_bands,
-    open_h5,
-    vrt,
-)
+from satimg.readers.hdf5 import open_h5
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import THUMBNAIL_SIZE, load_thumbnail
+from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import coarsen
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import AffineTransformer
+from satimg.transform.affine import AffineTransformer
 
 #: side of the square grid :attr:`NisarGCOVProduct.geometry` stores each
 #: radar-grid field on

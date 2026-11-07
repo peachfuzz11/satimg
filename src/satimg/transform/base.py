@@ -81,7 +81,7 @@ class Transformer(abc.ABC):
         stereographic grid. Found by stepping a short way north from each
         point and seeing where that lands in pixels, so it holds for any
         transformer whose :meth:`latlon_to_rowcol` is sub-pixel (not a
-        :class:`~satimg.transform.GCPTransformer`, which snaps to whole
+        :class:`~satimg.transform.gcp.GCPTransformer`, which snaps to whole
         pixels).
         """
         rc = as_n2(coords)

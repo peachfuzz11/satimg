@@ -1,12 +1,12 @@
 """Landsat Collection-2 Level-1 parsing: ``MTL.json`` (acquisition/projection
 attrs) and the per-pixel angle rasters (``SZA``/``SAA``/``VZA``/``VAA.TIF``).
 
-Pure functions taking a :class:`~satimg.source.Source` (or, for the angle
-rasters, a GDAL path from :meth:`~satimg.source.Source.raster_path`) and
+Pure functions taking a :class:`~satimg.source.base.Source` (or, for the angle
+rasters, a GDAL path from :meth:`~satimg.source.base.Source.raster_path`) and
 returning plain dicts/arrays/a
-:class:`~satimg.transform.AffineTransformer` -- no dependency on
+:class:`~satimg.transform.affine.AffineTransformer` -- no dependency on
 :class:`~satimg.product.Product`, so they're testable independently of a full
-product open. See :class:`~satimg.products.landsat.LandsatProduct` for the
+product open. See :class:`~satimg.products.landsat.product.LandsatProduct` for the
 product-facing entry points that call these.
 """
 
@@ -20,10 +20,10 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.source import Source
-from satimg.transform import AffineTransformer
+from satimg.source.base import Source
+from satimg.transform.affine import AffineTransformer
 
-#: band order of :attr:`~satimg.products.landsat.LandsatProduct.raw`.
+#: band order of :attr:`~satimg.products.landsat.product.LandsatProduct.raw`.
 BANDS = ("coastal", "blue", "green", "red", "nir08", "swir16", "swir22", "pan",
          "cirrus", "lwir11", "lwir12")
 PAN = BANDS.index("pan")
@@ -41,7 +41,7 @@ ANGLE_SCALE = 0.01
 
 def parse_mtl(source: Source) -> dict:
     """``MTL.json``'s image attrs, acquisition timestamp, footprint, and
-    :class:`~satimg.transform.AffineTransformer` and pan-grid ``(lines, samples)``
+    :class:`~satimg.transform.affine.AffineTransformer` and pan-grid ``(lines, samples)``
     shape (UTM zone/hemisphere resolved from
     ``PROJECTION_ATTRIBUTES``, since Landsat ships no CRS/affine transform of
     its own the way an embedded GCP list or ``MTD_TL.xml`` geocoding block

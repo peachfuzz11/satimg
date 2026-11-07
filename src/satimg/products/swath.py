@@ -1,6 +1,6 @@
 """Shared by the sensor-geometry swath products that ship a latitude /
 longitude per pixel (VIIRS, MODIS, Sentinel-3 OLCI): choosing the coarse
-node grid a :class:`~satimg.transform.SwathTransformer` and the per-pixel
+node grid a :class:`~satimg.transform.swath.SwathTransformer` and the per-pixel
 metadata fields are kept on, and tracing a footprint.
 """
 

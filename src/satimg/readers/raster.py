@@ -38,7 +38,7 @@ def open_band(path: str, overview: int = 1) -> xarray.DataArray:
 #: needs *some* chunking but has no caller-given window size to use instead:
 #: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
 #: opened outside a ``patches()`` loop, every ``patches_at()`` loop,
-#: :attr:`~satimg.metadata.Field.grid`, and the fixed granularity
+#: :attr:`~satimg.metadata.field.Field.grid`, and the fixed granularity
 #: ``merge_bands`` aligns bands at internally before a ``match=`` reindex (see
 #: the note in ``merge_bands`` for why that one can't just use the caller's
 #: own tile).

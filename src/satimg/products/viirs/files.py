@@ -5,7 +5,7 @@ the standard-archive pairs of the same layout from LAADS.
 
 Paths, types, scaling and fills follow the LAADS VNP02DNB / VNP03DNB file
 specifications. Pure functions over ``h5py`` files; see
-:class:`~satimg.products.viirs.ViirsDNBProduct` for the product.
+:class:`~satimg.products.viirs.product.ViirsDNBProduct` for the product.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import re
 import numpy
 
 from satimg.products import swath
-from satimg.readers import read_scaled
-from satimg.source import Source
+from satimg.readers.hdf5 import read_scaled
+from satimg.source.base import Source
 
 #: detector rows per VIIRS scan: geolocation is linear in row within one,
 #: but jumps between scans (the "bow-tie" overlap at the swath edges)
@@ -128,7 +128,7 @@ def read_geolocation(geo_h5) -> dict:
 
 
 def nodes(geolocation: dict, tolerance_m: float) -> dict:
-    """A node grid for :class:`~satimg.transform.SwathTransformer` and the
+    """A node grid for :class:`~satimg.transform.swath.SwathTransformer` and the
     angle fields: scan-edge rows, :func:`~satimg.products.swath.node_columns` at
     ``tolerance_m``, as pixel-centre coordinates (``i + 0.5``), with each
     array sampled there."""
