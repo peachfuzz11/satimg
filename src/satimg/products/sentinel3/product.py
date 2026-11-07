@@ -13,7 +13,7 @@ from rasterio.control import GroundControlPoint
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products import swath
-from satimg.products.olci import files
+from satimg.products.sentinel3 import files
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import fit_thumbnail, load_thumbnail
@@ -27,7 +27,7 @@ from satimg.transform.swath import SwathTransformer
 #: metres the transformer may be off the tie-point geolocation between its
 #: node rows (pixels are ~300 m)
 TRANSFORMER_TOLERANCE_M = 10.0
-#: ... and :attr:`OlciEFRProduct.geometry`'s stored one
+#: ... and :attr:`Sentinel3OLCIProduct.geometry`'s stored one
 GEOMETRY_TOLERANCE_M = 100.0
 #: side of the square grid the stored geometry keeps each angle field on
 GEOMETRY_GRID = 32
@@ -39,7 +39,7 @@ _VISUAL_MAX = 0.3
 
 
 @register(r"^S3[A-D]_OL_1_EFR____\d{8}T\d{6}_\d{8}T\d{6}_")
-class OlciEFRProduct(Product):
+class Sentinel3OLCIProduct(Product):
     """A Sentinel-3 OLCI full-resolution Level-1B product (``.SEN3`` folder,
     or the zip Copernicus distributes it as): 21 bands, ~300 m pixels, a
     ~1270 km push-broom swath in sensor geometry -- ~3 minutes of orbit,
@@ -53,7 +53,7 @@ class OlciEFRProduct(Product):
     tie-point grid.
 
     The transformer interpolates the tie-point geolocation (see
-    :mod:`satimg.products.olci.files`): smooth, within about a third of a pixel of
+    :mod:`satimg.products.sentinel3.files`): smooth, within about a third of a pixel of
     the per-pixel positions at sea, but a mountain top lies off its
     terrain-corrected position by up to a few hundred metres. Daytime only; at 300 m only large ships,
     and wakes in sun glint, are visible, and the image models were not
