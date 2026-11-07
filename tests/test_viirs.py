@@ -19,7 +19,6 @@ from satimg.registry import resolve
 from satimg.transform.swath import SwathTransformer
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
-from tests.test_helper import h5_reads
 
 NAME = "VJ102DNB.A2026305.1630.021.2026305232544"
 FOLDER = _PRODUCTS / NAME
@@ -107,16 +106,6 @@ def test_visual_stretches_lights_bright(product):
     assert numpy.median(v) < 100
     assert v[fx.FILL] == 0
     assert product.thumbnail().size == THUMBNAIL_SIZE
-
-
-def test_open_reads_no_full_resolution_array():
-    """Opening reads only the geolocation's scan-edge rows and a sparse
-    sample -- never a full-resolution variable, nor any radiance."""
-    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
-        assert p.height > 0
-    big = [r for r in reads if r[2] >= 1000]
-    assert big and all(n <= size / 4 for _, n, size in big), big
-    assert not [r for r in reads if "observation_data" in r[0]]
 
 
 def test_metadata_is_night(product):
