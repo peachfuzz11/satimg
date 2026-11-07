@@ -6,7 +6,7 @@ import numpy
 import pytest
 
 import satimg
-from satimg import ModisGeometry
+from satimg import SceneGeometry
 from satimg.connectors import ModisConnector, get_connector
 from satimg.products import ModisProduct
 from satimg.registry import resolve
@@ -120,7 +120,7 @@ def test_transformer_inverse(terra):
 
 def test_geometry_round_trips(terra):
     stored = json.loads(json.dumps(terra.geometry.to_dict(), allow_nan=False))
-    geometry = ModisGeometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     rc = (60.5, 128.5)
     assert _metres(geometry.transformer.rowcol_to_latlon(rc), terra.transformer.rowcol_to_latlon(rc))[0] < 150

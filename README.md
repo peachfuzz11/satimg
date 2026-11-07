@@ -273,8 +273,9 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-For NISAR, load it as a `NisarGeometry` the same way; for VIIRS, as a
-`ViirsGeometry` (its swath transformer stored to within 250 m).
+For NISAR, load it as a `NisarGeometry` the same way. Whichever class loads it,
+the transformer comes back as the kind that was stored: affine, ground control
+points (Sentinel-1) or swath (VIIRS, MODIS, OLCI; stored to within a third of a pixel).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 
@@ -444,11 +445,11 @@ Every mask answers `mask.contains(lat, lon)` for matching `lat`/`lon` points
 (scalars or arrays of any shape), giving booleans of that shape:
 
 ```python
-from satimg.fishfarms import FishFarmMask
-from satimg.landmask import LandMask
-from satimg.platforms import PlatformMask
-from satimg.ports import HarborMask, PortMask, features_in_bbox
-from satimg.windfarms import WindfarmMask
+from satimg.masks import FishFarmMask
+from satimg.masks import LandMask
+from satimg.masks import PlatformMask
+from satimg.masks import HarborMask, PortMask, features_in_bbox
+from satimg.masks import WindfarmMask
 
 LandMask().contains(lat, lon)              # on land
 WindfarmMask(year=2025).contains(lat, lon)  # in a wind farm built by 2025 (any farm without a year)
@@ -508,6 +509,27 @@ class MySensorProduct(Product):
 ```
 
 Importing `satimg.products` registers the built-ins.
+
+### Package layout
+
+```
+satimg/
+  product.py, patch.py, registry.py      the Product base, patches, filename registry
+  transform/   base · affine · gcp · swath      pixel <-> lat/lon, one module per kind
+  source/      base · local · archive           where a product's files live (dir, file, zip)
+  readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
+  metadata/    field · collection · patch · grids   per-pixel metadata fields
+  masks/       land · ports · platforms · windfarms · fishfarms
+  products/    one package per sensor: product.py (+ files.py, geometry.py)
+               swath.py: node grids shared by VIIRS, MODIS, OLCI
+  sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
+  connectors/  search + download, one module per data provider
+  prediction/  detectors and characterisers
+```
+
+A new sensor goes in `products/<sensor>/`: `product.py` for the `Product`
+subclass, `files.py` for parsing its file format. Add `geometry.py` if it needs a
+`SceneGeometry` subclass.
 
 ## Logging
 

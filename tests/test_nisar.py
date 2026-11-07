@@ -11,10 +11,10 @@ from satimg import NisarGeometry
 from satimg.connectors import NisarConnector, get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.connectors.nisar import _wkt
-from satimg.nisar_utils import parse_polygon, parse_time
 from satimg.products import NisarGCOVProduct
+from satimg.products.nisar.files import parse_polygon, parse_time
 from satimg.registry import resolve
-from satimg.transform import Transformer
+from satimg.transform import AffineTransformer
 from tests import nisar_fixture as fx
 
 SPEED = 10.0  # m/s
@@ -92,7 +92,7 @@ def test_transformer_uses_cf_pixel_centres(product):
     # pixel (0, 0)'s centre is at (X0, Y0)
     t = product.transformer
     lat, lon = t.rowcol_to_latlon((0.5, 0.5))[0]
-    utm = Transformer(Affine.identity(), CRS.from_epsg(fx.EPSG))
+    utm = AffineTransformer(Affine.identity(), CRS.from_epsg(fx.EPSG))
     row, col = utm.latlon_to_rowcol((lat, lon))[0]  # identity: row = y, col = x
     assert (col, row) == pytest.approx((fx.X0, fx.Y0), abs=1e-3)
     assert t.latlon_to_rowcol((lat, lon))[0] == pytest.approx((0.5, 0.5), abs=1e-6)
@@ -175,7 +175,7 @@ def test_heading_round_trip_and_convergence(product):
 
 def test_north_angle_on_a_polar_grid():
     # EPSG:3413, NSIDC polar stereographic north: true north points at the pole
-    t = Transformer(Affine(100.0, 0, 0, 0, -100.0, 0), CRS.from_epsg(3413))
+    t = AffineTransformer(Affine(100.0, 0, 0, 0, -100.0, 0), CRS.from_epsg(3413))
     # x > 0, y = 0 is on the 135 W meridian... pole up and to the left of (row 0, col 10_000)
     angle = t.north_angle((0.0, 10_000.0))[0]
     assert angle == pytest.approx(270.0, abs=0.01)

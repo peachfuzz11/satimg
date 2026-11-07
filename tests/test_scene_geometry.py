@@ -5,8 +5,8 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry, Sentinel1Geometry
-from satimg.products.landsat import GEOMETRY_GRID
-from satimg.transform import GCPTransformer, Transformer
+from satimg.products.landsat.product import GEOMETRY_GRID
+from satimg.transform import AffineTransformer, GCPTransformer, Transformer
 from tests.test_zip_native import _build_zip
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
@@ -94,9 +94,7 @@ def _affine_transformer():
     from rasterio.crs import CRS
     from rasterio.transform import Affine
 
-    from satimg.transform import Transformer
-
-    return Transformer(Affine(10, 0, 300000, 0, -10, 6200000), CRS.from_epsg(32633))
+    return AffineTransformer(Affine(10, 0, 300000, 0, -10, 6200000), CRS.from_epsg(32633))
 
 
 @pytest.mark.parametrize("key", ["sentinel1_iw", "sentinel2_l1c", "landsat"])
@@ -106,14 +104,20 @@ def test_zip_native_geometry_matches(key, request, tmp_path_factory):
     assert stored == _stored(request.getfixturevalue(key))
 
 
-@pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", Transformer)])
+@pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", AffineTransformer)])
 def test_transformer_round_trips_through_dict(key, kind, request):
     product = request.getfixturevalue(key)
     stored = json.loads(json.dumps(product.transformer.to_dict(), allow_nan=False))
     transformer = kind.from_dict(stored)
     assert type(transformer) is kind
+    assert type(Transformer.from_dict(stored)) is kind  # the base picks the kind
     assert transformer.to_dict() == stored
     rowcols = _rowcols(product)
     numpy.testing.assert_allclose(
         transformer.rowcol_to_latlon(rowcols), product.transformer.rowcol_to_latlon(rowcols)
     )
+
+
+def test_transformer_from_dict_rejects_an_unknown_kind():
+    with pytest.raises(ValueError, match="not a stored transformer"):
+        Transformer.from_dict({"polynomial": []})

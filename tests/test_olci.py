@@ -8,9 +8,9 @@ import numpy
 import pytest
 
 import satimg
-from satimg import OlciGeometry
+from satimg import SceneGeometry
 from satimg.connectors import OlciConnector, get_connector
-from satimg.landmask import LandMask
+from satimg.masks import LandMask
 from satimg.products import OlciEFRProduct
 from satimg.registry import resolve
 from satimg.transform import SwathTransformer
@@ -105,7 +105,7 @@ def test_transformer_matches_sea_level_pixels(product, truth):
     rc = numpy.column_stack((rr + 0.5, cc + 0.5))
     error = _metres(product.transformer.rowcol_to_latlon(rc), numpy.column_stack((lat[rr, cc], lon[rr, cc])))
     # the per-pixel positions are terrain corrected and, at sea, sit ~100 m
-    # (a third of a pixel) from the tie points -- see satimg.olci_utils
+    # (a third of a pixel) from the tie points -- see satimg.products.olci.files
     assert numpy.median(error) < 150
     assert numpy.percentile(error, 99) < 250
 
@@ -133,7 +133,7 @@ def test_patches_and_zip(product, tmp_path):
 
 def test_geometry_round_trips(product):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
-    geometry = OlciGeometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     rc = (64.5, 128.5)
     assert _metres(geometry.transformer.rowcol_to_latlon(rc), product.transformer.rowcol_to_latlon(rc))[0] < 100
