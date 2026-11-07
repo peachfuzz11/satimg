@@ -1,4 +1,5 @@
-"""Copernicus Data Space connectors for Sentinel-1 and Sentinel-2.
+"""Copernicus Data Space connectors for Sentinel-1, Sentinel-2 and Sentinel-3
+OLCI.
 
 Downloads need a (free) Copernicus Data Space account. Pass it explicitly::
 
@@ -45,7 +46,9 @@ class _DataspaceConnector(STACConnector):
     def download(self, item: dict, save_path: str) -> str:
         logger.info("downloading %s -> %s", item["id"], save_path)
         session = self._get_session()
-        url = item["assets"]["Product"]["href"]
+        # "Product" for Sentinel-1 / -2 items, "product" for Sentinel-3
+        assets = item["assets"]
+        url = (assets.get("Product") or assets["product"])["href"]
         response = session.get(url, allow_redirects=False)
         while response.status_code in (301, 302, 303, 307):
             url = response.headers["Location"]
@@ -87,3 +90,20 @@ class Sentinel1Connector(_DataspaceConnector):
 
 class Sentinel2Connector(_DataspaceConnector):
     collection = "sentinel-2-l1c"
+
+
+class Sentinel3Connector(_DataspaceConnector):
+    """Sentinel-3 OLCI Level-1B full resolution (``OL_1_EFR___``), A and B.
+    ``timeliness="nrt"`` (the default) searches the near-real-time products,
+    out within hours; ``"ntc"`` the consolidated non-time-critical ones, out
+    within days."""
+
+    COLLECTIONS = {"nrt": "sentinel-3-olci-1-efr-nrt", "ntc": "sentinel-3-olci-1-efr-ntc"}
+
+    def __init__(self, username: str | None = None, password: str | None = None, timeliness: str = "nrt"):
+        super().__init__(username, password)
+        try:
+            self.collection = self.COLLECTIONS[timeliness]
+        except KeyError:
+            raise ValueError(f"unknown timeliness {timeliness!r}; known: {sorted(self.COLLECTIONS)}") from None
+        self.timeliness = timeliness

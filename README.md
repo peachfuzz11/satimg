@@ -7,7 +7,7 @@ where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
 NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time),
-MODIS 250 m L1B (Terra and Aqua).
+MODIS 250 m L1B (Terra and Aqua), Sentinel-3 OLCI EFR.
 
 ## Concepts
 
@@ -231,6 +231,7 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | VIIRS DNB | `satellite_zenith`, `satellite_azimuth`, `solar_zenith`, `solar_azimuth`, `lunar_zenith`, `lunar_azimuth` |
 | MODIS (with its M?D03) | `solar_zenith`, `solar_azimuth`, `satellite_zenith`, `satellite_azimuth` |
+| Sentinel-3 OLCI EFR | `solar_zenith`, `solar_azimuth`, `satellite_zenith`, `satellite_azimuth` |
 | NISAR GCOV | `incidence_angle`, `elevation_angle`, `slant_range` (metres), `los_east` / `los_north` / `along_track_east` / `along_track_north` (unit vectors), `ground_track_velocity` (m/s) |
 
 This is per-pixel geometry (varies across the scene). Per-*band* identity lives
@@ -388,6 +389,29 @@ track offset. At 250 m only large ships and wakes show; the image models
 were not trained on MODIS. `get_connector("modis-qkm")` searches Terra and
 Aqua together (`satellite="terra"` / `"aqua"` for one), pairing each granule
 with its geolocation file; download needs an Earthdata login.
+
+## Sentinel-3 OLCI
+
+Sentinel-3A / -3B OLCI full-resolution Level-1B (`OL_1_EFR___`): 21 bands at
+~300 m over a ~1270 km push-broom swath. Open the `.SEN3` folder, or the zip
+Copernicus distributes:
+
+```python
+product = satimg.open("S3A_OL_1_EFR____20240916T101050_..._NT_004.SEN3")
+
+product.raw                            # uint16, Oa01 .. Oa21, wavelength_nm on the band axis
+product.radiance(product.raw)          # mW / (m^2 sr nm), fills NaN
+product.visual                         # true colour, Oa08 / Oa06 / Oa04
+product.metadata.satellite_zenith      # sun / view angles, from the tie points
+```
+
+The transformer interpolates the tie-point geolocation: smooth, within about
+a third of a pixel of the per-pixel positions at sea (the per-pixel ones are
+terrain corrected, which no smooth grid follows over mountains). Daytime
+only; at 300 m only large ships, and wakes in sun glint, are visible.
+`get_connector("sentinel-3-olci-efr")` searches Copernicus Data Space
+(near-real-time by default, `timeliness="ntc"` for the consolidated archive)
+and downloads with the same CDSE account as Sentinel-1 / -2.
 
 ## Downloading
 
