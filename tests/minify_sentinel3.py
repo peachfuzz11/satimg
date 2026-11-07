@@ -5,7 +5,7 @@ real per-pixel geolocation (to test against), and a minimal manifest whose
 footprint is the window's. Then inject a bright 2 x 2 target at
 :data:`TARGET` in the true-colour bands and a fill value at :data:`FILL`.
 
-    uv run python -m tests.minify_olci SRC.SEN3 OUT_DIR ROW0 COL0
+    uv run python -m tests.minify_sentinel3 SRC.SEN3 OUT_DIR ROW0 COL0
 
 The committed fixture is S3A, 2024-09-16 10:10 UTC, rows 1920+, columns
 4480+ (the Gulf of Bothnia coast near the swath edge), from the public

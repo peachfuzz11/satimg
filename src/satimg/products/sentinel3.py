@@ -10,7 +10,7 @@ import PIL.Image
 import xarray
 from rasterio.control import GroundControlPoint
 
-from satimg import olci_utils, swath
+from satimg import s3_utils, swath
 from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import fit_thumbnail, keep_open, load_thumbnail, merge_bands, open_h5, vrt
@@ -23,7 +23,7 @@ from satimg.transform import SwathTransformer
 #: metres the transformer may be off the tie-point geolocation between its
 #: node rows (pixels are ~300 m)
 TRANSFORMER_TOLERANCE_M = 10.0
-#: ... and :attr:`OlciEFRProduct.geometry`'s stored one
+#: ... and :attr:`Sentinel3OLCIProduct.geometry`'s stored one
 GEOMETRY_TOLERANCE_M = 100.0
 #: side of the square grid the stored geometry keeps each angle field on
 GEOMETRY_GRID = 32
@@ -33,7 +33,7 @@ _RGB = ("Oa08", "Oa06", "Oa04")
 _VISUAL_MAX = 0.3
 
 
-class OlciGeometry(SceneGeometry):
+class Sentinel3Geometry(SceneGeometry):
     """An OLCI product's :class:`~satimg.scene_geometry.SceneGeometry`: loads
     its transformer as a :class:`~satimg.transform.SwathTransformer`."""
 
@@ -41,7 +41,7 @@ class OlciGeometry(SceneGeometry):
 
 
 @register(r"^S3[A-D]_OL_1_EFR____\d{8}T\d{6}_\d{8}T\d{6}_")
-class OlciEFRProduct(Product):
+class Sentinel3OLCIProduct(Product):
     """A Sentinel-3 OLCI full-resolution Level-1B product (``.SEN3`` folder,
     or the zip Copernicus distributes it as): 21 bands, ~300 m pixels, a
     ~1270 km push-broom swath in sensor geometry -- ~3 minutes of orbit,
@@ -55,7 +55,7 @@ class OlciEFRProduct(Product):
     tie-point grid.
 
     The transformer interpolates the tie-point geolocation (see
-    :mod:`satimg.olci_utils`): smooth, within about a third of a pixel of
+    :mod:`satimg.s3_utils`): smooth, within about a third of a pixel of
     the per-pixel positions at sea, but a mountain top lies off its
     terrain-corrected position by up to a few hundred metres. Daytime only; at 300 m only large ships,
     and wakes in sun glint, are visible, and the image models were not
@@ -69,23 +69,23 @@ class OlciEFRProduct(Product):
             raise FileNotFoundError(f"no xfdumanifest.xml under {self._source.name}")
         self._dir = manifest[: -len("xfdumanifest.xml")]
         with open_h5(self._source, f"{self._dir}tie_geo_coordinates.nc") as h5:
-            start, stop = olci_utils.read_times(h5)
-            geolocation = olci_utils.read_geolocation(h5)
-        with open_h5(self._source, f"{self._dir}{olci_utils.band_file('Oa01')}") as h5:
-            self._shape = olci_utils.read_shape(h5)
+            start, stop = s3_utils.read_times(h5)
+            geolocation = s3_utils.read_geolocation(h5)
+        with open_h5(self._source, f"{self._dir}{s3_utils.band_file('Oa01')}") as h5:
+            self._shape = s3_utils.read_shape(h5)
         with open_h5(self._source, f"{self._dir}tie_geometries.nc") as h5:
-            self._angles = olci_utils.read_angles(h5)
-        scales, offsets = olci_utils.read_scales(self._source, self._dir)
+            self._angles = s3_utils.read_angles(h5)
+        scales, offsets = s3_utils.read_scales(self._source, self._dir)
         self._timestamp = start + (stop - start) / 2
-        self._footprint = olci_utils.read_footprint(self._source) or swath.outline(geolocation["lat"], geolocation["lon"])
+        self._footprint = s3_utils.read_footprint(self._source) or swath.outline(geolocation["lat"], geolocation["lon"])
         self._attrs = {
-            **olci_utils.read_name(self._source.name),
+            **s3_utils.read_name(self._source.name),
             "radiance_scales": scales,
             "radiance_offsets": offsets,
         }
 
         def transformer(tolerance):
-            n = olci_utils.nodes(geolocation, tolerance)
+            n = s3_utils.nodes(geolocation, tolerance)
             return SwathTransformer(n["rows"], n["cols"], n["lat"], n["lon"])
 
         self._transformer = transformer(TRANSFORMER_TOLERANCE_M)
@@ -102,9 +102,9 @@ class OlciEFRProduct(Product):
         latlon = self._coarse_transformer.rowcol_to_latlon(numpy.column_stack((rr, cc)))
         gcps = [GroundControlPoint(row=r, col=c, x=lon, y=lat) for r, c, (lat, lon) in zip(rr, cc, latlon)]
         return [
-            vrt(olci_utils.gdal_path(self._source.raster_path(f"{self._dir}{olci_utils.band_file(b)}"), b),
+            vrt(s3_utils.gdal_path(self._source.raster_path(f"{self._dir}{s3_utils.band_file(b)}"), b),
                 self._shape, gcps=gcps, dtype="UInt16", nodata=65535)
-            for b in olci_utils.BANDS
+            for b in s3_utils.BANDS
         ]
 
     def _visual_paths(self) -> list[str]:
@@ -114,14 +114,14 @@ class OlciEFRProduct(Product):
         if overview != 1:
             raise ValueError("an OLCI product has no overviews")
         merged = merge_bands(self._band_paths, tile=tile)
-        da = label_bands(as_band_yx(merged), olci_utils.BANDS)
-        da = da.assign_coords(wavelength_nm=("band", list(olci_utils.WAVELENGTHS_NM)))
+        da = label_bands(as_band_yx(merged), s3_utils.BANDS)
+        da = da.assign_coords(wavelength_nm=("band", list(s3_utils.WAVELENGTHS_NM)))
         return keep_open(da, merged)
 
     def radiance(self, raw: xarray.DataArray) -> xarray.DataArray:
         """``raw`` (or a band / window of it) in mW / (m^2 sr nm),
         ``float32``, fills ``NaN``."""
-        pick = [olci_utils.BANDS.index(b) for b in raw.band.values]
+        pick = [s3_utils.BANDS.index(b) for b in raw.band.values]
         scales = numpy.array(self._attrs["radiance_scales"], dtype="float32")[pick, None, None]
         offsets = numpy.array(self._attrs["radiance_offsets"], dtype="float32")[pick, None, None]
         return raw.where(raw != 65535).astype("float32") * scales + offsets
@@ -130,7 +130,7 @@ class OlciEFRProduct(Product):
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
         rgb = self.radiance(raw.sel(band=list(_RGB)))
-        e0 = numpy.array([olci_utils.SOLAR_IRRADIANCE[b] for b in _RGB], dtype="float32")[:, None, None]
+        e0 = numpy.array([s3_utils.SOLAR_IRRADIANCE[b] for b in _RGB], dtype="float32")[:, None, None]
         reflectance = numpy.pi * rgb / e0  # x cos(sun zenith), left out: fine for a picture
         u8 = (255 * (reflectance.clip(0, _VISUAL_MAX) / _VISUAL_MAX) ** (1 / 2.2)).fillna(0).astype("uint8")
         return label_bands(as_band_yx(u8.drop_vars("wavelength_nm", errors="ignore")), ("red", "green", "blue"))
@@ -149,7 +149,7 @@ class OlciEFRProduct(Product):
         a = self._angles
         fields = {
             field: self._field(a["rows"], a["cols"], a[field], name=field, units="degrees")
-            for field in olci_utils.ANGLES.values()
+            for field in s3_utils.ANGLES.values()
         }
         return Metadata(fields, self._attrs)
 
@@ -166,9 +166,9 @@ class OlciEFRProduct(Product):
         return self._transformer
 
     @property
-    def geometry(self) -> OlciGeometry:
+    def geometry(self) -> Sentinel3Geometry:
         shape = (self.height, self.width)
-        return OlciGeometry(self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape)
+        return Sentinel3Geometry(self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape)
 
     @property
     def timestamp(self) -> datetime.datetime:
