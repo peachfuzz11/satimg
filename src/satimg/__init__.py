@@ -32,6 +32,7 @@ from satimg.registry import UnknownProductError
 from satimg.s1_geometry import Sentinel1Geometry
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
+from satimg.products.viirs import ViirsGeometry
 
 __all__ = [
     "__version__",
@@ -51,6 +52,7 @@ __all__ = [
     "SceneGeometry",
     "Sentinel1Geometry",
     "NisarGeometry",
+    "ViirsGeometry",
     "UnknownProductError",
     "CredentialsError",
 ]

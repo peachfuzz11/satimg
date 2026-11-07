@@ -2,7 +2,7 @@
 the radar-grid metadata cube and the orbit.
 
 Paths and semantics follow the NISAR L2 GCOV product specification (JPL
-D-102274). Pure functions over an open ``h5py.File`` (see :func:`open_h5`),
+D-102274). Pure functions over an open ``h5py.File`` (see :func:`satimg.readers.open_h5`),
 returning plain dicts / arrays -- no dependency on
 :class:`~satimg.product.Product`. See
 :class:`~satimg.products.nisar.NisarGCOVProduct` for the product-facing entry
@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import datetime
 import re
-from contextlib import contextmanager
-from typing import Iterator
 
 import numpy
 from rasterio.crs import CRS
@@ -55,20 +53,6 @@ PLANE_FIELDS = {
 MAX_CUBE_NODES = 128
 
 
-@contextmanager
-def open_h5(source: Source, relpath: str) -> Iterator["h5py.File"]:
-    """``relpath`` opened read-only with ``h5py`` -- by path where the file is
-    on disk, else (zip-native) through the archive's file object."""
-    import h5py
-
-    if source.is_directory:
-        with h5py.File(source.raster_path(relpath), "r") as f:
-            yield f
-    else:
-        with source.open(relpath) as raw, h5py.File(raw, "r") as f:
-            yield f
-
-
 def find_h5(source: Source) -> str:
     """Root-relative path of the product's ``.h5``: the source itself when it
     is one file, else the first ``.h5`` at its root (a zip holding one)."""
@@ -83,24 +67,6 @@ def find_h5(source: Source) -> str:
 def gdal_path(source: Source, relpath: str, dataset: str) -> str:
     """The GDAL (``rasterio``) path of HDF5 ``dataset`` in ``relpath``."""
     return f'HDF5:"{source.raster_path(relpath)}":/{dataset}'
-
-
-def georeferenced(path: str, shape: tuple[int, int], transform: Affine, crs: CRS) -> str:
-    """``path`` (a :func:`gdal_path`) wrapped in an in-memory VRT carrying
-    the grid's geotransform and CRS -- which GDAL's HDF5 driver does not read
-    from a GCOV grid -- so it opens georeferenced, with real map coordinates
-    on ``x`` / ``y``, rather than as a bare array that every lazy read warns
-    about."""
-    height, width = shape
-    geotransform = ", ".join(repr(v) for v in transform.to_gdal())
-    source = path.replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
-    return (
-        f'<VRTDataset rasterXSize="{width}" rasterYSize="{height}">'
-        f"<SRS>{crs.to_wkt()}</SRS><GeoTransform>{geotransform}</GeoTransform>"
-        f'<VRTRasterBand dataType="Float32" band="1"><NoDataValue>nan</NoDataValue>'
-        f'<SimpleSource><SourceFilename relativeToVRT="0">{source}</SourceFilename>'
-        f"<SourceBand>1</SourceBand></SimpleSource></VRTRasterBand></VRTDataset>"
-    )
 
 
 def _str(value) -> str:

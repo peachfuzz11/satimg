@@ -6,7 +6,7 @@ pixels and one clean way to walk them in windows without ever losing track of
 where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
-NISAR L2 GCOV.
+NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time).
 
 ## Concepts
 
@@ -228,6 +228,7 @@ m.attrs                           # scalar scene-level metadata (mean angles, ..
 | Sentinel-1 | `incidence_angle`, `elevation_angle`, `slant_range_time` (seconds), `height` (metres) |
 | Sentinel-2 | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
 | Landsat | `sun_zenith`, `sun_azimuth`, `view_zenith`, `view_azimuth` |
+| VIIRS DNB | `satellite_zenith`, `satellite_azimuth`, `solar_zenith`, `solar_azimuth`, `lunar_zenith`, `lunar_azimuth` |
 | NISAR GCOV | `incidence_angle`, `elevation_angle`, `slant_range` (metres), `los_east` / `los_north` / `along_track_east` / `along_track_north` (unit vectors), `ground_track_velocity` (m/s) |
 
 This is per-pixel geometry (varies across the scene). Per-*band* identity lives
@@ -269,7 +270,8 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-For NISAR, load it as a `NisarGeometry` the same way.
+For NISAR, load it as a `NisarGeometry` the same way; for VIIRS, as a
+`ViirsGeometry` (its swath transformer stored to within 250 m).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 
@@ -303,6 +305,64 @@ The detection / characterisation models were trained on Sentinel-1; NISAR's
 but L-band at 10-20 m is a different look -- expect to fine-tune before
 trusting them on it. NISAR also images the open ocean only sparsely; coasts,
 straits and sea ice are where its coverage is.
+
+## VIIRS Day/Night Band
+
+The VIIRS Day/Night Band sees light at night down to a few nW / (cm^2 sr):
+towns, gas flares -- and lit boats, above all the squid jiggers and other
+light-luring fleets, at ~750 m, every night, worldwide. satimg reads NASA's
+L1B granules -- a radiance file with its geolocation file, 6 minutes, ~3232 x
+4064 pixels:
+
+| Satellite | Radiance | Geolocation |
+| --- | --- | --- |
+| NOAA-20 | `VJ102DNB_NRT` | `VJ103DNB_NRT` |
+| NOAA-21 | `VJ202DNB_NRT` | `VJ203DNB_NRT` |
+
+(the standard-archive pairs without `_NRT`, and SNPP's `VNP02DNB`, are the
+same format and open too). Open the radiance file with its geolocation file
+next to it, or a folder / zip holding both:
+
+```python
+product = satimg.open("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc")
+
+product.raw            # radiance, W / (cm^2 sr), float32 -- x 1e9 for nW
+product.visual         # log stretch, moonlit cloud to boat lights
+product.metadata.attrs["moon_illumination"]   # 0-1: how bright the background is
+```
+
+The image is in sensor (swath) geometry, not map projected: `transformer` is a
+`SwathTransformer` over the geolocation file's per-pixel positions, scan by
+scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
+they are found by a spike detector rather than the image model:
+
+```python
+from satimg.prediction import ViirsBoatDetector
+
+lights = ViirsBoatDetector(product).detect()          # every light, tagged
+boats = [d for d in lights if "on_land" not in d.tags and "platform" not in d.tags]
+```
+
+It finds local spikes well clear of the local background and its noise,
+drops energetic-particle hits (single pixels, frequent in the South Atlantic
+Anomaly) and the noisy swath-edge columns, and skips anything not dark
+enough. In the spirit of NOAA's VIIRS Boat Detection, not a reimplementation;
+thresholds were set on a few granules. It does not see unlit vessels, sees
+through thin cloud only (the light is blurred, often lost), can be fooled by
+lightning and moonlit cloud edges, and the moon's glint raises the floor --
+treat it as a lead, not a census.
+
+`get_connector("viirs-dnb")` searches NOAA-20 and NOAA-21 near-real-time
+granules together (`satellite="noaa-20"` / `"noaa-21"` for one; `nrt=False`
+for the standard archive, for older dates) through NASA's CMR, anonymously,
+and downloads from LANCE / LAADS with an Earthdata login (`EARTHDATA_TOKEN`
+etc., as for NISAR):
+
+```python
+connector = get_connector("viirs-dnb")
+items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1, day_night="night")
+connector.download(items[0], "/data/granule.zip")       # both files, one zip
+```
 
 ## Downloading
 
