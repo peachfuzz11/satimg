@@ -20,7 +20,7 @@ import re
 import numpy
 
 from satimg import swath
-from satimg.source import Source
+from satimg.source.base import Source
 
 DATA = "EV_250_RefSB"
 

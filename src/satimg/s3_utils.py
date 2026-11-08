@@ -27,7 +27,7 @@ from xml.etree import ElementTree
 import numpy
 
 from satimg import swath
-from satimg.source import Source
+from satimg.source.base import Source
 
 BANDS = tuple(f"Oa{i:02d}" for i in range(1, 22))
 

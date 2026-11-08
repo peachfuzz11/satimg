@@ -2,7 +2,7 @@
 ``MTD_TL.xml`` (acquisition time, sun/viewing angle grids, per-resolution
 geocoding).
 
-Pure functions taking a :class:`~satimg.source.Source` and returning plain
+Pure functions taking a :class:`~satimg.source.base.Source` and returning plain
 dicts/arrays -- no dependency on :class:`~satimg.product.Product`, so they're
 testable independently of a full product open. See
 :class:`~satimg.products.sentinel2.Sentinel2L1CProduct` for the
@@ -21,7 +21,7 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 
 from satimg.metadata import fill_nan_nearest, regular_axis
-from satimg.source import Source
+from satimg.source.base import Source
 
 #: spacing of the MTD_TL.xml angle grids, metres.
 ANGLE_STEP_M = 5000.0

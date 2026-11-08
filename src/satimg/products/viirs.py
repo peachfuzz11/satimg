@@ -16,7 +16,7 @@ from satimg.product import Product
 from satimg.readers import fit_thumbnail, keep_open, merge_bands, open_h5, vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.swath import SwathTransformer
 

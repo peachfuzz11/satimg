@@ -17,7 +17,7 @@ from satimg.product import Product
 from satimg.readers import keep_open, load_thumbnail, merge_bands
 from satimg.registry import register
 from satimg.s1_geometry import Sentinel1Geometry
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 
 

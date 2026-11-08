@@ -28,7 +28,7 @@ many products, to avoid leaking handles.
 
 ``satimg.open(path)`` takes either a product directory or a zip archive --
 detected by content, not by extension -- via a
-:class:`~satimg.source.Source` factory (:func:`~satimg.source.open_source`).
+:class:`~satimg.source.base.Source` factory (:func:`~satimg.source.factory.open_source`).
 A zip is read zip-native, straight off the archive with nothing ever
 extracted: metadata files through Python's ``zipfile``, rasters by GDAL's
 ``/vsizip/`` (see :meth:`~satimg.source.Source.raster_path`), so every view
@@ -60,7 +60,7 @@ from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
 from satimg.readers import CHUNK_PX, keep_open
 from satimg.scene_geometry import SceneGeometry
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import read_window
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -369,8 +369,8 @@ def open(path: str) -> Product:
     """Open ``path``, returning the matching :class:`Product`.
 
     ``path`` may be a product directory or a zip archive -- resolved to a
-    :class:`~satimg.source.Source` by the
-    :func:`~satimg.source.open_source` factory (detected by content, not
+    :class:`~satimg.source.base.Source` by the
+    :func:`~satimg.source.factory.open_source` factory (detected by content, not
     extension); the concrete :class:`Product` subclass is then resolved by
     :func:`~satimg.registry.resolve` against the source's own identity name.
     A zip archive resolves to a zip-native source (see the module
@@ -381,7 +381,7 @@ def open(path: str) -> Product:
     handles promptly rather than waiting on garbage collection.
     """
     from satimg.registry import resolve  # deferred: registry imports Product
-    from satimg.source import open_source
+    from satimg.source.factory import open_source
 
     source = open_source(path)
     cls = resolve(source.name)

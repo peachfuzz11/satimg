@@ -16,9 +16,8 @@ from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
 from satimg.readers import CHUNK_PX
-from satimg.source import DirSource
+from satimg.source.local import DirSource
 from satimg.tiling import read_window
-
 
 # -- the kernel --------------------------------------------------------
 

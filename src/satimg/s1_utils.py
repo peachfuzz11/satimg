@@ -1,7 +1,7 @@
 """Sentinel-1 SAFE parsing: manifest, annotation XML, geolocation grid, and
 the GCP transformer built from it.
 
-Pure functions taking a :class:`~satimg.source.Source` (or already-parsed XML)
+Pure functions taking a :class:`~satimg.source.base.Source` (or already-parsed XML)
 and returning plain dicts/lists/a :class:`~satimg.transform.gcp.GCPTransformer` --
 no dependency on :class:`~satimg.product.Product`, so they're testable
 independently of a full product open. See
@@ -18,7 +18,7 @@ import numpy
 from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.transform.gcp import GCPTransformer
 
 #: measurement-file polarisation -> sort order (co-pol before cross-pol).

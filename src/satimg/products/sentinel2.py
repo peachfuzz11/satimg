@@ -11,7 +11,7 @@ from satimg.metadata import Metadata
 from satimg.product import Product
 from satimg.readers import CHUNK_PX, keep_open, load_thumbnail, merge_bands, open_band
 from satimg.registry import register
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine import AffineTransformer
 

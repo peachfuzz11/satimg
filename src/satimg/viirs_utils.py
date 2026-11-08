@@ -16,7 +16,7 @@ import re
 import numpy
 
 from satimg import swath
-from satimg.source import Source
+from satimg.source.base import Source
 
 #: detector rows per VIIRS scan: geolocation is linear in row within one,
 #: but jumps between scans (the "bow-tie" overlap at the swath edges)

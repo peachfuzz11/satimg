@@ -62,7 +62,7 @@ class LandsatConnector(STACConnector):
         )
         session = self._get_session()
         # stored: the rasters are already compressed, and GDAL reads stored members
-        # in place at file speed (see satimg.source.ZipSource)
+        # in place at file speed (see satimg.source.archive.ZipSource)
         with zipfile.ZipFile(save_path, "w", zipfile.ZIP_STORED) as archive:
             for name, asset in item["assets"].items():
                 if name not in _ASSETS:

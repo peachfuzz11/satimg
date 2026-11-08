@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterable, Iterator
 
@@ -14,7 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover
     import h5py
     import PIL.Image
 
-    from satimg.source import Source
+    from satimg.source.base import Source
 
 #: uniform size every :func:`load_thumbnail` returns, regardless of what the
 #: shipped quick-look's own dimensions are.
@@ -168,14 +167,6 @@ def open_h5_array(source: "Source", relpath: str, dataset: str, tile: int | tupl
     da = xarray.DataArray(arr, dims=("y", "x") if lazy.ndim == 2 else ("band", "y", "x"))
     da.set_close(lazy.close)
     return da
-
-
-def find_file(directory: str, filename: str) -> str | None:
-    """Return the full path of the first ``filename`` found under ``directory``."""
-    for root, _dirs, files in os.walk(directory):
-        if filename in files:
-            return os.path.join(root, filename)
-    return None
 
 
 def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataArray:

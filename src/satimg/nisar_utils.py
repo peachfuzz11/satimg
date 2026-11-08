@@ -18,7 +18,7 @@ import numpy
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.source import Source
+from satimg.source.base import Source
 
 #: the L-band science group (an S-band product has ``SSAR`` instead).
 ROOT = "/science/LSAR"

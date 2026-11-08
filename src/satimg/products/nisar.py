@@ -24,7 +24,7 @@ from satimg.readers import (
 )
 from satimg.registry import register
 from satimg.scene_geometry import coarsen
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine import AffineTransformer
 

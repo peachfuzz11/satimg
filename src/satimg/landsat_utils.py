@@ -1,7 +1,7 @@
 """Landsat Collection-2 Level-1 parsing: ``MTL.json`` (acquisition/projection
 attrs) and the per-pixel angle rasters (``SZA``/``SAA``/``VZA``/``VAA.TIF``).
 
-Pure functions taking a :class:`~satimg.source.Source` (or, for the angle
+Pure functions taking a :class:`~satimg.source.base.Source` (or, for the angle
 rasters, a GDAL path from :meth:`~satimg.source.Source.raster_path`) and
 returning plain dicts/arrays/a
 :class:`~satimg.transform.affine.AffineTransformer` -- no dependency on
@@ -20,7 +20,7 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.source import Source
+from satimg.source.base import Source
 from satimg.transform.affine import AffineTransformer
 
 #: band order of :attr:`~satimg.products.landsat.LandsatProduct.raw`.
