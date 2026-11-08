@@ -11,7 +11,8 @@ from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.landsat import files
 from satimg.products.landsat.files import BANDS
-from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.raster import GDALRaster, Tile
+from satimg.readers.stack import BandStack
 from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
@@ -40,17 +41,12 @@ class LandsatProduct(Product):
         self._transformer = mtl["transformer"]
         self._shape = mtl["shape"]
 
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        merged = merge_bands(self._visual_paths(), match=files.PAN, tile=tile, overview=overview)
-        return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
+    def _raw_bands(self) -> BandStack:
+        # every band resampled onto the 15 m pan grid; the visual is
+        # pan-sharpened from them
+        return BandStack([GDALRaster(self._source.raster_path(f"{b}.TIF")) for b in BANDS], BANDS, match=files.PAN)
 
-    def _visual_paths(self) -> list[str]:
-        # visual is pan-sharpened from every band of raw
-        return [self._source.raster_path(f"{b}.TIF") for b in BANDS]
-
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
         rgb = a.isel(band=list(files.RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")

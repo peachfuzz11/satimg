@@ -491,20 +491,33 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 
 ## Adding a product
 
-Subclass `Product`, implement the abstract hooks (`_open_raw(tile, overview)`,
-`_render_visual(raw, tile)` — both return an `xarray.DataArray` dask-chunked to
-`tile`; normalise dims with `satimg.as_band_yx(...)` and name the band axis
-with `satimg.label_bands(da, [...])` — `transformer`, `timestamp`,
-`footprint`, `thumbnail`), optionally override `_read_metadata` to expose
-per-pixel metadata, and register a filename pattern. For `visual_overview`,
-`_open_raw` also takes an `overview` factor (pass it on to `merge_bands`) and
-`_visual_paths()` names the rasters the visual is read from:
+Every product reads its pixels through one lazy interface. It declares its bands
+as a `BandStack` of `Raster`s: `GDALRaster(path)` for anything GDAL opens (a
+file, a zip member, an `HDF5:` dataset, a VRT), or `HDF5Raster(source, file,
+dataset)` for HDF5 datasets GDAL can't name. `Product` then opens, chunks,
+decimates (`visual_overview`) and closes them the same way for every product.
+
+Subclass `Product` and implement:
+
+- `_raw_bands()`: a `BandStack` of the native bands. Give `match=` to resample
+  bands of other resolutions onto one raster's grid.
+- `_render_visual(raw, tile)`: the `uint8` visual from `raw`. A product that
+  ships its visual returns that from `_visual_bands()` instead.
+- `transformer`, `timestamp` and `footprint`.
+- Optionally `_read_metadata` for per-pixel metadata, and `thumbnail` for a
+  shipped quick-look. The default renders one from the visual.
+
+Then register a filename pattern:
 
 ```python
+from satimg.readers.raster import GDALRaster
+from satimg.readers.stack import BandStack
 from satimg.registry import register
 
 @register(r"^MY_SENSOR_\d{8}.*$")
 class MySensorProduct(Product):
+    def _raw_bands(self):
+        return BandStack([GDALRaster(self._source.raster_path("B1.TIF"))], ["B1"])
     ...
 ```
 
@@ -517,7 +530,7 @@ satimg/
   product.py, patch.py, registry.py      the Product base, patches, filename registry
   transform/   base · affine · gcp · swath      pixel <-> lat/lon, one module per kind
   source/      base · local · archive           where a product's files live (dir, file, zip)
-  readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
+  readers/     raster · stack · hdf5 · vrt · thumbnail   lazy pixel reads, file IO
   metadata/    field · collection · patch · grids   per-pixel metadata fields
   masks/       land · ports · platforms · windfarms · fishfarms
   products/    one package per sensor: product.py (+ files.py, geometry.py)

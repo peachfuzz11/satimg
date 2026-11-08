@@ -6,7 +6,6 @@ import datetime
 from functools import cached_property
 
 import numpy
-import PIL.Image
 import xarray
 from rasterio.control import GroundControlPoint
 
@@ -14,8 +13,8 @@ from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.viirs import files
 from satimg.readers.hdf5 import open_h5
-from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import fit_thumbnail
+from satimg.readers.raster import GDALRaster, Tile, keep_open
+from satimg.readers.stack import BandStack
 from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
@@ -113,26 +112,19 @@ class ViirsDNBProduct(Product):
         path = files.gdal_path(self._source.raster_path(self._radiance_file), files.RADIANCE)
         return vrt(path, self._shape, gcps=gcps)
 
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        if overview != 1:
-            raise ValueError("a VIIRS granule has no overviews")
-        merged = merge_bands([self._radiance_path], tile=tile)
-        da = label_bands(as_band_yx(merged), ("DNB",))
-        return keep_open(da.where(da > files.FILL_BELOW), merged)
+    def _raw_bands(self) -> BandStack:
+        return BandStack([GDALRaster(self._radiance_path)], ("DNB",))
 
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _open_raw(self, tile: Tile, overview: int = 1) -> xarray.DataArray:
+        """Fills (at or below :data:`~satimg.products.viirs.files.FILL_BELOW`) as ``NaN``."""
+        raw = super()._open_raw(tile, overview)
+        return keep_open(raw.where(raw > files.FILL_BELOW), raw)
+
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         low, high = _DAY_STRETCH if self._attrs["day_night"] == "day" else _NIGHT_STRETCH
         log = numpy.log10((raw * NANOWATTS).clip(low, high)).isel(band=0)
         u8 = ((log - numpy.log10(low)) * (255 / numpy.log10(high / low))).fillna(0).astype("uint8")
         return label_bands(as_band_yx(u8), ("radiance",))
-
-    def thumbnail(self) -> PIL.Image.Image:
-        """Rendered from :attr:`visual`, decimated -- neither format ships a
-        quick-look."""
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(self.visual[0, ::step, ::step].values, mode="L"))
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

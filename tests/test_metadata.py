@@ -240,13 +240,7 @@ def test_product_without_reader_has_empty_metadata():
         timestamp = property(lambda self: None)
         footprint = property(lambda self: None)
 
-        def _open_raw(self, tile):  # pragma: no cover - not exercised
-            raise NotImplementedError
-
-        def _render_visual(self, raw, tile):  # pragma: no cover - not exercised
-            raise NotImplementedError
-
-        def thumbnail(self):  # pragma: no cover
+        def _raw_bands(self):  # pragma: no cover - not exercised
             raise NotImplementedError
 
     meta = Bare(DirSource("/nowhere")).metadata

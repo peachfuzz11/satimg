@@ -7,7 +7,6 @@ from functools import cached_property
 
 import numpy
 import PIL.Image
-import rasterio
 import xarray
 
 from satimg.metadata.collection import Metadata
@@ -15,8 +14,9 @@ from satimg.product import Product
 from satimg.products.nisar import files
 from satimg.products.nisar.geometry import NisarGeometry
 from satimg.readers.hdf5 import open_h5
-from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import THUMBNAIL_SIZE, load_thumbnail
+from satimg.readers.raster import GDALRaster, Tile
+from satimg.readers.stack import BandStack
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import coarsen
@@ -93,13 +93,10 @@ class NisarGCOVProduct(Product):
             for term in self._terms
         ]
 
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        merged = merge_bands(self._term_paths, tile=tile, overview=overview)
-        return keep_open(label_bands(as_band_yx(merged), self._terms), merged)
+    def _raw_bands(self) -> BandStack:
+        return BandStack([GDALRaster(p) for p in self._term_paths], self._terms)
 
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         db = (10 * numpy.log10(raw.where(raw > 0))).mean("band")
         u8 = 255 / (1 + numpy.exp(-(db - _VISUAL_CENTRE_DB) * _VISUAL_SLOPE))
         u8 = u8.fillna(0).clip(0, 255).astype("uint8")
@@ -107,20 +104,14 @@ class NisarGCOVProduct(Product):
 
     def thumbnail(self) -> PIL.Image.Image:
         """A browse PNG shipped next to the ``.h5`` (as ASF serves them,
-        ``<granule>*.png``) if there is one, else rendered from the first
-        covariance term read decimated -- which still decodes every chunk of
-        it, so a few seconds on a full frame."""
+        ``<granule>*.png``) if there is one, else rendered from
+        :attr:`visual` (see :meth:`Product.thumbnail`) -- which decodes every
+        chunk, so a few seconds on a full frame."""
         stem = self._h5[: -len(".h5")]
         browse = sorted(n for n in self._source.listdir() if n.startswith(stem) and n.endswith(".png"))
         if browse:
             return load_thumbnail(self._source, browse[0], greyscale=True)
-        scale = max(self.height, self.width) / max(THUMBNAIL_SIZE)
-        shape = (max(1, round(self.height / scale)), max(1, round(self.width / scale)))
-        with rasterio.open(self._term_paths[0]) as src:
-            power = src.read(1, out_shape=shape)
-        raw = xarray.DataArray(power[numpy.newaxis], dims=("band", "y", "x"))
-        img = PIL.Image.fromarray(self._render_visual(raw, shape).values[0], mode="L")
-        return img.resize(THUMBNAIL_SIZE)
+        return super().thumbnail()
 
     # -- geometry ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

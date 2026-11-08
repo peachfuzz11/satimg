@@ -12,6 +12,9 @@ import h5py
 import numpy
 import xarray
 
+from satimg.readers.raster import Raster, Tile, tile_xy
+from satimg.tiling import as_band_yx
+
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.source.base import Source
 
@@ -72,20 +75,32 @@ class LazyH5Dataset:
             self._file = self._handle = None
 
 
-def open_h5_array(source: Source, relpath: str, dataset: str, tile: int | tuple[int, int]) -> xarray.DataArray:
-    """HDF5 / netCDF4 ``dataset`` of ``relpath`` as a lazy ``(band, y, x)``
-    (or ``(y, x)``) array read by ``h5py`` through dask, chunked to ``tile``
-    with every band in one chunk -- for datasets GDAL's HDF5 driver cannot
-    name (groups with spaces, as in HDF-EOS5 swaths). Works zip-native too.
-    ``close()`` closes the file; a later read reopens it.
-    """
-    tw, th = (tile, tile) if isinstance(tile, int) else tile
-    lazy = LazyH5Dataset(source, relpath, dataset)
-    chunks = (th, tw) if lazy.ndim == 2 else (-1, th, tw)
-    arr = dask.array.from_array(lazy, chunks=chunks, lock=False, asarray=True)
-    da = xarray.DataArray(arr, dims=("y", "x") if lazy.ndim == 2 else ("band", "y", "x"))
-    da.set_close(lazy.close)
-    return da
+class HDF5Raster(Raster):
+    """An HDF5 / netCDF4 ``dataset`` of ``relpath``, read by ``h5py`` --
+    for datasets GDAL's HDF5 driver cannot name (groups with spaces, as in
+    HDF-EOS5 swaths). A 3-D dataset is ``(band, y, x)``. Works zip-native
+    too; ``close()`` closes the file, and a later read reopens it."""
+
+    def __init__(self, source: Source, relpath: str, dataset: str):
+        self._source, self._relpath, self._dataset = source, relpath, dataset
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._relpath!r}, {self._dataset!r})"
+
+    @property
+    def overviews(self) -> list[int]:
+        return []
+
+    def open(self, tile: Tile, overview: int = 1) -> xarray.DataArray:
+        if overview != 1:
+            raise ValueError(f"{self._relpath}:{self._dataset} has no overviews")
+        tw, th = tile_xy(tile)
+        lazy = LazyH5Dataset(self._source, self._relpath, self._dataset)
+        chunks = (th, tw) if lazy.ndim == 2 else (-1, th, tw)
+        arr = dask.array.from_array(lazy, chunks=chunks, lock=False, asarray=True)
+        da = as_band_yx(xarray.DataArray(arr, dims=("y", "x") if lazy.ndim == 2 else ("band", "y", "x")))
+        da.set_close(lazy.close)
+        return da
 
 
 def read_scaled(dataset, fill_below: float | None = None, key=()) -> numpy.ndarray:
