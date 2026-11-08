@@ -12,10 +12,11 @@ from satimg.connectors import ViirsDNBConnector, get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.prediction import ViirsBoatDetector
 from satimg.products import ViirsDNBProduct
+from satimg.products.swath import node_columns, scan_edge_rows
+from satimg.products.viirs.files import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.swath import node_columns, scan_edge_rows
 from satimg.transform.swath import SwathTransformer
-from satimg.viirs_utils import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 from tests.test_helper import h5_reads
@@ -105,7 +106,29 @@ def test_visual_stretches_lights_bright(product):
     assert v[fx.BOATS[0]] > 150
     assert numpy.median(v) < 100
     assert v[fx.FILL] == 0
-    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE
+    assert product.thumbnail().size == THUMBNAIL_SIZE
+
+
+def test_geolocation_is_the_scan_edge_rows(truth):
+    # from #33: the rows read are exactly the file's scan-edge rows, scaled
+    lat, lon = truth
+    with h5py.File(GEO) as g:
+        geolocation = read_geolocation(g)
+    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
+    assert geolocation["shape"] == lat.shape
+    numpy.testing.assert_array_equal(geolocation["rows"], rows)
+    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
+        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
+
+
+def test_open_reads_no_full_resolution_array():
+    """Opening reads only the geolocation's scan-edge rows and a sparse
+    sample -- never a full-resolution variable, nor any radiance."""
+    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
+        assert p.height > 0
+    big = [r for r in reads if r[2] >= 1000]
+    assert big and all(n <= size / 4 for _, n, size in big), big
+    assert not [r for r in reads if "observation_data" in r[0]]
 
 
 def test_metadata_is_night(product):
@@ -164,28 +187,6 @@ def test_node_columns_meet_their_tolerance(truth):
     loose, tight = node_columns(lat[:2], lon[:2], 250.0), node_columns(lat[:2], lon[:2], 25.0)
     assert loose[0] == 0 and loose[-1] == fx.COLS - 1
     assert len(loose) < len(tight)
-
-
-def test_geolocation_is_the_scan_edge_rows(truth):
-    # the rows read are exactly the file's scan-edge rows, scaled
-    lat, lon = truth
-    with h5py.File(GEO) as g:
-        geolocation = read_geolocation(g)
-    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
-    assert geolocation["shape"] == lat.shape
-    numpy.testing.assert_array_equal(geolocation["rows"], rows)
-    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
-        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
-
-
-def test_open_reads_no_full_resolution_array():
-    """Opening reads only the geolocation's scan-edge rows and a sparse
-    sample -- never a full-resolution variable, nor any radiance."""
-    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
-        assert p.height > 0
-    big = [r for r in reads if r[2] >= 1000]
-    assert big and all(n <= size / 4 for _, n, size in big), big
-    assert not [r for r in reads if "observation_data" in r[0]]
 
 
 def test_geometry_round_trips(product, truth):

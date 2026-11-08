@@ -10,9 +10,9 @@ import PIL.Image
 import xarray
 from rasterio.control import GroundControlPoint
 
-from satimg import viirs_utils
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products.viirs import files
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import fit_thumbnail
@@ -71,14 +71,14 @@ class ViirsDNBProduct(Product):
 
     def __init__(self, source: Source):
         super().__init__(source)
-        self._radiance_file, geo = viirs_utils.find_pair(self._source)
+        self._radiance_file, geo = files.find_pair(self._source)
         with open_h5(self._source, self._radiance_file) as h5:
-            granule = viirs_utils.read_granule(h5, self._radiance_file)
+            granule = files.read_granule(h5, self._radiance_file)
         with open_h5(self._source, geo) as h5:
-            geolocation = viirs_utils.read_geolocation(h5)
-            fine = viirs_utils.nodes(geolocation, TRANSFORMER_TOLERANCE_M)
-            coarse = viirs_utils.nodes(geolocation, GEOMETRY_TOLERANCE_M)
-            coarse.update(viirs_utils.read_angles(h5, coarse))
+            geolocation = files.read_geolocation(h5)
+            fine = files.nodes(geolocation, TRANSFORMER_TOLERANCE_M)
+            coarse = files.nodes(geolocation, GEOMETRY_TOLERANCE_M)
+            coarse.update(files.read_angles(h5, coarse))
         self._timestamp = granule["timestamp"]
         self._footprint = granule["footprint"]
         self._shape = geolocation["shape"]
@@ -88,10 +88,10 @@ class ViirsDNBProduct(Product):
             "moon_phase_angle": geolocation["moon_phase_angle"],
         }
         self._transformer = SwathTransformer(
-            fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=viirs_utils.SCAN_ROWS
+            fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=files.SCAN_ROWS
         )
         self._coarse_transformer = SwathTransformer(
-            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=viirs_utils.SCAN_ROWS
+            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=files.SCAN_ROWS
         )
         self._angles = coarse
 
@@ -110,7 +110,7 @@ class ViirsDNBProduct(Product):
             GroundControlPoint(row=r, col=c, x=lon, y=lat)
             for r, c, (lat, lon) in zip(rr, cc, latlon)
         ]
-        path = viirs_utils.gdal_path(self._source.raster_path(self._radiance_file), viirs_utils.RADIANCE)
+        path = files.gdal_path(self._source.raster_path(self._radiance_file), files.RADIANCE)
         return vrt(path, self._shape, gcps=gcps)
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
@@ -118,7 +118,7 @@ class ViirsDNBProduct(Product):
             raise ValueError("a VIIRS granule has no overviews")
         merged = merge_bands([self._radiance_path], tile=tile)
         da = label_bands(as_band_yx(merged), ("DNB",))
-        return keep_open(da.where(da > viirs_utils.FILL_BELOW), merged)
+        return keep_open(da.where(da > files.FILL_BELOW), merged)
 
     def _render_visual(
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
@@ -139,7 +139,7 @@ class ViirsDNBProduct(Product):
         a = self._angles
         fields = {
             name: self._field(a["rows"], a["cols"], a[name], name=name, units="degrees")
-            for name in viirs_utils.FIELDS
+            for name in files.FIELDS
         }
         return Metadata(fields, self._attrs)
 

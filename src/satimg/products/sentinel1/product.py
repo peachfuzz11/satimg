@@ -11,13 +11,13 @@ import numpy
 import PIL.Image
 import xarray
 
-from satimg import s1_utils
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products.sentinel1 import files
+from satimg.products.sentinel1.geometry import Sentinel1Geometry
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
-from satimg.s1_geometry import Sentinel1Geometry
 from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands
 
@@ -35,17 +35,17 @@ class Sentinel1Product(Product):
     re-expresses a compass heading in this GRD product's own (rotated and mirrored) pixel frame;
     :meth:`correct_position` combines both to recover a moving target's true
     lat/lon from its as-detected position. SAFE parsing itself lives in
-    :mod:`satimg.s1_utils`; the SAR geometry behind the last four methods lives
-    in :mod:`satimg.sar_utils`.
+    :mod:`satimg.products.sentinel1.files`; the SAR geometry behind the last four methods lives
+    in :mod:`satimg.sar`.
     """
 
     def __init__(self, source: Source):
         super().__init__(source)
-        meta = s1_utils.read_manifest(self._source)
+        meta = files.read_manifest(self._source)
         self._timestamp = meta["timestamp"]
         self._footprint = meta["footprint"]
-        annotation = s1_utils.annotation_file(self._source)
-        points, attrs, shape = s1_utils.read_geolocation(
+        annotation = files.annotation_file(self._source)
+        points, attrs, shape = files.read_geolocation(
             self._source, annotation, self._timestamp
         )
         self._geometry = Sentinel1Geometry.from_points(points, attrs, shape)
@@ -63,7 +63,7 @@ class Sentinel1Product(Product):
             m = re.search(r"-(vv|vh|hh|hv)-", f)
             if m:
                 pols[self._source.raster_path(f"measurement/{f}")] = m.group(1)
-        return {f: pols[f] for f in sorted(pols, key=lambda f: s1_utils.POL_ORDER[pols[f]])}
+        return {f: pols[f] for f in sorted(pols, key=lambda f: files.POL_ORDER[pols[f]])}
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         merged = merge_bands(list(self._measurements), tile=tile, overview=overview)
@@ -103,7 +103,7 @@ class Sentinel1Product(Product):
     @property
     def geometry(self) -> Sentinel1Geometry:
         """As :attr:`Product.geometry`, as a
-        :class:`~satimg.s1_geometry.Sentinel1Geometry` -- which the
+        :class:`~satimg.products.sentinel1.geometry.Sentinel1Geometry` -- which the
         transformer, metadata and SAR geometry methods below delegate to."""
         return self._geometry
 
@@ -133,7 +133,7 @@ class Sentinel1Product(Product):
         ``rowcol`` is a ``(row, col)`` pixel pair (or a list of pairs / an
         ``(N, 2)`` array, matching :meth:`~satimg.metadata.field.Field.at`) -- needed
         because the local satellite heading varies (slightly) with latitude across
-        a scene. See :func:`satimg.sar_utils.heading_to_los` for the convention and
+        a scene. See :func:`satimg.sar.heading_to_los` for the convention and
         equations.
         """
         return self._geometry.heading_to_los(rowcol, heading_deg)
@@ -145,7 +145,7 @@ class Sentinel1Product(Product):
         Unlike an orthorectified product, GRD imagery is still in native
         sensor geometry: row increases with azimuth time, i.e. towards the
         direction the platform is heading (see the sign convention in
-        :func:`satimg.sar_utils.azimuth_shift_m`), so the image's "up"
+        :func:`satimg.sar.azimuth_shift_m`), so the image's "up"
         (decreasing row) points the *opposite* way -- the local platform
         heading plus 180 degrees. Column increases with ground range, i.e.
         towards the look direction, which for the right-looking Sentinel-1 is
@@ -181,7 +181,7 @@ class Sentinel1Product(Product):
         object's ground speed in m/s, and ``heading_deg`` its compass heading in
         degrees clockwise from true north. Returns the estimated shift in pixels
         along the azimuth (row) axis -- positive towards higher row indices. See
-        :func:`satimg.sar_utils.azimuth_shift_m` for the underlying physics and sign
+        :func:`satimg.sar.azimuth_shift_m` for the underlying physics and sign
         convention.
         """
         return self._geometry.doppler_azimuth_shift(rowcol, speed, heading_deg)

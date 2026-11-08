@@ -6,7 +6,7 @@ rasters, a GDAL path from :meth:`~satimg.source.base.Source.raster_path`) and
 returning plain dicts/arrays/a
 :class:`~satimg.transform.affine.AffineTransformer` -- no dependency on
 :class:`~satimg.product.Product`, so they're testable independently of a full
-product open. See :class:`~satimg.products.landsat.LandsatProduct` for the
+product open. See :class:`~satimg.products.landsat.product.LandsatProduct` for the
 product-facing entry points that call these.
 """
 
@@ -23,7 +23,7 @@ from rasterio.transform import Affine
 from satimg.source.base import Source
 from satimg.transform.affine import AffineTransformer
 
-#: band order of :attr:`~satimg.products.landsat.LandsatProduct.raw`.
+#: band order of :attr:`~satimg.products.landsat.product.LandsatProduct.raw`.
 BANDS = ("coastal", "blue", "green", "red", "nir08", "swir16", "swir22", "pan",
          "cirrus", "lwir11", "lwir12")
 PAN = BANDS.index("pan")

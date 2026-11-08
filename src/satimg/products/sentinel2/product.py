@@ -6,9 +6,9 @@ import datetime
 
 import xarray
 
-from satimg import s2_utils
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products.sentinel2 import files
 from satimg.readers.raster import CHUNK_PX, keep_open, merge_bands, open_band
 from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
@@ -23,14 +23,14 @@ class Sentinel2L1CProduct(Product):
     is the shipped 3-band True Colour Image. ``metadata`` carries the ``MTD_TL.xml``
     angle grids (``sun_zenith``, ``sun_azimuth``, ``view_zenith``, ``view_azimuth``);
     the viewing grids are the per-detector grids merged. SAFE parsing itself
-    lives in :mod:`satimg.s2_utils`."""
+    lives in :mod:`satimg.products.sentinel2.files`."""
 
     def __init__(self, source: Source):
         super().__init__(source)
-        self._meta = s2_utils.parse_mtd(self._source)
-        self._tl = s2_utils.parse_tl(self._source)
+        self._meta = files.parse_mtd(self._source)
+        self._tl = files.parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]
-        self._gsd = s2_utils.BAND_GSD_M[self._meta["band_names"][1]]
+        self._gsd = files.BAND_GSD_M[self._meta["band_names"][1]]
         self._transformer = AffineTransformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:

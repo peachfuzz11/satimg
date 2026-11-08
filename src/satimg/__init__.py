@@ -27,11 +27,11 @@ from satimg.connectors import CredentialsError, get_connector
 from satimg.geometry import Grid, Window, windows_at
 from satimg.metadata.collection import Metadata
 from satimg.metadata.field import Field
-from satimg.nisar_geometry import NisarGeometry
 from satimg.patch import Patch
 from satimg.product import Product, open, open_zip
+from satimg.products.nisar.geometry import NisarGeometry
+from satimg.products.sentinel1.geometry import Sentinel1Geometry
 from satimg.registry import UnknownProductError
-from satimg.s1_geometry import Sentinel1Geometry
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 

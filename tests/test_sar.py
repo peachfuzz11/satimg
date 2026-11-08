@@ -1,11 +1,11 @@
 """SAR-specific per-pixel geometry: heading conversion and the moving-target
-azimuth-shift displacement itself. See ``satimg/sar_utils.py`` for the
+azimuth-shift displacement itself. See ``satimg/sar.py`` for the
 derivation and sign conventions."""
 
 import numpy
 import pytest
 
-from satimg.sar_utils import (
+from satimg.sar import (
     azimuth_shift_m,
     ground_track_heading,
     heading_from_image,

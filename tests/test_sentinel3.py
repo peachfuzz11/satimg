@@ -12,6 +12,7 @@ from satimg import SceneGeometry
 from satimg.connectors import Sentinel3Connector, get_connector
 from satimg.masks.land import LandMask
 from satimg.products import Sentinel3OLCIProduct
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
 from satimg.transform.swath import SwathTransformer
 from tests import minify_sentinel3 as fx
@@ -80,7 +81,7 @@ def test_visual_true_colour(product):
     assert list(product.visual.band.values) == ["red", "green", "blue"]
     assert (v[:, fx.TARGET[0], fx.TARGET[1]] == 255).all()
     assert (v[:, fx.FILL[0], fx.FILL[1]] == 0).all()
-    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
+    assert product.thumbnail().size == THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
 
 
 def test_metadata_angles_from_the_tie_points(product):
@@ -105,7 +106,7 @@ def test_transformer_matches_sea_level_pixels(product, truth):
     rc = numpy.column_stack((rr + 0.5, cc + 0.5))
     error = _metres(product.transformer.rowcol_to_latlon(rc), numpy.column_stack((lat[rr, cc], lon[rr, cc])))
     # the per-pixel positions are terrain corrected and, at sea, sit ~100 m
-    # (a third of a pixel) from the tie points -- see satimg.s3_utils
+    # (a third of a pixel) from the tie points -- see satimg.products.sentinel3.files
     assert numpy.median(error) < 150
     assert numpy.percentile(error, 99) < 250
 

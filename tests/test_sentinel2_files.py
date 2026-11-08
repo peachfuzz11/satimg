@@ -1,4 +1,4 @@
-"""``s2_utils.parse_tl`` on ``MTD_TL.xml`` variants made from the minified
+"""``sentinel2.files.parse_tl`` on ``MTD_TL.xml`` variants made from the minified
 Sentinel-2 test product's own file."""
 
 import re
@@ -6,8 +6,8 @@ import re
 import numpy
 import pytest
 
-from satimg import s2_utils
 from satimg.metadata.field import Field
+from satimg.products.sentinel2 import files as s2_files
 from satimg.source.local import DirSource
 from tests.conftest import PRODUCT_PATHS
 
@@ -15,7 +15,7 @@ _MTD_TL = next((PRODUCT_PATHS["sentinel2_l1c"] / "GRANULE").glob("*/MTD_TL.xml")
 _VIEW_GRID = re.compile(r"(<Viewing_Incidence_Angles_Grids\b.*?</Viewing_Incidence_Angles_Grids>)", re.S)
 _VALUES_LIST = re.compile(r"<Values_List>.*?</Values_List>", re.S)
 _TINY_VALUES = "<Values_List><VALUES>7.1</VALUES><VALUES>7.2</VALUES></Values_List>"  # 2 x 1
-_STEP_PX = s2_utils.ANGLE_STEP_M / 10  # 10 m pixels
+_STEP_PX = s2_files.ANGLE_STEP_M / 10  # 10 m pixels
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def mtd_tl_text():
 
 def _parse(tmp_path, text):
     (tmp_path / "MTD_TL.xml").write_text(text)
-    return s2_utils.parse_tl(DirSource(str(tmp_path)))
+    return s2_files.parse_tl(DirSource(str(tmp_path)))
 
 
 def _shrink_view_grids(text, count=None):
@@ -84,6 +84,6 @@ def test_mean_grids_pads_smaller_grids_with_nan():
     small = numpy.array([[1.0], [3.0]])
     large = numpy.array([[3.0, 5.0], [5.0, 7.0]])
 
-    merged = s2_utils._mean_grids([small, large], circular=False)
+    merged = s2_files._mean_grids([small, large], circular=False)
 
     numpy.testing.assert_array_equal(merged, [[2.0, 5.0], [4.0, 7.0]])

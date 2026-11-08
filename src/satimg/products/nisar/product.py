@@ -10,10 +10,10 @@ import PIL.Image
 import rasterio
 import xarray
 
-from satimg import nisar_utils
 from satimg.metadata.collection import Metadata
-from satimg.nisar_geometry import NisarGeometry
 from satimg.product import Product
+from satimg.products.nisar import files
+from satimg.products.nisar.geometry import NisarGeometry
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import THUMBNAIL_SIZE, load_thumbnail
@@ -52,17 +52,17 @@ class NisarGCOVProduct(Product):
     ``los_*`` / ``along_track_*`` unit vectors, ``ground_track_velocity``).
     The moving-target methods -- :meth:`doppler_azimuth_shift_m`,
     :meth:`doppler_pixel_shift`, :meth:`correct_position` -- and the heading
-    conversions live on :class:`~satimg.nisar_geometry.NisarGeometry`.
+    conversions live on :class:`~satimg.products.nisar.geometry.NisarGeometry`.
     """
 
     def __init__(self, source: Source):
         super().__init__(source)
-        self._h5 = nisar_utils.find_h5(self._source)
+        self._h5 = files.find_h5(self._source)
         with open_h5(self._source, self._h5) as h5:
-            ident = nisar_utils.read_identification(h5)
-            grid = nisar_utils.read_grid(h5)
-            cube = nisar_utils.read_radar_grid(h5, grid["transform"])
-            velocity = nisar_utils.platform_velocity(h5, ident["timestamp"])
+            ident = files.read_identification(h5)
+            grid = files.read_grid(h5)
+            cube = files.read_radar_grid(h5, grid["transform"])
+            velocity = files.platform_velocity(h5, ident["timestamp"])
         self._timestamp = ident["timestamp"]
         self._footprint = ident["footprint"]
         self._terms = grid["terms"]
@@ -74,7 +74,7 @@ class NisarGCOVProduct(Product):
         }
         fields = {
             name: (cube["rows"], cube["cols"], cube[name], units)
-            for name, units in {**nisar_utils.CUBE_FIELDS, **nisar_utils.PLANE_FIELDS}.values()
+            for name, units in {**files.CUBE_FIELDS, **files.PLANE_FIELDS}.values()
             if name in cube
         }
         self._geometry = NisarGeometry(
@@ -87,7 +87,7 @@ class NisarGCOVProduct(Product):
         t = self.transformer
         return [
             vrt(
-                nisar_utils.gdal_path(self._source, self._h5, f"{nisar_utils.GRID}/{term}"),
+                files.gdal_path(self._source, self._h5, f"{files.GRID}/{term}"),
                 (self.height, self.width), transform=t.transform, crs=t.crs,
             )
             for term in self._terms
@@ -159,25 +159,25 @@ class NisarGCOVProduct(Product):
 
     # -- SAR geometry (see NisarGeometry) ---------------------------------------
     def heading_in_image(self, rowcol, heading_deg):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.heading_in_image`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.heading_in_image`."""
         return self._geometry.heading_in_image(rowcol, heading_deg)
 
     def heading_from_image(self, rowcol, image_heading_deg):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.heading_from_image`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.heading_from_image`."""
         return self._geometry.heading_from_image(rowcol, image_heading_deg)
 
     def heading_to_los(self, rowcol, heading_deg):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.heading_to_los`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.heading_to_los`."""
         return self._geometry.heading_to_los(rowcol, heading_deg)
 
     def doppler_azimuth_shift_m(self, rowcol, speed: float, heading_deg: float):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.doppler_azimuth_shift_m`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.doppler_azimuth_shift_m`."""
         return self._geometry.doppler_azimuth_shift_m(rowcol, speed, heading_deg)
 
     def doppler_pixel_shift(self, rowcol, speed: float, heading_deg: float):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.doppler_pixel_shift`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.doppler_pixel_shift`."""
         return self._geometry.doppler_pixel_shift(rowcol, speed, heading_deg)
 
     def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
-        """See :meth:`satimg.nisar_geometry.NisarGeometry.correct_position`."""
+        """See :meth:`satimg.products.nisar.geometry.NisarGeometry.correct_position`."""
         return self._geometry.correct_position(lat, lon, speed, heading_deg)

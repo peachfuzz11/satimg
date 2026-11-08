@@ -8,9 +8,10 @@ import numpy
 import PIL.Image
 import xarray
 
-from satimg import modis_utils, swath
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products import swath
+from satimg.products.modis import files
 from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
 from satimg.readers.thumbnail import fit_thumbnail
 from satimg.registry import register
@@ -60,37 +61,37 @@ class ModisProduct(Product):
 
     def __init__(self, source: Source):
         super().__init__(source)
-        self._file = modis_utils.find_file(self._source)
-        self._geo_file = modis_utils.find_geolocation(self._source, self._file)
+        self._file = files.find_file(self._source)
+        self._geo_file = files.find_geolocation(self._source, self._file)
         with open_h5(self._source, self._file) as h5:
-            granule = modis_utils.read_granule(h5, self._file)
-            offsets = modis_utils.fractional_offsets(h5)
-            self._dataset = find_dataset(h5, modis_utils.DATA)
+            granule = files.read_granule(h5, self._file)
+            offsets = files.fractional_offsets(h5)
+            self._dataset = find_dataset(h5, files.DATA)
             if self._geo_file is None:
-                geolocation = modis_utils.read_geolocation(h5)
+                geolocation = files.read_geolocation(h5)
         self._timestamp = granule["timestamp"]
         self._attrs = granule["attrs"]
         self._shape = granule["shape"]
 
         def nodes(geolocation, tolerance):
-            return modis_utils.nodes(geolocation, offsets, tolerance)
+            return files.nodes(geolocation, offsets, tolerance)
 
         if self._geo_file is None:
             coarse = nodes(geolocation, GEOMETRY_TOLERANCE_M)
         else:
             with open_h5(self._source, self._geo_file) as h5:
-                geolocation = modis_utils.read_geolocation(h5)
+                geolocation = files.read_geolocation(h5)
                 coarse = nodes(geolocation, GEOMETRY_TOLERANCE_M)
-                coarse.update(modis_utils.read_angles(h5, coarse))
+                coarse.update(files.read_angles(h5, coarse))
         # the scan-edge rows include the first and last, so the outline still
         # runs round the whole swath
         self._footprint = swath.outline(geolocation["lat"], geolocation["lon"])
         fine = nodes(geolocation, TRANSFORMER_TOLERANCE_M)
         self._transformer = SwathTransformer(
-            fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=modis_utils.SCAN_ROWS
+            fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=files.SCAN_ROWS
         )
         self._coarse_transformer = SwathTransformer(
-            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=modis_utils.SCAN_ROWS
+            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=files.SCAN_ROWS
         )
         self._angles = coarse
 
@@ -99,8 +100,8 @@ class ModisProduct(Product):
         if overview != 1:
             raise ValueError("a MODIS granule has no overviews")
         da = open_h5_array(self._source, self._file, self._dataset, tile)
-        out = label_bands(as_band_yx(da), modis_utils.BANDS)
-        out = out.assign_coords(wavelength_nm=("band", list(modis_utils.WAVELENGTHS_NM)))
+        out = label_bands(as_band_yx(da), files.BANDS)
+        out = out.assign_coords(wavelength_nm=("band", list(files.WAVELENGTHS_NM)))
         out.set_close(da._close)
         return out
 
@@ -109,8 +110,8 @@ class ModisProduct(Product):
         ``float32``, fills and flags ``NaN``."""
         scales = numpy.array(self._attrs["reflectance_scales"], dtype="float32")
         offsets = numpy.array(self._attrs["reflectance_offsets"], dtype="float32")
-        pick = [modis_utils.BANDS.index(b) for b in raw.band.values]
-        dn = raw.where(raw <= modis_utils.VALID_MAX).astype("float32")
+        pick = [files.BANDS.index(b) for b in raw.band.values]
+        dn = raw.where(raw <= files.VALID_MAX).astype("float32")
         return (dn - offsets[pick, None, None]) * scales[pick, None, None]
 
     def _render_visual(
@@ -134,7 +135,7 @@ class ModisProduct(Product):
         a = self._angles
         fields = {
             field: self._field(a["rows"], a["cols"], a[field], name=field, units=units)
-            for field, units in modis_utils.ANGLES.values()
+            for field, units in files.ANGLES.values()
             if field in a
         }
         return Metadata(fields, self._attrs)

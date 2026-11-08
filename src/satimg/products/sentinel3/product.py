@@ -10,9 +10,10 @@ import PIL.Image
 import xarray
 from rasterio.control import GroundControlPoint
 
-from satimg import s3_utils, swath
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products import swath
+from satimg.products.sentinel3 import files
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import fit_thumbnail, load_thumbnail
@@ -52,7 +53,7 @@ class Sentinel3OLCIProduct(Product):
     tie-point grid.
 
     The transformer interpolates the tie-point geolocation (see
-    :mod:`satimg.s3_utils`): smooth, within about a third of a pixel of
+    :mod:`satimg.products.sentinel3.files`): smooth, within about a third of a pixel of
     the per-pixel positions at sea, but a mountain top lies off its
     terrain-corrected position by up to a few hundred metres. Daytime only; at 300 m only large ships,
     and wakes in sun glint, are visible, and the image models were not
@@ -66,23 +67,23 @@ class Sentinel3OLCIProduct(Product):
             raise FileNotFoundError(f"no xfdumanifest.xml under {self._source.name}")
         self._dir = manifest[: -len("xfdumanifest.xml")]
         with open_h5(self._source, f"{self._dir}tie_geo_coordinates.nc") as h5:
-            start, stop = s3_utils.read_times(h5)
-            geolocation = s3_utils.read_geolocation(h5)
-        with open_h5(self._source, f"{self._dir}{s3_utils.band_file('Oa01')}") as h5:
-            self._shape = s3_utils.read_shape(h5)
+            start, stop = files.read_times(h5)
+            geolocation = files.read_geolocation(h5)
+        with open_h5(self._source, f"{self._dir}{files.band_file('Oa01')}") as h5:
+            self._shape = files.read_shape(h5)
         with open_h5(self._source, f"{self._dir}tie_geometries.nc") as h5:
-            self._angles = s3_utils.read_angles(h5)
-        scales, offsets = s3_utils.read_scales(self._source, self._dir)
+            self._angles = files.read_angles(h5)
+        scales, offsets = files.read_scales(self._source, self._dir)
         self._timestamp = start + (stop - start) / 2
-        self._footprint = s3_utils.read_footprint(self._source) or swath.outline(geolocation["lat"], geolocation["lon"])
+        self._footprint = files.read_footprint(self._source) or swath.outline(geolocation["lat"], geolocation["lon"])
         self._attrs = {
-            **s3_utils.read_name(self._source.name),
+            **files.read_name(self._source.name),
             "radiance_scales": scales,
             "radiance_offsets": offsets,
         }
 
         def transformer(tolerance):
-            n = s3_utils.nodes(geolocation, tolerance)
+            n = files.nodes(geolocation, tolerance)
             return SwathTransformer(n["rows"], n["cols"], n["lat"], n["lon"])
 
         self._transformer = transformer(TRANSFORMER_TOLERANCE_M)
@@ -99,9 +100,9 @@ class Sentinel3OLCIProduct(Product):
         latlon = self._coarse_transformer.rowcol_to_latlon(numpy.column_stack((rr, cc)))
         gcps = [GroundControlPoint(row=r, col=c, x=lon, y=lat) for r, c, (lat, lon) in zip(rr, cc, latlon)]
         return [
-            vrt(s3_utils.gdal_path(self._source.raster_path(f"{self._dir}{s3_utils.band_file(b)}"), b),
+            vrt(files.gdal_path(self._source.raster_path(f"{self._dir}{files.band_file(b)}"), b),
                 self._shape, gcps=gcps, dtype="UInt16", nodata=65535)
-            for b in s3_utils.BANDS
+            for b in files.BANDS
         ]
 
     def _visual_paths(self) -> list[str]:
@@ -111,14 +112,14 @@ class Sentinel3OLCIProduct(Product):
         if overview != 1:
             raise ValueError("an OLCI product has no overviews")
         merged = merge_bands(self._band_paths, tile=tile)
-        da = label_bands(as_band_yx(merged), s3_utils.BANDS)
-        da = da.assign_coords(wavelength_nm=("band", list(s3_utils.WAVELENGTHS_NM)))
+        da = label_bands(as_band_yx(merged), files.BANDS)
+        da = da.assign_coords(wavelength_nm=("band", list(files.WAVELENGTHS_NM)))
         return keep_open(da, merged)
 
     def radiance(self, raw: xarray.DataArray) -> xarray.DataArray:
         """``raw`` (or a band / window of it) in mW / (m^2 sr nm),
         ``float32``, fills ``NaN``."""
-        pick = [s3_utils.BANDS.index(b) for b in raw.band.values]
+        pick = [files.BANDS.index(b) for b in raw.band.values]
         scales = numpy.array(self._attrs["radiance_scales"], dtype="float32")[pick, None, None]
         offsets = numpy.array(self._attrs["radiance_offsets"], dtype="float32")[pick, None, None]
         return raw.where(raw != 65535).astype("float32") * scales + offsets
@@ -127,7 +128,7 @@ class Sentinel3OLCIProduct(Product):
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
         rgb = self.radiance(raw.sel(band=list(_RGB)))
-        e0 = numpy.array([s3_utils.SOLAR_IRRADIANCE[b] for b in _RGB], dtype="float32")[:, None, None]
+        e0 = numpy.array([files.SOLAR_IRRADIANCE[b] for b in _RGB], dtype="float32")[:, None, None]
         reflectance = numpy.pi * rgb / e0  # x cos(sun zenith), left out: fine for a picture
         u8 = (255 * (reflectance.clip(0, _VISUAL_MAX) / _VISUAL_MAX) ** (1 / 2.2)).fillna(0).astype("uint8")
         return label_bands(as_band_yx(u8.drop_vars("wavelength_nm", errors="ignore")), ("red", "green", "blue"))
@@ -146,7 +147,7 @@ class Sentinel3OLCIProduct(Product):
         a = self._angles
         fields = {
             field: self._field(a["rows"], a["cols"], a[field], name=field, units="degrees")
-            for field in s3_utils.ANGLES.values()
+            for field in files.ANGLES.values()
         }
         return Metadata(fields, self._attrs)
 

@@ -5,7 +5,7 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry, Sentinel1Geometry
-from satimg.products.landsat import GEOMETRY_GRID
+from satimg.products.landsat.product import GEOMETRY_GRID
 from satimg.transform.affine import AffineTransformer
 from satimg.transform.base import Transformer
 from satimg.transform.gcp import GCPTransformer

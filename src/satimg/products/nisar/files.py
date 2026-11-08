@@ -5,7 +5,7 @@ Paths and semantics follow the NISAR L2 GCOV product specification (JPL
 D-102274). Pure functions over an open ``h5py.File`` (see :func:`satimg.readers.hdf5.open_h5`),
 returning plain dicts / arrays -- no dependency on
 :class:`~satimg.product.Product`. See
-:class:`~satimg.products.nisar.NisarGCOVProduct` for the product-facing entry
+:class:`~satimg.products.nisar.product.NisarGCOVProduct` for the product-facing entry
 points.
 """
 

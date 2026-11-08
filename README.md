@@ -510,6 +510,27 @@ class MySensorProduct(Product):
 
 Importing `satimg.products` registers the built-ins.
 
+### Package layout
+
+```
+satimg/
+  product.py, patch.py, registry.py      the Product base, patches, filename registry
+  transform/   base · affine · gcp · swath      pixel <-> lat/lon, one module per kind
+  source/      base · local · archive           where a product's files live (dir, file, zip)
+  readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
+  metadata/    field · collection · patch · grids   per-pixel metadata fields
+  masks/       land · ports · platforms · windfarms · fishfarms
+  products/    one package per sensor: product.py (+ files.py, geometry.py)
+               swath.py: node grids shared by VIIRS, MODIS, OLCI
+  sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
+  connectors/  search + download, one module per data provider
+  prediction/  detectors and characterisers
+```
+
+A new sensor goes in `products/<sensor>/`: `product.py` for the `Product`
+subclass, `files.py` for parsing its file format. Add `geometry.py` if it needs a
+`SceneGeometry` subclass.
+
 ## Logging
 
 `satimg` logs under the `satimg.*` logger namespace and never installs a handler

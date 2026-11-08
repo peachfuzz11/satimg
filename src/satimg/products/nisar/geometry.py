@@ -36,7 +36,7 @@ class NisarGeometry(SceneGeometry):
 
     Needs the ``los_east`` / ``los_north`` / ``along_track_east`` /
     ``along_track_north`` / ``slant_range`` fields and the
-    ``platform_velocity`` attr :class:`~satimg.products.nisar.NisarGCOVProduct`
+    ``platform_velocity`` attr :class:`~satimg.products.nisar.product.NisarGCOVProduct`
     reads.
     """
 
@@ -61,7 +61,7 @@ class NisarGeometry(SceneGeometry):
         sight at ``rowcol``, ``[-180, 180)``: ``0`` moving straight away from
         the satellite, ``+-180`` straight towards it, ``+-90`` along track (no
         Doppler shift). Same convention as
-        :func:`satimg.sar_utils.heading_to_los`, but the look direction is the
+        :func:`satimg.sar.heading_to_los`, but the look direction is the
         product's own LOS vector, whichever side the radar looks."""
         m = self.metadata
         # the cube's LOS points target -> sensor; away from it is the look
@@ -74,7 +74,7 @@ class NisarGeometry(SceneGeometry):
         """Along-track displacement (metres) of a target moving at ``speed``
         (m/s) on compass ``heading_deg`` at pixel ``rowcol``: positive along
         the flight direction, which a target closing on the satellite is
-        shifted towards. See :func:`satimg.sar_utils.azimuth_shift_m` for the
+        shifted towards. See :func:`satimg.sar.azimuth_shift_m` for the
         physics; here the range rate is the target's velocity projected onto
         the product's own line-of-sight vector."""
         m = self.metadata
@@ -106,7 +106,7 @@ class NisarGeometry(SceneGeometry):
         """A moving target's true ``(lat, lon)`` from where it was read off
         the image -- the inverse of :meth:`doppler_pixel_shift`. Same
         signature as
-        :meth:`satimg.products.sentinel1.Sentinel1Product.correct_position`."""
+        :meth:`satimg.products.sentinel1.product.Sentinel1Product.correct_position`."""
         rowcol = self.transformer.latlon_to_rowcol((lat, lon))[0]
         true_rowcol = rowcol - self.doppler_pixel_shift(rowcol, speed, heading_deg)
         true_lat, true_lon = self.transformer.rowcol_to_latlon(true_rowcol)[0]

@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 import numpy
 
-from satimg import swath
+from satimg.products import swath
 from satimg.readers.hdf5 import open_h5, read_scaled
 from satimg.source.base import Source
 

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import numpy
 
-from satimg import s1_utils, sar_utils
+from satimg import sar
 from satimg.metadata.grids import grid_from_points
+from satimg.products.sentinel1 import files
 from satimg.scene_geometry import SceneGeometry
 
 
@@ -31,49 +32,49 @@ class Sentinel1Geometry(SceneGeometry):
 
     @classmethod
     def from_points(cls, points: list[dict], attrs: dict, shape: tuple[int, int]) -> Sentinel1Geometry:
-        """Build from :func:`satimg.s1_utils.read_geolocation`'s output: the
+        """Build from :func:`satimg.products.sentinel1.files.read_geolocation`'s output: the
         geolocation grid points give both the GCP transformer and the fields."""
-        keys = tuple(s1_utils.GEOLOC_FIELDS)
+        keys = tuple(files.GEOLOC_FIELDS)
         grid = grid_from_points(points, keys)
         fields = {
-            name: (grid["rows"], grid["cols"], grid[name], s1_utils.GEOLOC_FIELDS[name][1])
+            name: (grid["rows"], grid["cols"], grid[name], files.GEOLOC_FIELDS[name][1])
             for name in keys
         }
-        return cls(s1_utils.build_transformer(points), fields, attrs, shape)
+        return cls(files.build_transformer(points), fields, attrs, shape)
 
     # -- SAR geometry ---------------------------------------------------
     def _local_platform_heading(self, rowcol):
         """Satellite ground-track heading at ``rowcol``'s own latitude (rather
         than the single scene-wide ``platform_heading`` attr), via
-        :func:`satimg.sar_utils.ground_track_heading`."""
+        :func:`satimg.sar.ground_track_heading`."""
         lat = self.transformer.rowcol_to_latlon(rowcol)[:, 0]
         ascending = self._attrs["pass"].lower() == "ascending"
-        heading = sar_utils.ground_track_heading(
+        heading = sar.ground_track_heading(
             lat, self._attrs["orbit_inclination"], ascending
         )
         return float(heading[0]) if numpy.ndim(rowcol) == 1 else heading
 
     def heading_to_los(self, rowcol, heading_deg):
-        """See :meth:`satimg.products.sentinel1.Sentinel1Product.heading_to_los`."""
-        rel = sar_utils.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
+        """See :meth:`satimg.products.sentinel1.product.Sentinel1Product.heading_to_los`."""
+        rel = sar.heading_to_los(heading_deg, self._local_platform_heading(rowcol))
         return float(rel) if numpy.ndim(rowcol) == 1 else numpy.asarray(rel)
 
     def heading_in_image(self, rowcol, heading_deg):
-        """See :meth:`satimg.products.sentinel1.Sentinel1Product.heading_in_image`."""
-        result = sar_utils.heading_in_image(heading_deg, self._local_platform_heading(rowcol))
+        """See :meth:`satimg.products.sentinel1.product.Sentinel1Product.heading_in_image`."""
+        result = sar.heading_in_image(heading_deg, self._local_platform_heading(rowcol))
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def heading_from_image(self, rowcol, image_heading_deg):
-        """See :meth:`satimg.products.sentinel1.Sentinel1Product.heading_from_image`."""
-        result = sar_utils.heading_from_image(image_heading_deg, self._local_platform_heading(rowcol))
+        """See :meth:`satimg.products.sentinel1.product.Sentinel1Product.heading_from_image`."""
+        result = sar.heading_from_image(image_heading_deg, self._local_platform_heading(rowcol))
         return float(result) if numpy.ndim(rowcol) == 1 else numpy.asarray(result)
 
     def doppler_azimuth_shift(self, rowcol, speed: float, heading_deg: float):
-        """See :meth:`satimg.products.sentinel1.Sentinel1Product.doppler_azimuth_shift`."""
+        """See :meth:`satimg.products.sentinel1.product.Sentinel1Product.doppler_azimuth_shift`."""
         m = self.metadata
         incidence = m.incidence_angle.at(rowcol)
-        slant_range_m = m.slant_range_time.at(rowcol) * sar_utils.SPEED_OF_LIGHT / 2
-        shift_m = sar_utils.azimuth_shift_m(
+        slant_range_m = m.slant_range_time.at(rowcol) * sar.SPEED_OF_LIGHT / 2
+        shift_m = sar.azimuth_shift_m(
             speed, heading_deg, self._local_platform_heading(rowcol), incidence,
             slant_range_m, self._attrs["platform_velocity"],
         )
@@ -81,7 +82,7 @@ class Sentinel1Geometry(SceneGeometry):
         return float(shift_px) if numpy.ndim(rowcol) == 1 else numpy.asarray(shift_px)
 
     def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
-        """See :meth:`satimg.products.sentinel1.Sentinel1Product.correct_position`."""
+        """See :meth:`satimg.products.sentinel1.product.Sentinel1Product.correct_position`."""
         rowcol = self.transformer.latlon_to_rowcol((lat, lon))[0]
         shift_px = self.doppler_azimuth_shift(rowcol, speed, heading_deg)
         corrected_rowcol = (rowcol[0] - shift_px, rowcol[1])

@@ -11,8 +11,9 @@ from satimg import NisarGeometry
 from satimg.connectors import NisarConnector, get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.connectors.nisar import _wkt
-from satimg.nisar_utils import parse_polygon, parse_time
 from satimg.products import NisarGCOVProduct
+from satimg.products.nisar.files import parse_polygon, parse_time
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
 from satimg.transform.affine import AffineTransformer
 from tests import nisar_fixture as fx
@@ -120,7 +121,7 @@ def test_metadata_is_the_cube_at_sea_level(product):
 
 
 def test_thumbnail(product):
-    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE
+    assert product.thumbnail().size == THUMBNAIL_SIZE
 
 
 def test_zip_native(h5_path, tmp_path):

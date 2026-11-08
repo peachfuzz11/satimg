@@ -5,7 +5,7 @@ Pure functions taking a :class:`~satimg.source.base.Source` (or already-parsed X
 and returning plain dicts/lists/a :class:`~satimg.transform.gcp.GCPTransformer` --
 no dependency on :class:`~satimg.product.Product`, so they're testable
 independently of a full product open. See
-:class:`~satimg.products.sentinel1.Sentinel1Product` for the product-facing
+:class:`~satimg.products.sentinel1.product.Sentinel1Product` for the product-facing
 entry points that call these.
 """
 
@@ -39,7 +39,7 @@ _NS = {
 #: Sentinel-1's sun-synchronous orbit inclination, degrees -- actively maintained,
 #: so effectively constant across the whole constellation and mission (ESA mission
 #: documentation). Used to derive the local ground-track heading at a target's own
-#: latitude; see :func:`satimg.sar_utils.ground_track_heading`.
+#: latitude; see :func:`satimg.sar.ground_track_heading`.
 ORBIT_INCLINATION_DEG = 98.1813
 
 

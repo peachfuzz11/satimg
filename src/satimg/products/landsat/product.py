@@ -7,10 +7,10 @@ import datetime
 import numpy
 import xarray
 
-from satimg import landsat_utils
-from satimg.landsat_utils import BANDS
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
+from satimg.products.landsat import files
+from satimg.products.landsat.files import BANDS
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
@@ -29,11 +29,11 @@ class LandsatProduct(Product):
     a 3-band pan-sharpened true-colour render. ``metadata`` carries the per-pixel
     angle rasters (``sun_zenith``, ``sun_azimuth``, ``view_zenith``,
     ``view_azimuth``), read decimated to a coarse grid. ``MTL.json``/angle-raster
-    parsing itself lives in :mod:`satimg.landsat_utils`."""
+    parsing itself lives in :mod:`satimg.products.landsat.files`."""
 
     def __init__(self, source: Source):
         super().__init__(source)
-        mtl = landsat_utils.parse_mtl(self._source)
+        mtl = files.parse_mtl(self._source)
         self._image_attrs = mtl["image_attrs"]
         self._timestamp = mtl["timestamp"]
         self._footprint = mtl["footprint"]
@@ -41,7 +41,7 @@ class LandsatProduct(Product):
         self._shape = mtl["shape"]
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        merged = merge_bands(self._visual_paths(), match=landsat_utils.PAN, tile=tile, overview=overview)
+        merged = merge_bands(self._visual_paths(), match=files.PAN, tile=tile, overview=overview)
         return keep_open(label_bands(as_band_yx(merged), BANDS), merged)
 
     def _visual_paths(self) -> list[str]:
@@ -52,11 +52,11 @@ class LandsatProduct(Product):
         self, raw: xarray.DataArray, tile: int | tuple[int, int]
     ) -> xarray.DataArray:
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
-        rgb = a.isel(band=list(landsat_utils.RGB)).astype("float32")
+        rgb = a.isel(band=list(files.RGB)).astype("float32")
         weights = numpy.array([0.3, 0.3, 0.35], dtype="float32")
         rgb = rgb * weights[:, None, None]
         rgb = rgb / (rgb.sum(dim="band") + 1e-12)
-        rgb = rgb * a.isel(band=landsat_utils.PAN).astype("float32")
+        rgb = rgb * a.isel(band=files.PAN).astype("float32")
         rgb = 0.75 * rgb.fillna(0) ** (1 / 1.4)
         return label_bands(as_band_yx(rgb.clip(0, 255).astype("uint8")),
                            ("red", "green", "blue"))
@@ -64,9 +64,9 @@ class LandsatProduct(Product):
     def _read_metadata(self) -> Metadata:
         pan_transform = self._transformer.transform
         fields = {}
-        for name, fname in landsat_utils.ANGLE_FILES.items():
+        for name, fname in files.ANGLE_FILES.items():
             path = self._source.raster_path(fname)
-            rows, cols, values = landsat_utils.read_angle_grid(path, pan_transform)
+            rows, cols, values = files.read_angle_grid(path, pan_transform)
             fields[name] = self._field(rows, cols, values, name=name, units="degrees")
 
         want = ("SUN_ELEVATION", "SUN_AZIMUTH", "EARTH_SUN_DISTANCE", "ROLL_ANGLE")

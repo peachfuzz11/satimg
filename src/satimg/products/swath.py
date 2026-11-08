@@ -1,20 +1,14 @@
-"""Shared machinery for sensor-geometry swaths that ship a latitude /
-longitude per pixel (VIIRS, MODIS, Sentinel-3 OLCI): choosing the coarse node
-grid a :class:`~satimg.transform.swath.SwathTransformer` and the per-pixel metadata
-fields are kept on, and tracing a footprint.
+"""Shared by the sensor-geometry swath products that ship a latitude /
+longitude per pixel (VIIRS, MODIS, Sentinel-3 OLCI): choosing the coarse
+node grid a :class:`~satimg.transform.swath.SwathTransformer` and the per-pixel
+metadata fields are kept on, and tracing a footprint.
 """
 
 from __future__ import annotations
 
 import numpy
 
-EARTH_RADIUS_M = 6_371_000.0
-
-
-def unit_vectors(lat, lon) -> numpy.ndarray:
-    """``(3, ...)`` earth-centred unit vectors of ``lat`` / ``lon`` degrees."""
-    lat, lon = numpy.deg2rad(lat), numpy.deg2rad(lon)
-    return numpy.stack([numpy.cos(lat) * numpy.cos(lon), numpy.cos(lat) * numpy.sin(lon), numpy.sin(lat)])
+from satimg.transform.swath import EARTH_RADIUS_M, unit_vectors
 
 
 def node_columns(lat: numpy.ndarray, lon: numpy.ndarray, tolerance_m: float) -> numpy.ndarray:
@@ -25,15 +19,15 @@ def node_columns(lat: numpy.ndarray, lon: numpy.ndarray, tolerance_m: float) -> 
     spaced columns would need several times more nodes for the same
     accuracy. Transpose both to choose rows instead."""
     width = lat.shape[1]
-    truth = unit_vectors(lat, lon)  # (3, rows, width)
+    truth = unit_vectors(lat, lon)  # (rows, width, 3)
     nodes = numpy.array([0, width - 1])
     every = numpy.arange(width)
     while True:
         k = numpy.clip(numpy.searchsorted(nodes, every, side="right") - 1, 0, len(nodes) - 2)
         t = (every - nodes[k]) / (nodes[k + 1] - nodes[k])
-        guess = truth[:, :, nodes[k]] * (1 - t) + truth[:, :, nodes[k + 1]] * t
-        guess /= numpy.linalg.norm(guess, axis=0)
-        error = numpy.nan_to_num(numpy.linalg.norm(guess - truth, axis=0) * EARTH_RADIUS_M).max(axis=0)
+        guess = truth[:, nodes[k]] * (1 - t)[:, None] + truth[:, nodes[k + 1]] * t[:, None]
+        guess /= numpy.linalg.norm(guess, axis=-1, keepdims=True)
+        error = numpy.nan_to_num(numpy.linalg.norm(guess - truth, axis=-1) * EARTH_RADIUS_M).max(axis=0)
         bad = numpy.flatnonzero(error > tolerance_m)
         if not len(bad):
             return nodes

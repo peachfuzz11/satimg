@@ -5,7 +5,7 @@ geocoding).
 Pure functions taking a :class:`~satimg.source.base.Source` and returning plain
 dicts/arrays -- no dependency on :class:`~satimg.product.Product`, so they're
 testable independently of a full product open. See
-:class:`~satimg.products.sentinel2.Sentinel2L1CProduct` for the
+:class:`~satimg.products.sentinel2.product.Sentinel2L1CProduct` for the
 product-facing entry point that calls these.
 """
 
