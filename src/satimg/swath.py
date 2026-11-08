@@ -1,6 +1,6 @@
 """Shared machinery for sensor-geometry swaths that ship a latitude /
 longitude per pixel (VIIRS, MODIS, Sentinel-3 OLCI): choosing the coarse node
-grid a :class:`~satimg.transform.SwathTransformer` and the per-pixel metadata
+grid a :class:`~satimg.transform.swath.SwathTransformer` and the per-pixel metadata
 fields are kept on, and reading scaled HDF5 / netCDF4 variables.
 """
 

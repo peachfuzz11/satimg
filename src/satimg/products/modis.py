@@ -16,7 +16,7 @@ from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 
 #: metres the transformer may be off the 1 km geolocation between its nodes
 TRANSFORMER_TOLERANCE_M = 30.0
@@ -27,12 +27,6 @@ GEOMETRY_TOLERANCE_M = 125.0
 #: water is a few percent in the NIR, a ship or cloud far brighter
 _VISUAL_MAX = 0.4
 
-
-class ModisGeometry(SceneGeometry):
-    """A MODIS granule's :class:`~satimg.scene_geometry.SceneGeometry`: loads
-    its transformer as a :class:`~satimg.transform.SwathTransformer`."""
-
-    transformer_cls = SwathTransformer
 
 
 @register(r"^M[OY]D02QKM(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
@@ -157,10 +151,10 @@ class ModisProduct(Product):
         return self._transformer
 
     @property
-    def geometry(self) -> ModisGeometry:
+    def geometry(self) -> SceneGeometry:
         m = self.metadata
         fields = {name: (m[name]._rows, m[name]._cols, m[name]._values, m[name].units) for name in m}
-        return ModisGeometry(self._coarse_transformer, fields, self._attrs, self._shape)
+        return SceneGeometry(self._coarse_transformer, fields, self._attrs, self._shape)
 
     @property
     def timestamp(self) -> datetime.datetime:

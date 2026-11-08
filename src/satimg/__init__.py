@@ -11,7 +11,8 @@
 """
 
 import logging
-from importlib.metadata import PackageNotFoundError, version as _version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
 
 # Log under the ``satimg.*`` namespace; the app attaches handlers.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
@@ -28,9 +29,6 @@ from satimg.metadata import Field, Metadata
 from satimg.nisar_geometry import NisarGeometry
 from satimg.patch import Patch
 from satimg.product import Product, open, open_zip
-from satimg.products.modis import ModisGeometry
-from satimg.products.sentinel3 import Sentinel3Geometry
-from satimg.products.viirs import ViirsGeometry
 from satimg.registry import UnknownProductError
 from satimg.s1_geometry import Sentinel1Geometry
 from satimg.scene_geometry import SceneGeometry
@@ -54,9 +52,6 @@ __all__ = [
     "SceneGeometry",
     "Sentinel1Geometry",
     "NisarGeometry",
-    "ViirsGeometry",
-    "ModisGeometry",
-    "Sentinel3Geometry",
     "UnknownProductError",
     "CredentialsError",
 ]

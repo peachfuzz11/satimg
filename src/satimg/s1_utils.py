@@ -2,7 +2,7 @@
 the GCP transformer built from it.
 
 Pure functions taking a :class:`~satimg.source.Source` (or already-parsed XML)
-and returning plain dicts/lists/a :class:`~satimg.transform.GCPTransformer` --
+and returning plain dicts/lists/a :class:`~satimg.transform.gcp.GCPTransformer` --
 no dependency on :class:`~satimg.product.Product`, so they're testable
 independently of a full product open. See
 :class:`~satimg.products.sentinel1.Sentinel1Product` for the product-facing
@@ -19,7 +19,7 @@ from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 
 from satimg.source import Source
-from satimg.transform import GCPTransformer
+from satimg.transform.gcp import GCPTransformer
 
 #: measurement-file polarisation -> sort order (co-pol before cross-pol).
 POL_ORDER = {"vv": 0, "vh": 1, "hh": 2, "hv": 3}
@@ -130,7 +130,7 @@ def read_geolocation(
 
 
 def build_transformer(points: list[dict]) -> GCPTransformer:
-    """A :class:`~satimg.transform.GCPTransformer` (WGS84) from
+    """A :class:`~satimg.transform.gcp.GCPTransformer` (WGS84) from
     :func:`read_geolocation`'s geolocation grid points."""
     gcps = [
         GroundControlPoint(

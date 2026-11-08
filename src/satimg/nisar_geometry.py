@@ -45,7 +45,7 @@ class NisarGeometry(SceneGeometry):
         """A compass heading (degrees clockwise from true north) as a
         direction in the image (degrees clockwise from image "up"), at pixel
         ``rowcol`` -- the compass heading turned by the grid convergence (see
-        :meth:`~satimg.transform.Transformer.north_angle`). The image is a
+        :meth:`~satimg.transform.base.Transformer.north_angle`). The image is a
         plain map, so this is a rotation only: never mirrored."""
         north = self.transformer.north_angle(rowcol)
         return _scalar_or_array((numpy.asarray(heading_deg, dtype=float) + north) % 360.0, rowcol)
@@ -96,7 +96,7 @@ class NisarGeometry(SceneGeometry):
             numpy.atleast_1d(m.along_track_east.at(rowcol)), numpy.atleast_1d(m.along_track_north.at(rowcol))
         ))
         direction = numpy.deg2rad(numpy.atleast_1d(self.heading_in_image(rowcol, track)))
-        t = self.transformer._transform
+        t = self.transformer.transform
         d_row = -shift_m * numpy.cos(direction) / abs(t.e)
         d_col = shift_m * numpy.sin(direction) / abs(t.a)
         out = numpy.column_stack((d_row, d_col))

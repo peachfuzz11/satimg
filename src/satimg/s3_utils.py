@@ -139,7 +139,7 @@ def read_geolocation(h5) -> dict:
 
 
 def nodes(geolocation: dict, tolerance_m: float) -> dict:
-    """A :class:`~satimg.transform.SwathTransformer` node grid: every tie
+    """A :class:`~satimg.transform.swath.SwathTransformer` node grid: every tie
     column, and the fewest tie rows between which linear interpolation down
     each column stays within ``tolerance_m``. No scans: OLCI is a
     push-broom."""

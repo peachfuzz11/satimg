@@ -4,7 +4,7 @@ Every sensor ships geometry that varies across the scene but is stored on a
 *coarse* grid -- Sentinel-1's ``geolocationGridPoint`` list, Sentinel-2's 23x23
 angle grids, Landsat's decimated angle rasters. :class:`Metadata` exposes those as
 named :class:`Field` s that interpolate to any pixel, the same way
-:class:`~satimg.transform.Transformer` converts coordinates::
+:class:`~satimg.transform.base.Transformer` converts coordinates::
 
     m = product.metadata
     m.fields                       # ['incidence_angle', 'slant_range_time', ...]
@@ -32,7 +32,7 @@ import xarray
 
 from satimg.readers import CHUNK_PX
 from satimg.tiling import read_window
-from satimg.transform import _as_n2
+from satimg.transform.base import as_n2
 
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window
@@ -125,7 +125,7 @@ class Field:
         """Value(s) at ``coords`` -- a ``(row, col)`` pair, a list of pairs, or an
         ``(N, 2)`` array. A single pair returns a ``float``; many return ``(N,)``.
         """
-        rc = _as_n2(coords)
+        rc = as_n2(coords)
         out = numpy.asarray(bilinear(self._rows, self._cols, self._values, rc[:, 0], rc[:, 1]))
         return float(out[0]) if numpy.ndim(coords) == 1 else out
 

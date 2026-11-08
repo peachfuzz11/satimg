@@ -16,8 +16,7 @@ from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import Transformer
-
+from satimg.transform.affine import AffineTransformer
 
 #: side of the square grid :attr:`LandsatProduct.geometry` stores each angle field on
 GEOMETRY_GRID = 32
@@ -62,7 +61,7 @@ class LandsatProduct(Product):
                            ("red", "green", "blue"))
 
     def _read_metadata(self) -> Metadata:
-        pan_transform = self._transformer._transform
+        pan_transform = self._transformer.transform
         fields = {}
         for name, fname in landsat_utils.ANGLE_FILES.items():
             path = self._source.raster_path(fname)
@@ -90,7 +89,7 @@ class LandsatProduct(Product):
         return self._shape[1]
 
     @property
-    def transformer(self) -> Transformer:
+    def transformer(self) -> AffineTransformer:
         return self._transformer
 
     @property

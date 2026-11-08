@@ -164,7 +164,7 @@ def read_geolocation(h5) -> dict:
 
 
 def nodes(geolocation: dict, offsets: tuple[float, float], tolerance_m: float) -> dict:
-    """A :class:`~satimg.transform.SwathTransformer` node grid in 250 m pixel
+    """A :class:`~satimg.transform.swath.SwathTransformer` node grid in 250 m pixel
     coordinates: :func:`read_geolocation`'s scan-edge rows and
     :func:`~satimg.swath.node_columns`, each 1 km pixel placed at
     ``4 i + offset`` (pixel centres at ``+ 0.5``); ``"row_index"`` /

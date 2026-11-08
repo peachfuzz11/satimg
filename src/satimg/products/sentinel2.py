@@ -13,7 +13,7 @@ from satimg.readers import CHUNK_PX, keep_open, load_thumbnail, merge_bands, ope
 from satimg.registry import register
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import Transformer
+from satimg.transform.affine import AffineTransformer
 
 
 @register(r"^S2[ABCD]_MSIL1C_\d{8}T\d{6}_.*_\d{8}T\d{6}\.SAFE$")
@@ -30,7 +30,7 @@ class Sentinel2L1CProduct(Product):
         self._tl = s2_utils.parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]
         self._gsd = s2_utils.BAND_GSD_M[self._meta["band_names"][1]]
-        self._transformer = Transformer(self._tl["transforms"][self._gsd], self._tl["crs"])
+        self._transformer = AffineTransformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         merged = merge_bands(self._meta["reflectance"], match=1, tile=tile, overview=overview)
@@ -80,7 +80,7 @@ class Sentinel2L1CProduct(Product):
         return self._tl["pixel_shapes"][self._gsd][1]
 
     @property
-    def transformer(self) -> Transformer:
+    def transformer(self) -> AffineTransformer:
         return self._transformer
 
     @property

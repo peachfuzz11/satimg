@@ -18,7 +18,7 @@ from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 
 #: metres the transformer may be off the tie-point geolocation between its
 #: node rows (pixels are ~300 m)
@@ -32,12 +32,6 @@ GEOMETRY_GRID = 32
 _RGB = ("Oa08", "Oa06", "Oa04")
 _VISUAL_MAX = 0.3
 
-
-class Sentinel3Geometry(SceneGeometry):
-    """An OLCI product's :class:`~satimg.scene_geometry.SceneGeometry`: loads
-    its transformer as a :class:`~satimg.transform.SwathTransformer`."""
-
-    transformer_cls = SwathTransformer
 
 
 @register(r"^S3[A-D]_OL_1_EFR____\d{8}T\d{6}_\d{8}T\d{6}_")
@@ -166,9 +160,9 @@ class Sentinel3OLCIProduct(Product):
         return self._transformer
 
     @property
-    def geometry(self) -> Sentinel3Geometry:
+    def geometry(self) -> SceneGeometry:
         shape = (self.height, self.width)
-        return Sentinel3Geometry(self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape)
+        return SceneGeometry(self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape)
 
     @property
     def timestamp(self) -> datetime.datetime:

@@ -66,7 +66,7 @@ from satimg.tiling import read_window
 if TYPE_CHECKING:  # pragma: no cover
     import PIL.Image
 
-    from satimg.transform import Transformer
+    from satimg.transform.base import Transformer
 
 logger = logging.getLogger(__name__)
 

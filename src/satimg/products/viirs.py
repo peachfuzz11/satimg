@@ -18,7 +18,7 @@ from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 
 #: metres the product's own transformer may be off the GEO file's per-pixel
 #: positions (a DNB pixel is ~750 m)
@@ -37,12 +37,6 @@ NANOWATTS = 1e9
 _NIGHT_STRETCH = (0.5, 500.0)
 _DAY_STRETCH = (3e4, 3e7)
 
-
-class ViirsGeometry(SceneGeometry):
-    """A VIIRS DNB granule's :class:`~satimg.scene_geometry.SceneGeometry`:
-    loads its transformer as a :class:`~satimg.transform.SwathTransformer`."""
-
-    transformer_cls = SwathTransformer
 
 
 @register(r"^V(NP|J\d)02DNB(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
@@ -159,12 +153,12 @@ class ViirsDNBProduct(Product):
         return self._transformer
 
     @property
-    def geometry(self) -> ViirsGeometry:
+    def geometry(self) -> SceneGeometry:
         """As :attr:`Product.geometry`: the transformer at
         :data:`GEOMETRY_TOLERANCE_M`, the angle fields on a
         :data:`GEOMETRY_GRID` square grid -- a few hundred KB of JSON."""
         shape = (self.height, self.width)
-        return ViirsGeometry(
+        return SceneGeometry(
             self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape
         )
 

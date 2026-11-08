@@ -1,141 +1,27 @@
-"""Pixel <-> geographic coordinate conversion.
-
-:class:`Transformer` wraps an affine ``transform`` + ``crs`` (the common case).
-:class:`GCPTransformer` does the same job for products that only ship ground
-control points (Sentinel-1).
-
-Both accept a single ``(a, b)`` pair, a list of pairs, or an ``(N, 2)`` array and
-always return an ``(N, 2)`` array. ``rowcol`` is ``(row, col)`` = ``(y, x)``;
-``latlon`` is ``(lat, lon)``.
-
-Each round-trips through a JSON-serialisable dict of its own (``to_dict`` /
-``from_dict``), so a product's georeferencing can be stored and used after the
-product file is gone.
-"""
+"""Georeferencing of a sensor-geometry swath by its per-pixel geolocation."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import numpy
-import rasterio
-from rasterio import warp
-from rasterio.control import GroundControlPoint
-from rasterio.crs import CRS
-from rasterio.transform import Affine
 
-Coords = Sequence[float] | Sequence[Sequence[float]] | numpy.ndarray
+from satimg.transform.base import Coords, Transformer, as_n2
+
+#: mean earth radius, metres
+EARTH_RADIUS_M = 6_371_000.0
 
 
-def _as_n2(coords: Coords) -> numpy.ndarray:
-    arr = numpy.array(coords, dtype=float)
-    if arr.ndim == 1:
-        arr = arr.reshape(1, 2)
-    return arr
-
-
-class Transformer:
-    """Affine pixel/CRS transform plus reprojection to and from EPSG:4326."""
-
-    def __init__(self, transform, crs):
-        self._transform = transform
-        self._crs = crs
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}(crs={self._crs}, transform={self._transform})"
-
-    def to_dict(self) -> dict:
-        """A JSON-serialisable dict that :meth:`from_dict` turns back into an
-        equal transformer."""
-        return {"transform": list(self._transform)[:6], "crs": self._crs.to_wkt()}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> Transformer:
-        return cls(Affine(*data["transform"]), CRS.from_wkt(data["crs"]))
-
-    def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
-        rc = _as_n2(coords)
-        xs, ys = self._transform * (rc[:, 1], rc[:, 0])
-        lons, lats = numpy.asarray(xs), numpy.asarray(ys)
-        if not self._crs.is_geographic:
-            lons, lats = warp.transform(self._crs, "EPSG:4326", lons.tolist(), lats.tolist())
-            lons, lats = numpy.asarray(lons), numpy.asarray(lats)
-        return numpy.column_stack((lats, lons))
-
-    def latlon_to_rowcol(self, coords: Coords) -> numpy.ndarray:
-        ll = _as_n2(coords)
-        lats, lons = ll[:, 0], ll[:, 1]
-        if not self._crs.is_geographic:
-            xs, ys = warp.transform("EPSG:4326", self._crs, lons.tolist(), lats.tolist())
-            lons, lats = numpy.asarray(xs), numpy.asarray(ys)
-        cols, rows = ~self._transform * (lons, lats)
-        return numpy.column_stack((numpy.asarray(rows), numpy.asarray(cols)))
-
-    def north_angle(self, coords: Coords) -> numpy.ndarray:
-        """The direction true north points in the image at each ``(row, col)``,
-        in degrees clockwise from image "up" (decreasing row), ``[0, 360)``
-        -- an ``(N,)`` array.
-
-        ``0`` for a north-up geographic grid; a few degrees either way across
-        a UTM zone (grid convergence); anything at all on a polar
-        stereographic grid. Found by stepping a short way north from each
-        point and seeing where that lands in pixels, so it holds for any CRS.
-        (Not for a :class:`GCPTransformer`, whose ``latlon_to_rowcol`` snaps
-        to whole pixels.)
-        """
-        rc = _as_n2(coords)
-        latlon = self.rowcol_to_latlon(rc)
-        # ~10 m north; towards the equator instead right at a pole
-        step = numpy.where(latlon[:, 0] > 89.9, -1e-4, 1e-4)
-        ahead = self.latlon_to_rowcol(numpy.column_stack((latlon[:, 0] + step, latlon[:, 1])))
-        d_row, d_col = (ahead - rc).T * numpy.sign(step)
-        return numpy.rad2deg(numpy.arctan2(d_col, -d_row)) % 360.0
-
-
-class GCPTransformer(Transformer):
-    """Coordinate transform backed by ground control points."""
-
-    def __init__(self, gcps, crs):
-        super().__init__(rasterio.transform.GCPTransformer(gcps), crs)
-        self._gcps = list(gcps)
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}(crs={self._crs}, gcps={len(self._gcps)})"
-
-    def to_dict(self) -> dict:
-        return {
-            "gcps": [[g.row, g.col, g.x, g.y, g.z] for g in self._gcps],
-            "crs": self._crs.to_wkt(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> GCPTransformer:
-        gcps = [GroundControlPoint(row=r, col=c, x=x, y=y, z=z) for r, c, x, y, z in data["gcps"]]
-        return cls(gcps, CRS.from_wkt(data["crs"]))
-
-    def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
-        rc = _as_n2(coords)
-        lons, lats = self._transform.xy(rc[:, 0].tolist(), rc[:, 1].tolist(), offset="center")
-        return numpy.column_stack((numpy.asarray(lats), numpy.asarray(lons)))
-
-    def latlon_to_rowcol(self, coords: Coords) -> numpy.ndarray:
-        ll = _as_n2(coords)
-        rows, cols = self._transform.rowcol(ll[:, 1].tolist(), ll[:, 0].tolist())
-        return numpy.column_stack((numpy.asarray(rows), numpy.asarray(cols)))
-
-
-def _unit_vectors(lat, lon) -> numpy.ndarray:
+def unit_vectors(lat, lon) -> numpy.ndarray:
     """``(..., 3)`` earth-centred unit vectors of ``lat`` / ``lon`` degrees."""
     lat, lon = numpy.deg2rad(lat), numpy.deg2rad(lon)
     return numpy.stack([numpy.cos(lat) * numpy.cos(lon), numpy.cos(lat) * numpy.sin(lon), numpy.sin(lat)], axis=-1)
 
 
 class SwathTransformer(Transformer):
-    """Coordinate transform for a sensor-geometry swath (VIIRS) that ships a
-    latitude / longitude for every pixel: those arrays kept on a coarse
-    ``rows`` x ``cols`` node grid (pixel coordinates, pixel centres at
-    ``i + 0.5``) and interpolated -- bilinearly, on the unit sphere, so the
-    antimeridian and the poles need no special casing.
+    """Coordinate conversion for a sensor-geometry swath (VIIRS, MODIS, OLCI)
+    that ships a latitude / longitude for every pixel: those arrays kept on
+    a coarse ``rows`` x ``cols`` node grid (pixel coordinates, pixel centres
+    at ``i + 0.5``) and interpolated -- bilinearly, on the unit sphere, so
+    the antimeridian and the poles need no special casing.
 
     A whisk-broom scanner images ``scan_rows`` rows at a time, and its
     geolocation jumps from one scan to the next (VIIRS's "bow-tie": scans
@@ -149,15 +35,15 @@ class SwathTransformer(Transformer):
     either of the pixels seeing a point may be returned.
     """
 
+    key = "swath"
+
     def __init__(self, rows, cols, lat, lon, scan_rows: int | None = None):
         self._rows = numpy.asarray(rows, dtype=float)
         self._cols = numpy.asarray(cols, dtype=float)
         self._lat = numpy.asarray(lat, dtype=float)
         self._lon = numpy.asarray(lon, dtype=float)
-        self._xyz = _unit_vectors(self._lat, self._lon)
+        self._xyz = unit_vectors(self._lat, self._lon)
         self._scan_rows = scan_rows
-        self._transform = None
-        self._crs = CRS.from_epsg(4326)
         # node index range [first, last] of each scan (one scan: everything)
         if scan_rows:
             scan_of_node = (self._rows // scan_rows).astype(int)
@@ -183,7 +69,7 @@ class SwathTransformer(Transformer):
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> SwathTransformer:
+    def _from_dict(cls, data: dict) -> SwathTransformer:
         swath = data["swath"]
         return cls(swath["rows"], swath["cols"], swath["lat"], swath["lon"], swath.get("scan_rows"))
 
@@ -213,7 +99,7 @@ class SwathTransformer(Transformer):
         return v / numpy.linalg.norm(v, axis=-1, keepdims=True)
 
     def rowcol_to_latlon(self, coords: Coords) -> numpy.ndarray:
-        rc = _as_n2(coords)
+        rc = as_n2(coords)
         v = self._xyz_at(rc[:, 0], rc[:, 1])
         lat = numpy.rad2deg(numpy.arcsin(numpy.clip(v[:, 2], -1, 1)))
         lon = numpy.rad2deg(numpy.arctan2(v[:, 1], v[:, 0]))
@@ -244,8 +130,8 @@ class SwathTransformer(Transformer):
         return rows, cols, miss, pixel
 
     def latlon_to_rowcol(self, coords: Coords) -> numpy.ndarray:
-        ll = _as_n2(coords)
-        target = _unit_vectors(ll[:, 0], ll[:, 1])
+        ll = as_n2(coords)
+        target = unit_vectors(ll[:, 0], ll[:, 1])
         nodes = numpy.nan_to_num(self._xyz.reshape(-1, 3), nan=0.0)
         out = numpy.full((len(ll), 2), numpy.nan)
         # the nearest-node search is a (points x nodes) product: bound it to

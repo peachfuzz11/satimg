@@ -8,12 +8,12 @@ import numpy
 import pytest
 
 import satimg
-from satimg import Sentinel3Geometry
+from satimg import SceneGeometry
 from satimg.connectors import Sentinel3Connector, get_connector
 from satimg.masks.land import LandMask
 from satimg.products import Sentinel3OLCIProduct
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 from tests import minify_sentinel3 as fx
 from tests.conftest import _PRODUCTS
 
@@ -133,7 +133,7 @@ def test_patches_and_zip(product, tmp_path):
 
 def test_geometry_round_trips(product):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
-    geometry = Sentinel3Geometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     rc = (64.5, 128.5)
     assert _metres(geometry.transformer.rowcol_to_latlon(rc), product.transformer.rowcol_to_latlon(rc))[0] < 100

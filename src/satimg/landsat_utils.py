@@ -4,7 +4,7 @@ attrs) and the per-pixel angle rasters (``SZA``/``SAA``/``VZA``/``VAA.TIF``).
 Pure functions taking a :class:`~satimg.source.Source` (or, for the angle
 rasters, a GDAL path from :meth:`~satimg.source.Source.raster_path`) and
 returning plain dicts/arrays/a
-:class:`~satimg.transform.Transformer` -- no dependency on
+:class:`~satimg.transform.affine.AffineTransformer` -- no dependency on
 :class:`~satimg.product.Product`, so they're testable independently of a full
 product open. See :class:`~satimg.products.landsat.LandsatProduct` for the
 product-facing entry points that call these.
@@ -21,7 +21,7 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 
 from satimg.source import Source
-from satimg.transform import Transformer
+from satimg.transform.affine import AffineTransformer
 
 #: band order of :attr:`~satimg.products.landsat.LandsatProduct.raw`.
 BANDS = ("coastal", "blue", "green", "red", "nir08", "swir16", "swir22", "pan",
@@ -41,7 +41,7 @@ ANGLE_SCALE = 0.01
 
 def parse_mtl(source: Source) -> dict:
     """``MTL.json``'s image attrs, acquisition timestamp, footprint, and
-    :class:`~satimg.transform.Transformer` and pan-grid ``(lines, samples)``
+    :class:`~satimg.transform.affine.AffineTransformer` and pan-grid ``(lines, samples)``
     shape (UTM zone/hemisphere resolved from
     ``PROJECTION_ATTRIBUTES``, since Landsat ships no CRS/affine transform of
     its own the way an embedded GCP list or ``MTD_TL.xml`` geocoding block
@@ -74,7 +74,7 @@ def parse_mtl(source: Source) -> dict:
     ul_x = float(proj["CORNER_UL_PROJECTION_X_PRODUCT"]) - gsd / 2
     ul_y = float(proj["CORNER_UL_PROJECTION_Y_PRODUCT"]) + gsd / 2
     transform = Affine(gsd, 0, ul_x, 0, -gsd, ul_y)
-    transformer = Transformer(transform, CRS.from_epsg(epsg))
+    transformer = AffineTransformer(transform, CRS.from_epsg(epsg))
     shape = (int(proj["PANCHROMATIC_LINES"]), int(proj["PANCHROMATIC_SAMPLES"]))
 
     return {

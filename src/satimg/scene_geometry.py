@@ -1,7 +1,7 @@
 """A product's scene geometry, detached from the product files.
 
 :class:`SceneGeometry` holds what it takes to map pixels to coordinates and
-sample per-pixel metadata -- the :class:`~satimg.transform.Transformer`, the
+sample per-pixel metadata -- the :class:`~satimg.transform.base.Transformer`, the
 image shape, the coarse metadata grids and the scene-wide attrs -- and
 round-trips through a plain JSON-serialisable dict. An app can store it while
 the product is open and keep using it after the product file is gone::
@@ -21,7 +21,7 @@ import math
 import numpy
 
 from satimg.metadata import Field, Metadata
-from satimg.transform import Transformer
+from satimg.transform.base import Transformer
 
 
 def _nan_to_none(values) -> list:
@@ -44,9 +44,6 @@ class SceneGeometry:
     coarse grid a :class:`~satimg.metadata.Field` interpolates -- and ``shape``
     is the full image's ``(height, width)``.
     """
-
-    #: the transformer class :meth:`from_dict` loads the stored transformer as
-    transformer_cls = Transformer
 
     def __init__(self, transformer: Transformer, fields: dict, attrs: dict, shape: tuple[int, int]):
         self._transformer = transformer
@@ -102,7 +99,7 @@ class SceneGeometry:
             for name, f in data["fields"].items()
         }
         return cls(
-            cls.transformer_cls.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
+            Transformer.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
         )
 
     # -- shape / transform / metadata -----------------------------------

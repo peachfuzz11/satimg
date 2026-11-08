@@ -135,7 +135,7 @@ def read_geolocation(geo_h5) -> dict:
 
 
 def nodes(geolocation: dict, tolerance_m: float) -> dict:
-    """A node grid for :class:`~satimg.transform.SwathTransformer`:
+    """A node grid for :class:`~satimg.transform.swath.SwathTransformer`:
     :func:`read_geolocation`'s scan-edge rows,
     :func:`~satimg.swath.node_columns` at ``tolerance_m``, as
     pixel-centre coordinates (``i + 0.5``), latitude / longitude sampled

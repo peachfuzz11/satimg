@@ -26,7 +26,7 @@ from satimg.registry import register
 from satimg.scene_geometry import coarsen
 from satimg.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform import Transformer
+from satimg.transform.affine import AffineTransformer
 
 #: side of the square grid :attr:`NisarGCOVProduct.geometry` stores each
 #: radar-grid field on
@@ -82,7 +82,7 @@ class NisarGCOVProduct(Product):
             if name in cube
         }
         self._geometry = NisarGeometry(
-            Transformer(grid["transform"], grid["crs"]), fields, attrs, grid["shape"]
+            AffineTransformer(grid["transform"], grid["crs"]), fields, attrs, grid["shape"]
         )
 
     # -- pixels ----------------------------------------------------------------
@@ -92,7 +92,7 @@ class NisarGCOVProduct(Product):
         return [
             vrt(
                 nisar_utils.gdal_path(self._source, self._h5, f"{nisar_utils.GRID}/{term}"),
-                (self.height, self.width), transform=t._transform, crs=t._crs,
+                (self.height, self.width), transform=t.transform, crs=t.crs,
             )
             for term in self._terms
         ]
@@ -140,7 +140,7 @@ class NisarGCOVProduct(Product):
         return self._geometry.width
 
     @property
-    def transformer(self) -> Transformer:
+    def transformer(self) -> AffineTransformer:
         return self._geometry.transformer
 
     @property

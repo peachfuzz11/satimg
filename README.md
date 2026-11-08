@@ -273,8 +273,9 @@ geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-For NISAR, load it as a `NisarGeometry` the same way; for VIIRS, as a
-`ViirsGeometry` (its swath transformer stored to within 250 m).
+For NISAR, load it as a `NisarGeometry` the same way. Whichever class loads it,
+the transformer comes back as the kind that was stored: affine, ground control
+points (Sentinel-1) or swath (VIIRS, MODIS, OLCI; stored to within a third of a pixel).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 

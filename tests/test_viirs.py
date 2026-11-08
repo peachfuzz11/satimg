@@ -7,14 +7,14 @@ import numpy
 import pytest
 
 import satimg
-from satimg import ViirsGeometry
+from satimg import SceneGeometry
 from satimg.connectors import ViirsDNBConnector, get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.prediction import ViirsBoatDetector
 from satimg.products import ViirsDNBProduct
 from satimg.registry import resolve
 from satimg.swath import node_columns, scan_edge_rows
-from satimg.transform import SwathTransformer
+from satimg.transform.swath import SwathTransformer
 from satimg.viirs_utils import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
@@ -190,7 +190,7 @@ def test_open_reads_no_full_resolution_array():
 
 def test_geometry_round_trips(product, truth):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
-    geometry = ViirsGeometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     lat, lon = truth
     got = geometry.transformer.rowcol_to_latlon((40.5, 180.5))
