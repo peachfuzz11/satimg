@@ -12,8 +12,8 @@ from satimg.connectors import ViirsDNBConnector, get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.prediction import ViirsBoatDetector
 from satimg.products import ViirsDNBProduct
-from satimg.products.swath import node_columns
-from satimg.products.viirs.files import granule_key
+from satimg.products.swath import node_columns, scan_edge_rows
+from satimg.products.viirs.files import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
 from satimg.transform.swath import SwathTransformer
@@ -107,6 +107,18 @@ def test_visual_stretches_lights_bright(product):
     assert numpy.median(v) < 100
     assert v[fx.FILL] == 0
     assert product.thumbnail().size == THUMBNAIL_SIZE
+
+
+def test_geolocation_is_the_scan_edge_rows(truth):
+    # from #33: the rows read are exactly the file's scan-edge rows, scaled
+    lat, lon = truth
+    with h5py.File(GEO) as g:
+        geolocation = read_geolocation(g)
+    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
+    assert geolocation["shape"] == lat.shape
+    numpy.testing.assert_array_equal(geolocation["rows"], rows)
+    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
+        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
 
 
 def test_open_reads_no_full_resolution_array():
