@@ -44,7 +44,7 @@ def pad_band(name: str) -> str:
 
 def parse_mtd(source: Source) -> dict:
     """``reflectance``/``tci`` are raster paths for GDAL
-    (:meth:`~satimg.source.Source.raster_path`)."""
+    (:meth:`~satimg.source.base.Source.raster_path`)."""
     mtd = source.find_file("MTD_MSIL1C.xml")
     if mtd is None:
         raise FileNotFoundError(f"no MTD_MSIL1C.xml under {source.name}")

@@ -31,7 +31,7 @@ detected by content, not by extension -- via a
 :class:`~satimg.source.base.Source` factory (:func:`~satimg.source.factory.open_source`).
 A zip is read zip-native, straight off the archive with nothing ever
 extracted: metadata files through Python's ``zipfile``, rasters by GDAL's
-``/vsizip/`` (see :meth:`~satimg.source.Source.raster_path`), so every view
+``/vsizip/`` (see :meth:`~satimg.source.base.Source.raster_path`), so every view
 -- ``raw`` / ``visual`` / ``patches`` / ``metadata`` included -- works as it
 does on a directory. GDAL seeks inside a stored (uncompressed) member at
 plain file speed; a deflated member works too, but each seek re-inflates
@@ -104,7 +104,7 @@ class Product(abc.ABC):
         Does not touch a raw/visual view opened by an in-flight
         :meth:`patches` / :meth:`patches_at` call -- those close themselves
         when their own loop ends. Called on ``with`` exit; idempotent (both
-        this and :meth:`~satimg.source.Source.close` are). A later access
+        this and :meth:`~satimg.source.base.Source.close` are). A later access
         rebuilds :attr:`raw` / :attr:`visual`: GDAL reopens a zip-native
         product's archive by path, not through the closed source.
         """

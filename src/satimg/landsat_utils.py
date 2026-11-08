@@ -2,7 +2,7 @@
 attrs) and the per-pixel angle rasters (``SZA``/``SAA``/``VZA``/``VAA.TIF``).
 
 Pure functions taking a :class:`~satimg.source.base.Source` (or, for the angle
-rasters, a GDAL path from :meth:`~satimg.source.Source.raster_path`) and
+rasters, a GDAL path from :meth:`~satimg.source.base.Source.raster_path`) and
 returning plain dicts/arrays/a
 :class:`~satimg.transform.affine.AffineTransformer` -- no dependency on
 :class:`~satimg.product.Product`, so they're testable independently of a full
