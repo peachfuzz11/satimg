@@ -12,6 +12,7 @@ from satimg.products import ModisProduct
 from satimg.registry import resolve
 from satimg.transform import SwathTransformer
 from tests import modis_fixture as fx
+from tests.test_helper import h5_reads
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +58,17 @@ def test_angles_come_from_the_geolocation_file(terra, folder):
     with satimg.open(str(folder / fx.AQUA)) as aqua:  # no MYD03: positions from the L1B, no angles
         assert aqua.metadata.fields == []
         assert not numpy.isnan(aqua.transformer.rowcol_to_latlon((60, 128))).any()
+
+
+@pytest.mark.parametrize("name", [fx.TERRA, fx.AQUA])
+def test_open_reads_no_full_resolution_array(folder, name):
+    """Opening reads only the 1 km geolocation's scan-edge rows (and the
+    angles there) -- never a whole dataset, nor any 250 m pixels."""
+    with h5_reads() as reads, satimg.open(str(folder / name)) as p:
+        assert p.height == fx.ROWS
+    big = [r for r in reads if r[2] >= 100]
+    assert big and all(n <= size / 4 for _, n, size in big), big
+    assert not [r for r in reads if "EV_250_RefSB" in r[0]]
 
 
 def test_collection_6_hdf4_is_refused_clearly(tmp_path):

@@ -83,6 +83,22 @@ def test_overviews_close_with_the_product(s1_path):
     assert not product._overviews
 
 
+def test_an_overview_closes_the_raw_it_was_rendered_from(s1_path):
+    closed = []
+    with satimg.open(str(s1_path)) as product:
+        open_raw = product._open_raw
+
+        def spy(tile, overview=1):
+            raw = open_raw(tile, overview)
+            close = raw._close
+            raw.set_close(lambda: (closed.append(overview), close()))
+            return raw
+
+        product._open_raw = spy
+        product.visual_overview(2)
+    assert closed == [2]
+
+
 def test_a_zipped_product_reads_the_same_overview(s1, s1_path, tmp_path):
     archive = tmp_path / (s1_path.name + ".zip")
     with zipfile.ZipFile(archive, "w") as z:

@@ -66,27 +66,38 @@ class ModisProduct(Product):
     def __init__(self, source: Source):
         super().__init__(source)
         self._file = modis_utils.find_file(self._source)
+        self._geo_file = modis_utils.find_geolocation(self._source, self._file)
         with open_h5(self._source, self._file) as h5:
             granule = modis_utils.read_granule(h5, self._file)
-            geolocation = modis_utils.read_geolocation(h5)
             offsets = modis_utils.fractional_offsets(h5)
             self._dataset = swath.find_dataset(h5, modis_utils.DATA)
-        self._geo_file = modis_utils.find_geolocation(self._source, self._file)
-        if self._geo_file is not None:
-            with open_h5(self._source, self._geo_file) as h5:
-                geolocation = modis_utils.read_geolocation(h5, angles=True)
+            if self._geo_file is None:
+                geolocation = modis_utils.read_geolocation(h5)
         self._timestamp = granule["timestamp"]
         self._attrs = granule["attrs"]
         self._shape = granule["shape"]
+
+        def nodes(geolocation, tolerance):
+            return modis_utils.nodes(geolocation, offsets, tolerance)
+
+        if self._geo_file is None:
+            coarse = nodes(geolocation, GEOMETRY_TOLERANCE_M)
+        else:
+            with open_h5(self._source, self._geo_file) as h5:
+                geolocation = modis_utils.read_geolocation(h5)
+                coarse = nodes(geolocation, GEOMETRY_TOLERANCE_M)
+                coarse.update(modis_utils.read_angles(h5, coarse))
+        # the scan-edge rows include the first and last, so the outline still
+        # runs round the whole swath
         self._footprint = swath.outline(geolocation["lat"], geolocation["lon"])
-
-        def transformer(tolerance):
-            n = modis_utils.nodes(geolocation, offsets, tolerance)
-            return SwathTransformer(n["rows"], n["cols"], n["lat"], n["lon"], scan_rows=modis_utils.SCAN_ROWS)
-
-        self._transformer = transformer(TRANSFORMER_TOLERANCE_M)
-        self._coarse_transformer = transformer(GEOMETRY_TOLERANCE_M)
-        self._angles = modis_utils.nodes(geolocation, offsets, GEOMETRY_TOLERANCE_M)
+        fine = nodes(geolocation, TRANSFORMER_TOLERANCE_M)
+        self._transformer = SwathTransformer(
+            fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=modis_utils.SCAN_ROWS
+        )
+        self._coarse_transformer = SwathTransformer(
+            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=modis_utils.SCAN_ROWS
+        )
+        self._angles = coarse
 
     # -- pixels ---------------------------------------------------------------
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:

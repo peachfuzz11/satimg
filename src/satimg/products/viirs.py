@@ -79,6 +79,9 @@ class ViirsDNBProduct(Product):
             granule = viirs_utils.read_granule(h5, self._radiance_file)
         with open_h5(self._source, geo) as h5:
             geolocation = viirs_utils.read_geolocation(h5)
+            fine = viirs_utils.nodes(geolocation, TRANSFORMER_TOLERANCE_M)
+            coarse = viirs_utils.nodes(geolocation, GEOMETRY_TOLERANCE_M)
+            coarse.update(viirs_utils.read_angles(h5, coarse))
         self._timestamp = granule["timestamp"]
         self._footprint = granule["footprint"]
         self._shape = geolocation["shape"]
@@ -87,8 +90,6 @@ class ViirsDNBProduct(Product):
             "moon_illumination": geolocation["moon_illumination"],
             "moon_phase_angle": geolocation["moon_phase_angle"],
         }
-        fine = viirs_utils.nodes(geolocation, TRANSFORMER_TOLERANCE_M)
-        coarse = viirs_utils.nodes(geolocation, GEOMETRY_TOLERANCE_M)
         self._transformer = SwathTransformer(
             fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=viirs_utils.SCAN_ROWS
         )
@@ -131,8 +132,10 @@ class ViirsDNBProduct(Product):
         return label_bands(as_band_yx(u8), ("radiance",))
 
     def thumbnail(self) -> PIL.Image.Image:
-        """Rendered from :attr:`visual` -- neither format ships a quick-look."""
-        return fit_thumbnail(PIL.Image.fromarray(self.visual.values[0], mode="L"))
+        """Rendered from :attr:`visual`, decimated -- neither format ships a
+        quick-look."""
+        step = max(1, max(self._shape) // 400)
+        return fit_thumbnail(PIL.Image.fromarray(self.visual[0, ::step, ::step].values, mode="L"))
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

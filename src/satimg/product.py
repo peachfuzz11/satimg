@@ -58,7 +58,7 @@ import xarray
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
-from satimg.readers import CHUNK_PX
+from satimg.readers import CHUNK_PX, keep_open
 from satimg.scene_geometry import SceneGeometry
 from satimg.source import Source
 from satimg.tiling import read_window
@@ -137,8 +137,10 @@ class Product(abc.ABC):
         """:attr:`visual` at a ``factor``-times decimated overview: rendered
         from raw read at that overview. A sensor whose visual reads a file of
         its own (Sentinel-2's true-colour image) overrides this to read that
-        file's overview instead."""
-        return self._render_visual(self._open_raw(CHUNK_PX, overview=factor), CHUNK_PX)
+        file's overview instead. Closing it closes the raw it was rendered
+        from."""
+        raw = self._open_raw(CHUNK_PX, overview=factor)
+        return keep_open(self._render_visual(raw, CHUNK_PX), raw)
 
     @cached_property
     def raw(self) -> xarray.DataArray:
