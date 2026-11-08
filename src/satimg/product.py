@@ -52,7 +52,8 @@ from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Iterator
 
-import rasterio
+import numpy
+import PIL.Image
 import xarray
 
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
@@ -60,14 +61,14 @@ from satimg.metadata.collection import Metadata
 from satimg.metadata.field import Field
 from satimg.metadata.patch import PatchMeta
 from satimg.patch import Patch
-from satimg.readers.raster import CHUNK_PX
+from satimg.readers.raster import CHUNK_PX, Tile, keep_open
+from satimg.readers.stack import BandStack
+from satimg.readers.thumbnail import THUMBNAIL_SIZE, fit_thumbnail
 from satimg.scene_geometry import SceneGeometry
 from satimg.source.base import Source
 from satimg.tiling import read_window
 
 if TYPE_CHECKING:  # pragma: no cover
-    import PIL.Image
-
     from satimg.transform.base import Transformer
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ class Product(abc.ABC):
         open archive; a no-op for a plain directory).
 
         Each view carries a ``_close`` that shuts every band it opened -- wired
-        on in :func:`satimg.readers.raster.merge_bands`, kept across the product's
+        on in :meth:`satimg.readers.stack.BandStack.open`, kept across the product's
         wrappers by :func:`satimg.readers.raster.keep_open` -- so closing the two
         views is all the product needs to track, on top of the source itself.
         Does not touch a raw/visual view opened by an in-flight
@@ -121,26 +122,44 @@ class Product(abc.ABC):
         self._source.close()
 
     # -- pixel views ------------------------------------------------
+    #
+    # Every product reads its pixels the same way: it declares its bands as a
+    # BandStack of lazily read Rasters (_raw_bands, and _visual_bands when the
+    # visual is a file of its own), and the views below open, chunk, decimate
+    # and close them.
     @abc.abstractmethod
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        """Open + merge every native band onto a common ``(band, y, x)`` grid,
-        dask-chunked to ``tile`` (all bands in one chunk), native dtype, lazy
-        -- read from each band's ``overview``-times decimated overview
-        (:func:`~satimg.readers.raster.open_band`) unless that is 1.
-        """
+    def _raw_bands(self) -> BandStack:
+        """Every native band, in :attr:`raw`'s order."""
 
-    def _visual_paths(self) -> list[str]:
-        """The raster paths :attr:`visual` is read from, for
-        :attr:`visual_overviews` -- none by default, so a product that does
-        not say offers only full resolution."""
-        return []
+    def _visual_bands(self) -> BandStack | None:
+        """The rasters :attr:`visual` is read from as they are, when the
+        product ships its visual (Sentinel-2's true-colour image); ``None``
+        (the default) renders it from :attr:`raw` with :meth:`_render_visual`."""
+        return None
 
-    def _open_visual_overview(self, factor: int) -> xarray.DataArray:
-        """:attr:`visual` at a ``factor``-times decimated overview: rendered
-        from raw read at that overview. A sensor whose visual reads a file of
-        its own (Sentinel-2's true-colour image) overrides this to read that
-        file's overview instead."""
-        return self._render_visual(self._open_raw(CHUNK_PX, overview=factor), CHUNK_PX)
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
+        """The sensor's ``uint8`` visualisation of ``raw`` (opened chunked to
+        ``tile``), lazy -- for a product whose :meth:`_visual_bands` is
+        ``None``."""
+        raise NotImplementedError(f"{type(self).__name__} defines neither _render_visual nor _visual_bands")
+
+    def _open_raw(self, tile: Tile, overview: int = 1) -> xarray.DataArray:
+        """:meth:`_raw_bands` opened: ``(band, y, x)``, native dtype, lazy,
+        dask-chunked to ``tile`` (all bands in one chunk), read from the
+        ``overview``-times decimated overview unless that is 1."""
+        return self._raw_bands().open(tile, overview)
+
+    def _open_visual(self, tile: Tile, overview: int = 1, raw: xarray.DataArray | None = None) -> xarray.DataArray:
+        """The visual, chunked to ``tile``, at ``overview``: the
+        :meth:`_visual_bands`, or :meth:`_render_visual` of ``raw`` (opened
+        here, and closed with the visual, when not given)."""
+        stack = self._visual_bands()
+        if stack is not None:
+            return stack.open(tile, overview)
+        if raw is not None:
+            return self._render_visual(raw, tile)
+        raw = self._open_raw(tile, overview)
+        return keep_open(self._render_visual(raw, tile), raw)
 
     @cached_property
     def raw(self) -> xarray.DataArray:
@@ -157,19 +176,16 @@ class Product(abc.ABC):
     @cached_property
     def visual(self) -> xarray.DataArray:
         """The sensor's ``uint8`` visualisation, lazy: 3-band true colour for
-        optical sensors, 1-band greyscale for SAR. Built from :attr:`raw`."""
-        return self._render_visual(self.raw, CHUNK_PX)
+        optical sensors, 1-band greyscale for SAR."""
+        if self._visual_bands() is not None:
+            return self._open_visual(CHUNK_PX)
+        return self._open_visual(CHUNK_PX, raw=self.raw)
 
     @cached_property
     def visual_overviews(self) -> list[int]:
         """The decimation factors :meth:`visual_overview` takes, ascending: 1,
         then every overview all the rasters behind :attr:`visual` have."""
-        common = None
-        for path in self._visual_paths():
-            with rasterio.open(path) as src:
-                factors = set(src.overviews(1))
-            common = factors if common is None else common & factors
-        return [1] + sorted(common or ())
+        return [1] + (self._visual_bands() or self._raw_bands()).overviews
 
     def visual_overview(self, factor: int) -> xarray.DataArray:
         """:attr:`visual` decimated ``factor`` times (one of
@@ -183,18 +199,8 @@ class Product(abc.ABC):
         if factor not in self.visual_overviews:
             raise ValueError(f"no {factor}x overview: {self.visual_overviews}")
         if factor not in self._overviews:
-            self._overviews[factor] = self._open_visual_overview(factor)
+            self._overviews[factor] = self._open_visual(CHUNK_PX, factor)
         return self._overviews[factor]
-
-    @abc.abstractmethod
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
-        """Build the visualisation array (sensor-specific) from ``raw``.
-
-        ``tile`` is the same dask chunk size ``raw`` was opened with, for a
-        subclass (e.g. Sentinel-2) whose visual reads an independent file
-        rather than deriving from ``raw``, so it can be chunked to match."""
 
     # -- iteration ------------------------------------------------
     def _read_patch(
@@ -227,7 +233,7 @@ class Product(abc.ABC):
         :class:`~satimg.geometry.Grid`).
         """
         raw = self._open_raw(size)
-        visual = self._render_visual(raw, size)
+        visual = self._open_visual(size, raw=raw)
         try:
             grid = Grid(int(raw.sizes["x"]), int(raw.sizes["y"]), size, overlap, edge)
             for win in grid:
@@ -254,7 +260,7 @@ class Product(abc.ABC):
         twice as slow per patch after that.
         """
         raw = self._open_raw(CHUNK_PX)
-        visual = self._render_visual(raw, CHUNK_PX)
+        visual = self._open_visual(CHUNK_PX, raw=raw)
         try:
             for win in windows_at(points, size):
                 yield self._read_patch(raw, visual, win)
@@ -302,9 +308,16 @@ class Product(abc.ABC):
     def footprint(self) -> dict:
         """GeoJSON-ish ``{"type": "Feature", "geometry": {...}}`` outline."""
 
-    @abc.abstractmethod
-    def thumbnail(self) -> "PIL.Image.Image":
-        """The product's shipped quick-look image."""
+    def thumbnail(self) -> PIL.Image.Image:
+        """The product's shipped quick-look image; by default (for formats
+        that ship none) :attr:`visual` at its coarsest overview, decimated
+        further, at :data:`~satimg.readers.thumbnail.THUMBNAIL_SIZE`."""
+        view = self.visual_overview(self.visual_overviews[-1])
+        step = max(1, max(view.sizes["y"], view.sizes["x"]) // (2 * max(THUMBNAIL_SIZE)))
+        pixels = view[:, ::step, ::step].values
+        if pixels.shape[0] == 1:
+            return fit_thumbnail(PIL.Image.fromarray(pixels[0], mode="L"))
+        return fit_thumbnail(PIL.Image.fromarray(numpy.moveaxis(pixels, 0, -1)))
 
     @cached_property
     def metadata(self) -> Metadata:

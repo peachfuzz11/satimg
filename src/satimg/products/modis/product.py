@@ -5,15 +5,15 @@ from __future__ import annotations
 import datetime
 
 import numpy
-import PIL.Image
 import xarray
 
 from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products import swath
 from satimg.products.modis import files
-from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
-from satimg.readers.thumbnail import fit_thumbnail
+from satimg.readers.hdf5 import HDF5Raster, find_dataset, open_h5
+from satimg.readers.raster import Tile
+from satimg.readers.stack import BandStack
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry
 from satimg.source.base import Source
@@ -96,14 +96,8 @@ class ModisProduct(Product):
         self._angles = coarse
 
     # -- pixels ---------------------------------------------------------------
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        if overview != 1:
-            raise ValueError("a MODIS granule has no overviews")
-        da = open_h5_array(self._source, self._file, self._dataset, tile)
-        out = label_bands(as_band_yx(da), files.BANDS)
-        out = out.assign_coords(wavelength_nm=("band", list(files.WAVELENGTHS_NM)))
-        out.set_close(da._close)
-        return out
+    def _raw_bands(self) -> BandStack:
+        return BandStack([HDF5Raster(self._source, self._file, self._dataset)], files.BANDS, files.WAVELENGTHS_NM)
 
     def reflectance(self, raw: xarray.DataArray) -> xarray.DataArray:
         """``raw`` (or a slice of it) as TOA reflectance x cos(sun zenith),
@@ -114,18 +108,10 @@ class ModisProduct(Product):
         dn = raw.where(raw <= files.VALID_MAX).astype("float32")
         return (dn - offsets[pick, None, None]) * scales[pick, None, None]
 
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         nir = self.reflectance(raw.sel(band=["B02"])).isel(band=0)
         u8 = (255 * (nir.clip(0, _VISUAL_MAX) / _VISUAL_MAX) ** (1 / 2.2)).fillna(0).astype("uint8")
         return label_bands(as_band_yx(u8), ("nir",))
-
-    def thumbnail(self) -> PIL.Image.Image:
-        """Rendered from :attr:`visual`, decimated -- the file ships no
-        quick-look."""
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(self.visual[0, ::step, ::step].values, mode="L"))
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

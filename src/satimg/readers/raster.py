@@ -1,12 +1,35 @@
-"""Lazy GDAL raster reads: single bands and band stacks, dask-chunked."""
+"""The :class:`Raster` interface: one lazily read image file or dataset.
+
+Every product's pixels -- whatever the format -- are read through it, so
+they all open, chunk, decimate and close the same way. GDAL reads most
+(:class:`GDALRaster`); ``h5py`` reads the HDF5 datasets GDAL cannot name
+(:class:`~satimg.readers.hdf5.HDF5Raster`).
+"""
 
 from __future__ import annotations
 
-from typing import Iterable
+import abc
+from functools import cached_property
 
 import rasterio
 import rioxarray
 import xarray
+
+#: The one default dask chunk size (pixels) satimg falls back to wherever it
+#: needs *some* chunking but has no caller-given window size to use instead:
+#: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
+#: opened outside a ``patches()`` loop, every ``patches_at()`` loop,
+#: :attr:`~satimg.metadata.field.Field.grid`, and the fixed granularity a
+#: :class:`~satimg.readers.stack.BandStack` aligns bands at before resampling
+#: them onto one grid.
+CHUNK_PX = 1024
+
+Tile = int | tuple[int, int]
+
+
+def tile_xy(tile: Tile) -> tuple[int, int]:
+    """``tile`` as ``(width, height)``."""
+    return (tile, tile) if isinstance(tile, int) else tile
 
 
 def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataArray:
@@ -21,80 +44,51 @@ def keep_open(view: xarray.DataArray, source: xarray.DataArray) -> xarray.DataAr
     return view
 
 
-def open_band(path: str, overview: int = 1) -> xarray.DataArray:
-    """``path`` opened lazily -- at full resolution, or at its own
-    ``overview``-times decimated overview level (a ``ValueError`` if it has
-    none)."""
-    if overview == 1:
-        return rioxarray.open_rasterio(path)
-    with rasterio.open(path) as src:
-        factors = src.overviews(1)
-    if overview not in factors:
-        raise ValueError(f"{path} has no {overview}x overview, only {factors}")
-    return rioxarray.open_rasterio(path, OVERVIEW_LEVEL=factors.index(overview))
+class Raster(abc.ABC):
+    """One image file or dataset, read lazily."""
+
+    @abc.abstractmethod
+    def open(self, tile: Tile, overview: int = 1) -> xarray.DataArray:
+        """The raster as a lazy ``(band, y, x)`` array, dask-chunked to
+        ``tile`` (``int`` or ``(width, height)``) with every band in one
+        chunk -- at its ``overview``-times decimated overview unless that is
+        1 (a ``ValueError`` if it has none). ``close()`` releases the file."""
+
+    @property
+    @abc.abstractmethod
+    def overviews(self) -> list[int]:
+        """The decimation factors :meth:`open` takes besides 1."""
 
 
-#: The one default dask chunk size (pixels) satimg falls back to wherever it
-#: needs *some* chunking but has no caller-given window size to use instead:
-#: :attr:`~satimg.product.Product.raw` / :attr:`~satimg.product.Product.visual`
-#: opened outside a ``patches()`` loop, every ``patches_at()`` loop,
-#: :attr:`~satimg.metadata.field.Field.grid`, and the fixed granularity
-#: ``merge_bands`` aligns bands at internally before a ``match=`` reindex (see
-#: the note in ``merge_bands`` for why that one can't just use the caller's
-#: own tile).
-CHUNK_PX = 1024
+class GDALRaster(Raster):
+    """A raster GDAL opens by ``path`` -- a file, a ``/vsizip/`` member, an
+    ``HDF5:`` dataset or an in-memory VRT (:func:`~satimg.readers.vrt.vrt`).
+    ``dtype`` casts it as it reads (lazily)."""
 
+    def __init__(self, path: str, dtype: str | None = None):
+        self.path = path
+        self._dtype = dtype
 
-def merge_bands(
-    paths: Iterable[str],
-    *,
-    match: int | None = None,
-    tile: int | tuple[int, int] = CHUNK_PX,
-    overview: int = 1,
-) -> xarray.DataArray:
-    """Open each path lazily -- at its ``overview`` (see :func:`open_band`) --
-    and stack them along ``band``.
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.path!r})"
 
-    With ``match`` (an index into ``paths``) the other bands are
-    nearest-neighbour reindexed onto that band's grid first. Either way, the
-    returned array is dask-chunked to ``tile`` (all bands in one chunk) --
-    ``Product.patches()`` passes the loop's own window size, so bands read
-    chunked to precisely what will be read.
+    @cached_property
+    def overviews(self) -> list[int]:
+        with rasterio.open(self.path) as src:
+            return list(src.overviews(1))
 
-    A bare ``.chunk()`` with no size hint would collapse each band to a
-    *single* whole-band chunk. Dask can't read part of an unsplit chunk, so
-    any later windowed read -- direct, or through a ``reindex_like`` onto
-    another band's grid -- would decode the *entire* band first, regardless
-    of any rechunk downstream (rechunking a single chunk into tiles still
-    depends on the one task that reads all of it).
-
-    With ``match=``, bands are chunked at the fixed :data:`CHUNK_PX` --
-    not ``tile`` -- before the reindex: ``reindex_like``'s nearest-neighbour
-    lookup builds a dask task per output chunk, so aligning directly at a
-    small ``tile`` (e.g. a 64px patch loop) can turn one array into hundreds
-    of thousands of chunks and take *minutes* just to build the graph, before
-    any pixel is read. The reindexed, concatenated result is then rechunked
-    to ``tile`` in one final step instead -- splitting an
-    already-reasonably-chunked array into smaller pieces is cheap (no data
-    read to redraw chunk boundaries), unlike the reindex itself. Without
-    ``match=`` every band already shares one grid, so there is no such
-    penalty and bands chunk straight to ``tile``.
-
-    ``concat`` drops the per-band ``_close``, so it is wired back on: the
-    returned array's ``close()`` shuts every band it opened.
-    """
-    tw, th = (tile, tile) if isinstance(tile, int) else tile
-    opened = [open_band(p, overview) for p in paths]
-    if match is None:
-        bands = [b.chunk({"x": tw, "y": th}) for b in opened]
-        merged = bands[0] if len(bands) == 1 else xarray.concat(bands, dim="band")
-    else:
-        # deliberately CHUNK_PX here, not tw/th: reindex_like must never see
-        # the caller's own (possibly small) tile -- see the docstring.
-        bands = [b.chunk({"x": CHUNK_PX, "y": CHUNK_PX}) for b in opened]
-        target = bands[match]
-        bands = [b.reindex_like(target, method="nearest") for b in bands]
-        merged = xarray.concat(bands, dim="band")
-        merged = merged.chunk({"band": -1, "x": tw, "y": th})
-    merged.set_close(lambda: [band.close() for band in opened])
-    return merged
+    def open(self, tile: Tile, overview: int = 1) -> xarray.DataArray:
+        if overview == 1:
+            opened = rioxarray.open_rasterio(self.path)
+        elif overview in self.overviews:
+            opened = rioxarray.open_rasterio(self.path, OVERVIEW_LEVEL=self.overviews.index(overview))
+        else:
+            raise ValueError(f"{self.path} has no {overview}x overview, only {self.overviews}")
+        tw, th = tile_xy(tile)
+        # chunk before anything else: a plain DataArray's astype() computes
+        # eagerly, and one whole-band chunk would make every windowed read
+        # decode the entire band
+        da = opened.chunk({"band": -1, "x": tw, "y": th})
+        if self._dtype is not None and da.dtype != self._dtype:
+            da = da.astype(self._dtype)
+        return keep_open(da, opened)

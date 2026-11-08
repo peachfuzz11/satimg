@@ -15,7 +15,8 @@ from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.products.sentinel1 import files
 from satimg.products.sentinel1.geometry import Sentinel1Geometry
-from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.raster import GDALRaster, Tile
+from satimg.readers.stack import BandStack
 from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
 from satimg.source.base import Source
@@ -65,17 +66,10 @@ class Sentinel1Product(Product):
                 pols[self._source.raster_path(f"measurement/{f}")] = m.group(1)
         return {f: pols[f] for f in sorted(pols, key=lambda f: files.POL_ORDER[pols[f]])}
 
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        merged = merge_bands(list(self._measurements), tile=tile, overview=overview)
-        da = label_bands(as_band_yx(merged), [pol.upper() for pol in self._measurements.values()])
-        return keep_open(da, merged)
+    def _raw_bands(self) -> BandStack:
+        return BandStack([GDALRaster(p) for p in self._measurements], [pol.upper() for pol in self._measurements.values()])
 
-    def _visual_paths(self) -> list[str]:
-        return list(self._measurements)
-
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         db = (10 * numpy.log10(raw.where(raw > 0))).fillna(0).mean("band")
         u8 = (255 / (1 + numpy.exp(-((db - 20) * 0.18)))).clip(0, 255).astype("uint8")
         return label_bands(as_band_yx(u8), ("amplitude",))

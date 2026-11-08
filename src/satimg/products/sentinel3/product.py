@@ -15,8 +15,9 @@ from satimg.product import Product
 from satimg.products import swath
 from satimg.products.sentinel3 import files
 from satimg.readers.hdf5 import open_h5
-from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import fit_thumbnail, load_thumbnail
+from satimg.readers.raster import GDALRaster, Tile
+from satimg.readers.stack import BandStack
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
@@ -91,7 +92,7 @@ class Sentinel3OLCIProduct(Product):
 
     # -- pixels ---------------------------------------------------------------
     @cached_property
-    def _band_paths(self) -> list[str]:
+    def _bands(self) -> BandStack:
         """Each band through a VRT carrying a few GCPs -- just so GDAL sees
         it as georeferenced; :attr:`transformer` is what maps it."""
         rows = numpy.linspace(0, self.height, 5)
@@ -99,22 +100,15 @@ class Sentinel3OLCIProduct(Product):
         rr, cc = (a.ravel() for a in numpy.meshgrid(rows, cols, indexing="ij"))
         latlon = self._coarse_transformer.rowcol_to_latlon(numpy.column_stack((rr, cc)))
         gcps = [GroundControlPoint(row=r, col=c, x=lon, y=lat) for r, c, (lat, lon) in zip(rr, cc, latlon)]
-        return [
-            vrt(files.gdal_path(self._source.raster_path(f"{self._dir}{files.band_file(b)}"), b),
-                self._shape, gcps=gcps, dtype="UInt16", nodata=65535)
+        rasters = [
+            GDALRaster(vrt(files.gdal_path(self._source.raster_path(f"{self._dir}{files.band_file(b)}"), b),
+                           self._shape, gcps=gcps, dtype="UInt16", nodata=65535))
             for b in files.BANDS
         ]
+        return BandStack(rasters, files.BANDS, files.WAVELENGTHS_NM)
 
-    def _visual_paths(self) -> list[str]:
-        return []  # no overviews in netCDF
-
-    def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
-        if overview != 1:
-            raise ValueError("an OLCI product has no overviews")
-        merged = merge_bands(self._band_paths, tile=tile)
-        da = label_bands(as_band_yx(merged), files.BANDS)
-        da = da.assign_coords(wavelength_nm=("band", list(files.WAVELENGTHS_NM)))
-        return keep_open(da, merged)
+    def _raw_bands(self) -> BandStack:
+        return self._bands
 
     def radiance(self, raw: xarray.DataArray) -> xarray.DataArray:
         """``raw`` (or a band / window of it) in mW / (m^2 sr nm),
@@ -124,9 +118,7 @@ class Sentinel3OLCIProduct(Product):
         offsets = numpy.array(self._attrs["radiance_offsets"], dtype="float32")[pick, None, None]
         return raw.where(raw != 65535).astype("float32") * scales + offsets
 
-    def _render_visual(
-        self, raw: xarray.DataArray, tile: int | tuple[int, int]
-    ) -> xarray.DataArray:
+    def _render_visual(self, raw: xarray.DataArray, tile: Tile) -> xarray.DataArray:
         rgb = self.radiance(raw.sel(band=list(_RGB)))
         e0 = numpy.array([files.SOLAR_IRRADIANCE[b] for b in _RGB], dtype="float32")[:, None, None]
         reflectance = numpy.pi * rgb / e0  # x cos(sun zenith), left out: fine for a picture
@@ -135,12 +127,11 @@ class Sentinel3OLCIProduct(Product):
 
     def thumbnail(self) -> PIL.Image.Image:
         """The product's shipped ``quicklook.jpg``, else rendered from
-        :attr:`visual`, decimated."""
+        :attr:`visual` (see :meth:`Product.thumbnail`)."""
         quicklook = self._source.find_file("quicklook.jpg")
         if quicklook is not None:
             return load_thumbnail(self._source, quicklook)
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(numpy.moveaxis(self.visual[:, ::step, ::step].values, 0, -1)))
+        return super().thumbnail()
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
