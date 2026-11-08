@@ -6,7 +6,7 @@ from functools import cache
 
 import numpy
 
-from satimg.mask import Mask
+from satimg.masks.base import Mask
 
 
 @cache

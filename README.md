@@ -444,11 +444,11 @@ Every mask answers `mask.contains(lat, lon)` for matching `lat`/`lon` points
 (scalars or arrays of any shape), giving booleans of that shape:
 
 ```python
-from satimg.fishfarms import FishFarmMask
-from satimg.landmask import LandMask
-from satimg.platforms import PlatformMask
-from satimg.ports import HarborMask, PortMask, features_in_bbox
-from satimg.windfarms import WindfarmMask
+from satimg.masks.fishfarms import FishFarmMask
+from satimg.masks.land import LandMask
+from satimg.masks.platforms import PlatformMask
+from satimg.masks.ports import HarborMask, PortMask, features_in_bbox
+from satimg.masks.windfarms import WindfarmMask
 
 LandMask().contains(lat, lon)              # on land
 WindfarmMask(year=2025).contains(lat, lon)  # in a wind farm built by 2025 (any farm without a year)

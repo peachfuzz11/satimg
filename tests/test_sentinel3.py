@@ -10,7 +10,7 @@ import pytest
 import satimg
 from satimg import Sentinel3Geometry
 from satimg.connectors import Sentinel3Connector, get_connector
-from satimg.landmask import LandMask
+from satimg.masks.land import LandMask
 from satimg.products import Sentinel3OLCIProduct
 from satimg.registry import resolve
 from satimg.transform import SwathTransformer

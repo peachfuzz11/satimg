@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy
 import shapely
 
-from satimg.mask import Mask, bundled, inside
+from satimg.masks.base import Mask, bundled, inside
 
 PORT = "port"
 HARBOR = "harbor"
