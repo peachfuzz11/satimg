@@ -28,7 +28,7 @@ ANGLE_STEP_M = 5000.0
 
 #: Sentinel-2 L1C per-band native ground sample distance, metres -- picks the
 #: ``Tile_Geocoding/Geoposition`` (and matching ``Size``) that
-#: ``band_names[1]`` (the :func:`~satimg.readers.merge_bands` ``match=``
+#: ``band_names[1]`` (the :func:`~satimg.readers.raster.merge_bands` ``match=``
 #: target) was actually shot at, so the zip-native transformer/grid-shape
 #: agree exactly with opening that band's own JP2.
 BAND_GSD_M = {

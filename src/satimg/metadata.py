@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 import numpy
 import xarray
 
-from satimg.readers import CHUNK_PX
+from satimg.readers.raster import CHUNK_PX
 from satimg.tiling import read_window
 from satimg.transform.base import as_n2
 

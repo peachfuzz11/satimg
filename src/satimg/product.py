@@ -58,7 +58,7 @@ import xarray
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
 from satimg.metadata import Field, Metadata, PatchMeta
 from satimg.patch import Patch
-from satimg.readers import CHUNK_PX, keep_open
+from satimg.readers.raster import CHUNK_PX, keep_open
 from satimg.scene_geometry import SceneGeometry
 from satimg.source.base import Source
 from satimg.tiling import read_window
@@ -98,8 +98,8 @@ class Product(abc.ABC):
         open archive; a no-op for a plain directory).
 
         Each view carries a ``_close`` that shuts every band it opened -- wired
-        on in :func:`satimg.readers.merge_bands`, kept across the product's
-        wrappers by :func:`satimg.readers.keep_open` -- so closing the two
+        on in :func:`satimg.readers.raster.merge_bands`, kept across the product's
+        wrappers by :func:`satimg.readers.raster.keep_open` -- so closing the two
         views is all the product needs to track, on top of the source itself.
         Does not touch a raw/visual view opened by an in-flight
         :meth:`patches` / :meth:`patches_at` call -- those close themselves
@@ -124,7 +124,7 @@ class Product(abc.ABC):
         """Open + merge every native band onto a common ``(band, y, x)`` grid,
         dask-chunked to ``tile`` (all bands in one chunk), native dtype, lazy
         -- read from each band's ``overview``-times decimated overview
-        (:func:`~satimg.readers.open_band`) unless that is 1.
+        (:func:`~satimg.readers.raster.open_band`) unless that is 1.
         """
 
     def _visual_paths(self) -> list[str]:
@@ -145,7 +145,7 @@ class Product(abc.ABC):
     @cached_property
     def raw(self) -> xarray.DataArray:
         """All native bands on a common ``(band, y, x)`` grid, native dtype,
-        lazy, dask-chunked to a sane default (:data:`~satimg.readers.CHUNK_PX`).
+        lazy, dask-chunked to a sane default (:data:`~satimg.readers.raster.CHUNK_PX`).
 
         For a loop, iterate :meth:`patches` / :meth:`patches_at` instead: they
         open their own raw (chunked to the window size, for :meth:`patches`)
@@ -246,7 +246,7 @@ class Product(abc.ABC):
 
         Opens its own raw / visual and closes them when the loop ends -- see
         :meth:`patches`. Unlike :meth:`patches`, it keeps the default
-        :data:`~satimg.readers.CHUNK_PX` chunks rather than chunking to
+        :data:`~satimg.readers.raster.CHUNK_PX` chunks rather than chunking to
         ``size``: a window centred on an arbitrary point straddles chunk
         boundaries whatever their size, and chunking a whole scene to a small
         window builds a graph of tens of thousands of chunks -- about half a

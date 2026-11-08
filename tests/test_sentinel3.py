@@ -80,7 +80,7 @@ def test_visual_true_colour(product):
     assert list(product.visual.band.values) == ["red", "green", "blue"]
     assert (v[:, fx.TARGET[0], fx.TARGET[1]] == 255).all()
     assert (v[:, fx.FILL[0], fx.FILL[1]] == 0).all()
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
+    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
 
 
 def test_metadata_angles_from_the_tie_points(product):

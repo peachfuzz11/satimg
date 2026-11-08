@@ -105,7 +105,7 @@ def test_visual_stretches_lights_bright(product):
     assert v[fx.BOATS[0]] > 150
     assert numpy.median(v) < 100
     assert v[fx.FILL] == 0
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE
 
 
 def test_metadata_is_night(product):

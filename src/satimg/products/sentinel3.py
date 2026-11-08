@@ -13,7 +13,10 @@ from rasterio.control import GroundControlPoint
 from satimg import s3_utils, swath
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import fit_thumbnail, keep_open, load_thumbnail, merge_bands, open_h5, vrt
+from satimg.readers.hdf5 import open_h5
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import fit_thumbnail, load_thumbnail
+from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source.base import Source

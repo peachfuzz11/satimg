@@ -14,14 +14,10 @@ from satimg import nisar_utils
 from satimg.metadata import Metadata
 from satimg.nisar_geometry import NisarGeometry
 from satimg.product import Product
-from satimg.readers import (
-    THUMBNAIL_SIZE,
-    keep_open,
-    load_thumbnail,
-    merge_bands,
-    open_h5,
-    vrt,
-)
+from satimg.readers.hdf5 import open_h5
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import THUMBNAIL_SIZE, load_thumbnail
+from satimg.readers.vrt import vrt
 from satimg.registry import register
 from satimg.scene_geometry import coarsen
 from satimg.source.base import Source

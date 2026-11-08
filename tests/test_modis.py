@@ -96,7 +96,7 @@ def test_reflectance_and_visual(terra):
     assert v[fx.SHIP] > 200
     assert v[60, 20] < 100
     assert (v[fx.FILL_ROWS] == 0).all()
-    assert terra.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert terra.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE
 
 
 def test_patches_and_zip(terra, folder, tmp_path):

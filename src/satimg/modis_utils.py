@@ -20,6 +20,7 @@ import re
 import numpy
 
 from satimg import swath
+from satimg.readers.hdf5 import find_dataset, read_scaled
 from satimg.source.base import Source
 
 DATA = "EV_250_RefSB"
@@ -131,7 +132,7 @@ def read_granule(h5, name: str) -> dict:
     """Timestamp, scene attrs and the radiometric scaling of each band."""
     info = parse_name(name)
     attrs = h5.attrs
-    data = h5[swath.find_dataset(h5, DATA)]
+    data = h5[find_dataset(h5, DATA)]
     day_night = _attr(attrs, "DAYNIGHTFLAG", "DayNightFlag", default="unknown")
     return {
         "timestamp": info["start"] + GRANULE / 2,
@@ -153,13 +154,13 @@ def read_geolocation(h5) -> dict:
     scan-edge rows only (``"rows"``), all a node grid needs (see
     :func:`nodes`), so the rest is never read. ``"shape"`` is the 1 km
     grid's."""
-    lat = h5[swath.find_dataset(h5, "Latitude")]
+    lat = h5[find_dataset(h5, "Latitude")]
     rows = swath.scan_edge_rows(lat.shape[0], SCAN_ROWS // RATIO)
     return {
         "shape": lat.shape,
         "rows": rows,
-        "lat": swath.read_scaled(lat, -999.0, rows),
-        "lon": swath.read_scaled(h5[swath.find_dataset(h5, "Longitude")], -999.0, rows),
+        "lat": read_scaled(lat, -999.0, rows),
+        "lon": read_scaled(h5[find_dataset(h5, "Longitude")], -999.0, rows),
     }
 
 
@@ -188,6 +189,6 @@ def read_angles(h5, node_grid: dict) -> dict:
     never whole."""
     rows, cols = node_grid["row_index"], node_grid["col_index"]
     return {
-        field: swath.read_scaled(h5[swath.find_dataset(h5, dataset)], key=rows)[:, cols]
+        field: read_scaled(h5[find_dataset(h5, dataset)], key=rows)[:, cols]
         for dataset, (field, _units) in ANGLES.items()
     }

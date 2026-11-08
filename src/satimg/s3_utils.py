@@ -27,6 +27,7 @@ from xml.etree import ElementTree
 import numpy
 
 from satimg import swath
+from satimg.readers.hdf5 import open_h5, read_scaled
 from satimg.source.base import Source
 
 BANDS = tuple(f"Oa{i:02d}" for i in range(1, 22))
@@ -105,8 +106,6 @@ def read_times(h5) -> tuple[datetime.datetime, datetime.datetime]:
 
 def read_scales(source: Source, raster_dir: str) -> tuple[list[float], list[float]]:
     """Each band's ``scale_factor`` / ``add_offset``, in :data:`BANDS` order."""
-    from satimg.readers import open_h5
-
     scales, offsets = [], []
     for band in BANDS:
         with open_h5(source, f"{raster_dir}{band_file(band)}") as h5:
@@ -130,7 +129,7 @@ def read_geolocation(h5) -> dict:
     in)."""
     step_ac = int(numpy.ravel(h5.attrs["ac_subsampling_factor"])[0])
     step_al = int(numpy.ravel(h5.attrs["al_subsampling_factor"])[0])
-    lat, lon = swath.read_scaled(h5["latitude"]), swath.read_scaled(h5["longitude"])
+    lat, lon = read_scaled(h5["latitude"]), read_scaled(h5["longitude"])
     return {
         "lat": lat, "lon": lon,
         "rows": numpy.arange(lat.shape[0]) * step_al + 0.5,
@@ -159,5 +158,5 @@ def read_angles(h5) -> dict:
     keep = numpy.unique(numpy.r_[numpy.arange(0, n_rows, TIE_ROW_STEP), n_rows - 1])
     out = {"rows": keep * step_al + 0.5, "cols": numpy.arange(n_cols) * step_ac + 0.5}
     for variable, field in ANGLES.items():
-        out[field] = swath.read_scaled(h5[variable])[keep]
+        out[field] = read_scaled(h5[variable])[keep]
     return out

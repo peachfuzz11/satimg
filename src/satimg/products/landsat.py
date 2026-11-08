@@ -11,7 +11,8 @@ from satimg import landsat_utils
 from satimg.landsat_utils import BANDS
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import keep_open, load_thumbnail, merge_bands
+from satimg.readers.raster import keep_open, merge_bands
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source.base import Source

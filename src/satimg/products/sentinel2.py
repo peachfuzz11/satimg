@@ -9,7 +9,8 @@ import xarray
 from satimg import s2_utils
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import CHUNK_PX, keep_open, load_thumbnail, merge_bands, open_band
+from satimg.readers.raster import CHUNK_PX, keep_open, merge_bands, open_band
+from satimg.readers.thumbnail import load_thumbnail
 from satimg.registry import register
 from satimg.source.base import Source
 from satimg.tiling import as_band_yx, label_bands

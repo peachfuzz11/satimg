@@ -11,7 +11,8 @@ import xarray
 from satimg import modis_utils, swath
 from satimg.metadata import Metadata
 from satimg.product import Product
-from satimg.readers import fit_thumbnail, open_h5, open_h5_array
+from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
+from satimg.readers.thumbnail import fit_thumbnail
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry
 from satimg.source.base import Source
@@ -64,7 +65,7 @@ class ModisProduct(Product):
         with open_h5(self._source, self._file) as h5:
             granule = modis_utils.read_granule(h5, self._file)
             offsets = modis_utils.fractional_offsets(h5)
-            self._dataset = swath.find_dataset(h5, modis_utils.DATA)
+            self._dataset = find_dataset(h5, modis_utils.DATA)
             if self._geo_file is None:
                 geolocation = modis_utils.read_geolocation(h5)
         self._timestamp = granule["timestamp"]

@@ -16,6 +16,7 @@ import re
 import numpy
 
 from satimg import swath
+from satimg.readers.hdf5 import read_scaled
 from satimg.source.base import Source
 
 #: detector rows per VIIRS scan: geolocation is linear in row within one,
@@ -121,13 +122,13 @@ def read_geolocation(geo_h5) -> dict:
     sparse = (slice(None, None, SCAN_ROWS), slice(None, None, SCAN_ROWS))
 
     def median(variable):
-        return float(numpy.nanmedian(swath.read_scaled(group[variable], key=sparse)))
+        return float(numpy.nanmedian(read_scaled(group[variable], key=sparse)))
 
     return {
         "shape": shape,
         "rows": rows,
-        "lat": swath.read_scaled(group["latitude"], FILL_BELOW, rows),
-        "lon": swath.read_scaled(group["longitude"], FILL_BELOW, rows),
+        "lat": read_scaled(group["latitude"], FILL_BELOW, rows),
+        "lon": read_scaled(group["longitude"], FILL_BELOW, rows),
         # percent, per pixel
         "moon_illumination": median("moon_illumination_fraction") / 100.0,
         "moon_phase_angle": median("moon_phase_angle") if "moon_phase_angle" in group else None,
@@ -154,7 +155,7 @@ def read_angles(geo_h5, node_grid: dict) -> dict:
     fills as ``NaN`` -- read a variable's node rows at a time, never whole."""
     group = geo_h5["geolocation_data"]
     rows, cols = node_grid["row_index"], node_grid["col_index"]
-    return {field: swath.read_scaled(group[variable], key=rows)[:, cols] for variable, field in _ANGLES.items()}
+    return {field: read_scaled(group[variable], key=rows)[:, cols] for variable, field in _ANGLES.items()}
 
 
 def gdal_path(raster_path: str, dataset: str) -> str:

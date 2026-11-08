@@ -15,7 +15,7 @@ import xarray
 from satimg.geometry import Window
 from satimg.metadata import Metadata, bilinear
 from satimg.product import Product
-from satimg.readers import CHUNK_PX
+from satimg.readers.raster import CHUNK_PX
 from satimg.source.local import DirSource
 from satimg.tiling import read_window
 
@@ -153,7 +153,7 @@ def test_field_grid_is_lazy_full_grid(sentinel1_iw):
 
 
 def test_field_grid_is_tile_chunked(sentinel1_iw):
-    # chunked at the shared default (satimg.readers.CHUNK_PX) instead of a
+    # chunked at the shared default (satimg.readers.raster.CHUNK_PX) instead of a
     # much larger (or unbounded) block regardless of the patch size read.
     grid = sentinel1_iw.metadata.incidence_angle.grid
     y_chunks, x_chunks = grid.chunks

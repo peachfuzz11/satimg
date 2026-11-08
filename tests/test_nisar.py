@@ -120,7 +120,7 @@ def test_metadata_is_the_cube_at_sea_level(product):
 
 
 def test_thumbnail(product):
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert product.thumbnail().size == satimg.readers.thumbnail.THUMBNAIL_SIZE
 
 
 def test_zip_native(h5_path, tmp_path):

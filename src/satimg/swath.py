@@ -1,7 +1,7 @@
 """Shared machinery for sensor-geometry swaths that ship a latitude /
 longitude per pixel (VIIRS, MODIS, Sentinel-3 OLCI): choosing the coarse node
 grid a :class:`~satimg.transform.swath.SwathTransformer` and the per-pixel metadata
-fields are kept on, and reading scaled HDF5 / netCDF4 variables.
+fields are kept on, and tracing a footprint.
 """
 
 from __future__ import annotations
@@ -49,46 +49,6 @@ def scan_edge_rows(height: int, scan_rows: int) -> numpy.ndarray:
     rows a node grid needs."""
     starts = numpy.arange(0, height, scan_rows)
     return numpy.unique(numpy.r_[starts, numpy.minimum(starts + scan_rows - 1, height - 1)])
-
-
-def read_scaled(dataset, fill_below: float | None = None, key=()) -> numpy.ndarray:
-    """An HDF5 / netCDF4 variable -- or just its ``key`` selection (rows,
-    slices: anything ``h5py`` indexes by), so a full-resolution variable
-    need not be read whole -- as ``float``, its CF ``_FillValue`` (and
-    anything at or below ``fill_below``) as ``NaN``, ``scale_factor`` /
-    ``add_offset`` applied -- ``h5py`` applies none of them itself."""
-    raw = dataset[key]
-    data = raw.astype(float)
-    attrs = dataset.attrs
-    if "_FillValue" in attrs:
-        data[raw == numpy.asarray(attrs["_FillValue"]).ravel()[0]] = numpy.nan
-    if fill_below is not None:
-        data[data <= fill_below] = numpy.nan
-    if "scale_factor" in attrs:
-        data *= float(numpy.asarray(attrs["scale_factor"]).ravel()[0])
-    if "add_offset" in attrs:
-        data += float(numpy.asarray(attrs["add_offset"]).ravel()[0])
-    return data
-
-
-def find_dataset(h5, name: str) -> str:
-    """The full path of the first dataset called ``name`` anywhere in
-    ``h5`` -- for products whose group layout varies (MODIS C7's
-    HDF-EOS5 swath groups)."""
-    import h5py
-
-    found = []
-
-    def visit(path, obj):
-        if isinstance(obj, h5py.Dataset) and path.rsplit("/", 1)[-1] == name:
-            found.append(path)
-            return True
-        return None
-
-    h5.visititems(visit)
-    if not found:
-        raise KeyError(f"no dataset {name!r} in {h5.filename}")
-    return "/" + found[0]
 
 
 def outline(lat: numpy.ndarray, lon: numpy.ndarray, per_side: int = 8) -> dict:
