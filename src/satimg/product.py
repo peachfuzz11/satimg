@@ -56,7 +56,9 @@ import rasterio
 import xarray
 
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
-from satimg.metadata import Field, Metadata, PatchMeta
+from satimg.metadata.collection import Metadata
+from satimg.metadata.field import Field
+from satimg.metadata.patch import PatchMeta
 from satimg.patch import Patch
 from satimg.readers.raster import CHUNK_PX, keep_open
 from satimg.scene_geometry import SceneGeometry
@@ -310,13 +312,13 @@ class Product(abc.ABC):
     def metadata(self) -> Metadata:
         """Per-pixel ancillary geometry (incidence / sun / view angles, ...).
 
-        See :class:`~satimg.metadata.Metadata`. Empty for products that do not
+        See :class:`~satimg.metadata.collection.Metadata`. Empty for products that do not
         override :meth:`_read_metadata`.
         """
         return self._read_metadata()
 
     def _read_metadata(self) -> Metadata:
-        """Build this product's :class:`~satimg.metadata.Metadata`. Override in a
+        """Build this product's :class:`~satimg.metadata.collection.Metadata`. Override in a
         subclass; the default has no fields."""
         return Metadata({})
 
@@ -329,7 +331,7 @@ class Product(abc.ABC):
         return SceneGeometry.from_metadata(self.transformer, self.metadata, (self.height, self.width))
 
     def _field(self, rows, cols, values, *, name: str, units: str = "") -> Field:
-        """Helper for :meth:`_read_metadata`: a :class:`~satimg.metadata.Field` on
+        """Helper for :meth:`_read_metadata`: a :class:`~satimg.metadata.field.Field` on
         a coarse grid in this product's pixel coordinates.
 
         ``shape`` is passed as a callable, not ``(self.height, self.width)``

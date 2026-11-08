@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy
 
 from satimg import s1_utils, sar_utils
-from satimg.metadata import grid_from_points
+from satimg.metadata.grids import grid_from_points
 from satimg.scene_geometry import SceneGeometry
 
 

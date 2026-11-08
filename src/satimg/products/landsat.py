@@ -9,7 +9,7 @@ import xarray
 
 from satimg import landsat_utils
 from satimg.landsat_utils import BANDS
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import load_thumbnail

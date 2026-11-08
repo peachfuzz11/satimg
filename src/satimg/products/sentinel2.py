@@ -7,7 +7,7 @@ import datetime
 import xarray
 
 from satimg import s2_utils
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.readers.raster import CHUNK_PX, keep_open, merge_bands, open_band
 from satimg.readers.thumbnail import load_thumbnail

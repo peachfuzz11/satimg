@@ -11,7 +11,7 @@ import xarray
 from rasterio.control import GroundControlPoint
 
 from satimg import s3_utils, swath
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands

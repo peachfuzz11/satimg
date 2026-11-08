@@ -13,7 +13,8 @@ import pytest
 import xarray
 
 from satimg.geometry import Window
-from satimg.metadata import Metadata, bilinear
+from satimg.metadata.collection import Metadata
+from satimg.metadata.grids import bilinear
 from satimg.product import Product
 from satimg.readers.raster import CHUNK_PX
 from satimg.source.local import DirSource
@@ -224,7 +225,7 @@ def test_patch_meta_corners(sentinel1_iw):
 
 
 def test_field_corners_without_grid_raises():
-    from satimg.metadata import Field
+    from satimg.metadata.field import Field
 
     bare = Field([0, 1], [0, 1], [[0.0, 1.0], [2.0, 3.0]], name="x")
     with pytest.raises(AttributeError):

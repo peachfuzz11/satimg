@@ -20,7 +20,7 @@ import numpy
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.metadata import fill_nan_nearest, regular_axis
+from satimg.metadata.grids import fill_nan_nearest, regular_axis
 from satimg.source.base import Source
 
 #: spacing of the MTD_TL.xml angle grids, metres.

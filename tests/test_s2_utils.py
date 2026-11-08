@@ -7,7 +7,7 @@ import numpy
 import pytest
 
 from satimg import s2_utils
-from satimg.metadata import Field
+from satimg.metadata.field import Field
 from satimg.source.local import DirSource
 from tests.conftest import PRODUCT_PATHS
 

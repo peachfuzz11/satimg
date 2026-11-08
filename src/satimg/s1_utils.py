@@ -97,7 +97,7 @@ def read_geolocation(
 ) -> tuple[list[dict], dict, tuple[int, int]]:
     """The annotation XML's geolocation grid points (row/col plus each
     :data:`GEOLOC_FIELDS` value, and -- for building GCPs, not exposed in
-    :class:`~satimg.metadata.Metadata` -- latitude/longitude/height), the
+    :class:`~satimg.metadata.collection.Metadata` -- latitude/longitude/height), the
     scene-wide attrs, and the full measurement grid's ``(lines, samples)``
     shape (``imageAnnotation/imageInformation``)."""
     with source.open(relpath) as f:

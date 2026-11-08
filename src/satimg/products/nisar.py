@@ -11,7 +11,7 @@ import rasterio
 import xarray
 
 from satimg import nisar_utils
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.nisar_geometry import NisarGeometry
 from satimg.product import Product
 from satimg.readers.hdf5 import open_h5

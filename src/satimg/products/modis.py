@@ -9,7 +9,7 @@ import PIL.Image
 import xarray
 
 from satimg import modis_utils, swath
-from satimg.metadata import Metadata
+from satimg.metadata.collection import Metadata
 from satimg.product import Product
 from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
 from satimg.readers.thumbnail import fit_thumbnail

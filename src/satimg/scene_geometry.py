@@ -20,7 +20,8 @@ import math
 
 import numpy
 
-from satimg.metadata import Field, Metadata
+from satimg.metadata.collection import Metadata
+from satimg.metadata.field import Field
 from satimg.transform.base import Transformer
 
 
@@ -41,7 +42,7 @@ class SceneGeometry:
     """Pixel <-> lat/lon conversion plus per-pixel metadata of one scene.
 
     ``fields`` maps a field name to ``(rows, cols, values, units)`` -- the
-    coarse grid a :class:`~satimg.metadata.Field` interpolates -- and ``shape``
+    coarse grid a :class:`~satimg.metadata.field.Field` interpolates -- and ``shape``
     is the full image's ``(height, width)``.
     """
 
