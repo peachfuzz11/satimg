@@ -81,7 +81,7 @@ class ViirsDNBProduct(Product):
             geolocation = viirs_utils.read_geolocation(h5)
         self._timestamp = granule["timestamp"]
         self._footprint = granule["footprint"]
-        self._shape = geolocation["lat"].shape
+        self._shape = geolocation["shape"]
         self._attrs = {
             **granule["attrs"],
             "moon_illumination": geolocation["moon_illumination"],

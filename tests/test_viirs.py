@@ -13,9 +13,9 @@ from satimg.connectors._credentials import CredentialsError
 from satimg.prediction import ViirsBoatDetector
 from satimg.products import ViirsDNBProduct
 from satimg.registry import resolve
-from satimg.swath import node_columns
+from satimg.swath import node_columns, scan_edge_rows
 from satimg.transform import SwathTransformer
-from satimg.viirs_utils import granule_key
+from satimg.viirs_utils import FIELDS, FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 
@@ -163,6 +163,21 @@ def test_node_columns_meet_their_tolerance(truth):
     loose, tight = node_columns(lat[:2], lon[:2], 250.0), node_columns(lat[:2], lon[:2], 25.0)
     assert loose[0] == 0 and loose[-1] == fx.COLS - 1
     assert len(loose) < len(tight)
+
+
+def test_geolocation_reads_only_the_scan_edge_rows(truth):
+    # every full-swath float array is ~100 MB on a real granule; opening one
+    # must not hold them -- the node grid only ever uses the scan-edge rows
+    lat, lon = truth
+    with h5py.File(GEO) as g:
+        geolocation = read_geolocation(g)
+    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
+    assert geolocation["shape"] == lat.shape
+    numpy.testing.assert_array_equal(geolocation["rows"], rows)
+    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
+        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
+    for field in FIELDS:
+        assert geolocation[field].shape == (len(rows), lat.shape[1])
 
 
 def test_geometry_round_trips(product, truth):
