@@ -109,35 +109,44 @@ def read_granule(l1b_h5, name: str) -> dict:
 
 def read_geolocation(geo_h5) -> dict:
     """The V??03DNB file's latitude / longitude (terrain corrected -- the
-    ellipsoid at sea) and :data:`FIELDS`, scaled, fills as ``NaN``. The moon
-    illumination is per pixel there; its median stands for the granule."""
+    ellipsoid at sea) and :data:`FIELDS`, scaled, fills as ``NaN`` -- on the
+    scan-edge ``rows`` only (:func:`~satimg.swath.scan_edge_rows`), the only
+    rows a node grid uses: geolocation is linear in row within a scan, and
+    reading every row would hold ten full-swath ``float`` arrays (over 1 GB)
+    on every open. ``shape`` is the full swath's. The moon illumination is
+    per pixel there; its median over those rows stands for the granule."""
     group = geo_h5["geolocation_data"]
+    shape = group["latitude"].shape
+    rows = swath.scan_edge_rows(shape[0], SCAN_ROWS)
     out = {
-        "lat": swath.read_scaled(group["latitude"], FILL_BELOW),
-        "lon": swath.read_scaled(group["longitude"], FILL_BELOW),
+        "shape": shape,
+        "rows": rows,
+        "lat": swath.read_scaled(group["latitude"], FILL_BELOW, rows=rows),
+        "lon": swath.read_scaled(group["longitude"], FILL_BELOW, rows=rows),
     }
     for variable, field in _ANGLES.items():
-        out[field] = swath.read_scaled(group[variable])
+        out[field] = swath.read_scaled(group[variable], rows=rows)
     # percent, per pixel
-    out["moon_illumination"] = float(numpy.nanmedian(swath.read_scaled(group["moon_illumination_fraction"]))) / 100.0
+    out["moon_illumination"] = (
+        float(numpy.nanmedian(swath.read_scaled(group["moon_illumination_fraction"], rows=rows))) / 100.0
+    )
     out["moon_phase_angle"] = (
-        float(numpy.nanmedian(swath.read_scaled(group["moon_phase_angle"]))) if "moon_phase_angle" in group else None
+        float(numpy.nanmedian(swath.read_scaled(group["moon_phase_angle"], rows=rows)))
+        if "moon_phase_angle" in group else None
     )
     return out
 
 
 def nodes(geolocation: dict, tolerance_m: float) -> dict:
     """A node grid for :class:`~satimg.transform.SwathTransformer` and the
-    angle fields: scan-edge rows, :func:`~satimg.swath.node_columns` at
-    ``tolerance_m``, as pixel-centre coordinates (``i + 0.5``), with each
-    array sampled there."""
+    angle fields: :func:`read_geolocation`'s scan-edge rows,
+    :func:`~satimg.swath.node_columns` at ``tolerance_m``, as pixel-centre
+    coordinates (``i + 0.5``), with each array sampled there."""
     lat, lon = geolocation["lat"], geolocation["lon"]
-    rows = swath.scan_edge_rows(lat.shape[0], SCAN_ROWS)
-    cols = swath.node_columns(lat[rows], lon[rows], tolerance_m)
-    sample = numpy.ix_(rows, cols)
-    out = {"rows": rows + 0.5, "cols": cols + 0.5, "lat": lat[sample], "lon": lon[sample]}
+    cols = swath.node_columns(lat, lon, tolerance_m)
+    out = {"rows": geolocation["rows"] + 0.5, "cols": cols + 0.5, "lat": lat[:, cols], "lon": lon[:, cols]}
     for field in FIELDS:
-        out[field] = geolocation[field][sample]
+        out[field] = geolocation[field][:, cols]
     return out
 
 
