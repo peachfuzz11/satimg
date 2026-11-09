@@ -1,9 +1,9 @@
-"""Copernicus Data Space connectors for Sentinel-1, Sentinel-2 and Sentinel-3
-OLCI.
+"""The Copernicus Data Space connector the Sentinel-1, Sentinel-2 and
+Sentinel-3 connectors share.
 
 Downloads need a (free) Copernicus Data Space account. Pass it explicitly::
 
-    Sentinel2Connector(username="me@example.com", password="...")
+    Sentinel2L1CConnector(username="me@example.com", password="...")
 
 or set ``CDSE_USERNAME`` / ``CDSE_PASSWORD`` in the environment.
 """
@@ -26,7 +26,7 @@ _TOKEN_URL = (
 )
 
 
-class _DataspaceConnector(STACConnector):
+class DataspaceConnector(STACConnector):
     STAC_ENDPOINT = "https://stac.dataspace.copernicus.eu/v1/"
     ENV_PREFIX = "CDSE"
     SERVICE = "Copernicus Data Space"
@@ -81,29 +81,3 @@ class _DataspaceConnector(STACConnector):
         session.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
         logger.debug("obtained %s access token", self.SERVICE)
         return session
-
-
-class Sentinel1Connector(_DataspaceConnector):
-    collection = "sentinel-1-grd"
-    product_type = "IW_GRDH_1S"
-
-
-class Sentinel2Connector(_DataspaceConnector):
-    collection = "sentinel-2-l1c"
-
-
-class Sentinel3Connector(_DataspaceConnector):
-    """Sentinel-3 OLCI Level-1B full resolution (``OL_1_EFR___``), A and B.
-    ``timeliness="nrt"`` (the default) searches the near-real-time products,
-    out within hours; ``"ntc"`` the consolidated non-time-critical ones, out
-    within days."""
-
-    COLLECTIONS = {"nrt": "sentinel-3-olci-1-efr-nrt", "ntc": "sentinel-3-olci-1-efr-ntc"}
-
-    def __init__(self, username: str | None = None, password: str | None = None, timeliness: str = "nrt"):
-        super().__init__(username, password)
-        try:
-            self.collection = self.COLLECTIONS[timeliness]
-        except KeyError:
-            raise ValueError(f"unknown timeliness {timeliness!r}; known: {sorted(self.COLLECTIONS)}") from None
-        self.timeliness = timeliness

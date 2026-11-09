@@ -8,7 +8,7 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors.viirs_connector import ViirsDNBConnector
+from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.prediction.viirs_boat_detector import ViirsBoatDetector

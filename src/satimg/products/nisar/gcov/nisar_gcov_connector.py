@@ -4,8 +4,8 @@
 Earthdata Login: an EDL bearer token, or a username and password. Pass them
 explicitly::
 
-    NisarConnector(token="eyJ...")
-    NisarConnector(username="me", password="...")
+    NisarGCOVConnector(token="eyJ...")
+    NisarGCOVConnector(username="me", password="...")
 
 or set ``EARTHDATA_TOKEN`` -- or ``EARTHDATA_USERNAME`` / ``EARTHDATA_PASSWORD``
 -- in the environment.
@@ -43,7 +43,7 @@ def _wkt(geojson: dict) -> str:
     return f"POLYGON(({ring}))"
 
 
-class NisarConnector(EarthdataLogin, Connector):
+class NisarGCOVConnector(EarthdataLogin, Connector):
     """NISAR L-band products from the ASF DAAC; GCOV by default (pass
     ``processing_level=`` for another, e.g. ``"RSLC"`` -- though only GCOV
     opens as a product)."""

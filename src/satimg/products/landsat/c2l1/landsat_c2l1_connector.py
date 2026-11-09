@@ -2,7 +2,7 @@
 
 Downloads need a USGS EarthExplorer / ERS account. Pass it explicitly::
 
-    LandsatConnector(username="me", password="...", token="...")
+    LandsatC2L1Connector(username="me", password="...", token="...")
 
 or set ``USGS_USERNAME`` / ``USGS_PASSWORD`` (and optionally ``USGS_TOKEN``) in
 the environment.
@@ -15,7 +15,7 @@ import os
 import zipfile
 from pathlib import Path
 
-from satimg.connectors._auth import ers_login
+from satimg.connectors.usgs_ers_login import ers_login
 from satimg.connectors._credentials import Credentials
 from satimg.connectors.connector import STACConnector
 
@@ -28,7 +28,7 @@ _ASSETS = (
 )
 
 
-class LandsatConnector(STACConnector):
+class LandsatC2L1Connector(STACConnector):
     STAC_ENDPOINT = "https://landsatlook.usgs.gov/stac-server"
     collection = "landsat-c2l1"
     ENV_PREFIX = "USGS"

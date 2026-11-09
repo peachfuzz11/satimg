@@ -8,10 +8,10 @@ from rasterio.transform import Affine
 
 import satimg
 from satimg import NisarGCOVGeometry
-from satimg.connectors.nisar_connector import NisarConnector
+from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
-from satimg.connectors.nisar_connector import _wkt
+from satimg.products.nisar.gcov.nisar_gcov_connector import _wkt
 from satimg.products.nisar.gcov.nisar_gcov import NisarGCOV
 from satimg.products.nisar.gcov.nisar_gcov_parsing import parse_polygon, parse_time
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
@@ -207,7 +207,7 @@ def test_geometry_round_trips_and_keeps_sar_methods(product):
 
 # -- connector ------------------------------------------------------------------
 def test_connector_factory_is_offline():
-    assert isinstance(get_connector("nisar-gcov"), NisarConnector)
+    assert isinstance(get_connector("nisar-gcov"), NisarGCOVConnector)
 
 
 def test_connector_wkt():
@@ -220,7 +220,7 @@ def test_connector_needs_a_token_or_login(monkeypatch):
     for var in ("EARTHDATA_TOKEN", "EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
         monkeypatch.delenv(var, raising=False)
     with pytest.raises(CredentialsError, match="EARTHDATA_TOKEN"):
-        NisarConnector()._get_session()
-    session = NisarConnector(token="t")._get_session()
+        NisarGCOVConnector()._get_session()
+    session = NisarGCOVConnector(token="t")._get_session()
     assert session.headers["Authorization"] == "Bearer t"
-    assert NisarConnector(username="u", password="p")._get_session().auth == ("u", "p")
+    assert NisarGCOVConnector(username="u", password="p")._get_session().auth == ("u", "p")
