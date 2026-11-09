@@ -6,7 +6,17 @@ import abc
 import datetime
 import logging
 
+import requests
+
 logger = logging.getLogger(__name__)
+
+
+def stream(session: requests.Session, url: str, out) -> None:
+    """Copy ``url`` into the binary file object ``out``, block by block."""
+    with session.get(url, stream=True, timeout=300) as response:
+        response.raise_for_status()
+        for block in response.iter_content(chunk_size=8 << 20):
+            out.write(block)
 
 
 class Connector(abc.ABC):

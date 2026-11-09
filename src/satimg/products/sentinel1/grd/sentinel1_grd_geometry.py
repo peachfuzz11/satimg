@@ -1,4 +1,4 @@
-"""Sentinel-1 scene geometry, detached from the product sentinel1_grd_parsing.
+"""Sentinel-1 scene geometry, detached from the product files.
 
 :class:`Sentinel1GRDGeometry` is the :class:`~satimg.scene_geometry.SceneGeometry`
 of a Sentinel-1 GRD scene -- a GCP transformer and the geolocation grid fields --

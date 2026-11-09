@@ -470,7 +470,7 @@ at berth. Berths and oil terminals by the water count as ports.
 `Detector` tags every detection with where it lies, in `Detection.tags`:
 `on_land`, `turbine`, `platform`, `fishery`, `in_port` and `in_harbor` (a ship at a quay can
 be both `on_land` and `in_port`). No detection is dropped for where it lies;
-filter on the tags. `satimg.prediction.context_tags(lat,
+filter on the tags. `satimg.prediction.context.context_tags(lat,
 lon, year=None)` gives the same tags for any points.
 
 The data is rebuilt by `scripts/build_ports.py`, `scripts/build_windfarms.py`,
@@ -494,9 +494,11 @@ DeepZoom(tile_size=512).build(product.visual, "/tmp/scene")  # -> /tmp/scene.dzi
 Subclass `Product`, implement the abstract hooks (`_open_raw(tile, overview)`,
 `_render_visual(raw, tile)` — both return an `xarray.DataArray` dask-chunked to
 `tile`; normalise dims with `satimg.as_band_yx(...)` and name the band axis
-with `satimg.label_bands(da, [...])` — `transformer`, `timestamp`,
-`footprint`, `thumbnail`), optionally override `_read_metadata` to expose
-per-pixel metadata, and register a filename pattern. For `visual_overview`,
+with `satimg.label_bands(da, [...])` — and `thumbnail`), set
+`self._transformer`, `self._timestamp` and `self._footprint` in `__init__`
+(the base class serves them as `transformer` / `timestamp` / `footprint`),
+optionally override `_read_metadata` to expose per-pixel metadata, and
+register a filename pattern. For `visual_overview`,
 `_open_raw` also takes an `overview` factor (pass it on to `merge_bands`) and
 `_visual_paths()` names the rasters the visual is read from:
 
@@ -527,6 +529,7 @@ satimg/
                sentinel2/l1c/sentinel2_l1c.py holds Sentinel2L1C;
                swath_nodes.py: node grids shared by VIIRS, MODIS, OLCI
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
+  geojson.py   unwrapping a GeoJSON geometry / Feature, its bounding box
   connectors/  the generic and provider connectors the product ones subclass:
                connector · connector_factory
                · copernicus_dataspace_connector · nasa_earthdata_connector · usgs_ers_connector

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy
 import xarray
 
-from satimg.metadata.metadata import Metadata
 from satimg.metadata.field import CORNER_KEYS, corner_center
+from satimg.metadata.metadata import Metadata
 
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window

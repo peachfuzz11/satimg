@@ -11,6 +11,7 @@ import os
 import zipfile
 from pathlib import Path
 
+from satimg.connectors.connector import stream
 from satimg.connectors.usgs_ers_connector import UsgsErsConnector
 
 logger = logging.getLogger(__name__)
@@ -33,18 +34,21 @@ class LandsatC2L1Connector(UsgsErsConnector):
         )
         session = self._get_session()
         # stored: the rasters are already compressed, and GDAL reads stored members
-        # in place at file speed (see satimg.source.zip_source.ZipSource)
-        with zipfile.ZipFile(save_path, "w", zipfile.ZIP_STORED) as archive:
-            for name, asset in item["assets"].items():
-                if name not in _ASSETS:
-                    continue
-                href = asset["href"]
-                filename = name if Path(name).suffix else name + Path(href).suffix
-                logger.debug("fetching asset %s: %s", name, href)
-                response = session.get(href, timeout=120)
-                response.raise_for_status()
-                archive.writestr(os.path.join(item["id"], filename), response.content)
-            if archive.testzip() is not None:
-                raise zipfile.BadZipFile("invalid zip archive")
+        # in place at file speed (see satimg.source.zip_source.ZipSource); each
+        # asset streamed into it, and the zip only renamed into place once whole
+        partial = save_path + ".part"
+        try:
+            with zipfile.ZipFile(partial, "w", zipfile.ZIP_STORED) as archive:
+                for name in assets:
+                    href = item["assets"][name]["href"]
+                    filename = name if Path(name).suffix else name + Path(href).suffix
+                    logger.debug("fetching asset %s: %s", name, href)
+                    with archive.open(f"{item['id']}/{filename}", "w", force_zip64=True) as out:
+                        stream(session, href, out)
+        except BaseException:
+            if os.path.exists(partial):
+                os.remove(partial)
+            raise
+        os.replace(partial, save_path)
         logger.info("wrote %s", save_path)
         return save_path

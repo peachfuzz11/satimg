@@ -55,9 +55,10 @@ from typing import TYPE_CHECKING, Iterable, Iterator
 import rasterio
 import xarray
 
+from satimg.geojson import bbox
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
-from satimg.metadata.metadata import Metadata
 from satimg.metadata.field import Field
+from satimg.metadata.metadata import Metadata
 from satimg.metadata.patch_meta import PatchMeta
 from satimg.patch import Patch
 from satimg.readers.raster import CHUNK_PX, keep_open
@@ -289,20 +290,27 @@ class Product(abc.ABC):
         return self.raw.dtype
 
     # -- metadata ---------------------------------------------
+    # A subclass sets ``_transformer``, ``_timestamp`` and ``_footprint`` in
+    # its ``__init__`` (or overrides the property, as Sentinel-1 and NISAR
+    # do for ``transformer``).
+    _transformer: "Transformer"
+    _timestamp: datetime.datetime
+    _footprint: dict
+
     @property
-    @abc.abstractmethod
     def transformer(self) -> "Transformer":
         """Pixel <-> lat/lon conversion for this product's grid."""
+        return self._transformer
 
     @property
-    @abc.abstractmethod
     def timestamp(self) -> datetime.datetime:
         """Acquisition time (scene centre)."""
+        return self._timestamp
 
     @property
-    @abc.abstractmethod
     def footprint(self) -> dict:
         """GeoJSON-ish ``{"type": "Feature", "geometry": {...}}`` outline."""
+        return self._footprint
 
     @abc.abstractmethod
     def thumbnail(self) -> "PIL.Image.Image":
@@ -360,11 +368,7 @@ class Product(abc.ABC):
 
     def bounds(self) -> tuple[float, float, float, float]:
         """``(min_lon, min_lat, max_lon, max_lat)`` of the footprint."""
-        coords = self.footprint["geometry"]["coordinates"]
-        while isinstance(coords[0][0], (list, tuple)):
-            coords = coords[0]
-        lons, lats = zip(*coords)
-        return min(lons), min(lats), max(lons), max(lats)
+        return bbox(self.footprint)
 
 
 def open(path: str) -> Product:

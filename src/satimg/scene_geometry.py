@@ -20,8 +20,8 @@ import math
 
 import numpy
 
-from satimg.metadata.metadata import Metadata
 from satimg.metadata.field import Field
+from satimg.metadata.metadata import Metadata
 from satimg.transform.transformer import Transformer
 from satimg.transform.transformer_factory import load_transformer
 

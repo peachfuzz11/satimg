@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
-
 import numpy
 import PIL.Image
 import xarray
@@ -13,7 +11,7 @@ from satimg.product import Product
 from satimg.products import swath_nodes
 from satimg.products.modis.qkm import modis_qkm_parsing
 from satimg.readers.hdf5 import find_dataset, open_h5, open_h5_array
-from satimg.readers.thumbnail import fit_thumbnail
+from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry
 from satimg.source.source import Source
@@ -28,7 +26,6 @@ GEOMETRY_TOLERANCE_M = 125.0
 #: TOA reflectance (x cos sun zenith) the visual's stretch tops out at --
 #: water is a few percent in the NIR, a ship or cloud far brighter
 _VISUAL_MAX = 0.4
-
 
 
 @register(r"^M[OY]D02QKM(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
@@ -124,8 +121,7 @@ class ModisQKM(Product):
     def thumbnail(self) -> PIL.Image.Image:
         """Rendered from :attr:`visual`, decimated -- the file ships no
         quick-look."""
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(self.visual[0, ::step, ::step].values, mode="L"))
+        return thumbnail_from_visual(self.visual)
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
@@ -149,19 +145,5 @@ class ModisQKM(Product):
         return self._shape[1]
 
     @property
-    def transformer(self) -> SwathTransformer:
-        return self._transformer
-
-    @property
     def geometry(self) -> SceneGeometry:
-        m = self.metadata
-        fields = {name: (m[name]._rows, m[name]._cols, m[name]._values, m[name].units) for name in m}
-        return SceneGeometry(self._coarse_transformer, fields, self._attrs, self._shape)
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint
+        return SceneGeometry.from_metadata(self._coarse_transformer, self.metadata, self._shape)

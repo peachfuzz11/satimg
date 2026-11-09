@@ -29,24 +29,4 @@ class ModisQKMConnector(CMRConnector):
 
     collection = "modis-qkm"
     version = "7"
-
-    def __init__(
-        self,
-        satellite: str = "both",
-        username: str | None = None,
-        password: str | None = None,
-        token: str | None = None,
-    ):
-        if satellite == "both":
-            self._satellites = tuple(SHORT_NAMES)
-        elif satellite in SHORT_NAMES:
-            self._satellites = (satellite,)
-        else:
-            raise ValueError(f"unknown satellite {satellite!r}; known: both, {', '.join(SHORT_NAMES)}")
-        super().__init__(username, password, token)
-        self.satellite = satellite
-        self.short_names = tuple(name for s in self._satellites for name in SHORT_NAMES[s])
-
-    def _groups(self) -> list[tuple[str, ...]]:
-        # Terra and Aqua are alternatives, each granule an L1B + geolocation pair
-        return [SHORT_NAMES[s] for s in self._satellites]
+    SATELLITES = SHORT_NAMES

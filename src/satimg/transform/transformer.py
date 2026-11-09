@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 from collections.abc import Sequence
+
 import numpy
 
 #: a ``(a, b)`` pair, a list of pairs, or an ``(N, 2)`` array

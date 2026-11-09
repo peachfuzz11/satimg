@@ -18,7 +18,8 @@ from urllib.parse import urlparse
 import requests
 
 from satimg.connectors._credentials import Credentials, CredentialsError
-from satimg.connectors.connector import Connector
+from satimg.connectors.connector import Connector, stream
+from satimg.geojson import bbox
 
 logger = logging.getLogger(__name__)
 
@@ -70,28 +71,10 @@ class EarthdataLogin:
         return session
 
 
-def stream(session: requests.Session, url: str, out) -> None:
-    """Copy ``url`` into the binary file object ``out``, block by block."""
-    with session.get(url, stream=True, timeout=300) as response:
-        response.raise_for_status()
-        for block in response.iter_content(chunk_size=8 << 20):
-            out.write(block)
-
-
 def _bbox(geojson: dict) -> str:
     """CMR's ``bounding_box`` (``W,S,E,N``) around a GeoJSON geometry /
     Feature / single-feature FeatureCollection."""
-    if geojson.get("type") == "FeatureCollection":
-        geojson = geojson["features"][0]
-    if geojson.get("type") == "Feature":
-        geojson = geojson["geometry"]
-    coords = geojson["coordinates"]
-    while isinstance(coords[0][0], (list, tuple)):
-        coords = coords[0]
-    if not isinstance(coords[0], (list, tuple)):
-        coords = [coords]
-    lons, lats = [c[0] for c in coords], [c[1] for c in coords]
-    return f"{min(lons)},{min(lats)},{max(lons)},{max(lats)}"
+    return ",".join(str(v) for v in bbox(geojson))
 
 
 def _file_url(entry: dict, suffix: str) -> str | None:
@@ -107,17 +90,41 @@ class CMRConnector(EarthdataLogin, Connector):
     """Granules of NASA collections, found through CMR (anonymous) and
     downloaded from their DAAC (Earthdata Login).
 
-    A subclass sets :attr:`short_names` -- several when a product is split
-    over files (data + geolocation) that pair by :meth:`_pair_key` -- and
-    :attr:`suffix`, the file type to fetch. ``search`` yields one item per
-    granule with an asset per short name; ``download`` writes them all into
-    one stored zip under a folder named for the item.
+    A subclass sets :attr:`SATELLITES` -- each satellite's short names,
+    several when a product is split over files (data + geolocation) that
+    pair by :meth:`_pair_key` -- and :attr:`suffix`, the file type to fetch.
+    ``satellite="both"`` (the default) searches every satellite, else just
+    the one named. ``search`` yields one item per granule with an asset per
+    short name; ``download`` writes them all into one stored zip under a
+    folder named for the item.
     """
 
-    short_names: tuple[str, ...] = ()
+    #: satellite -> the short names whose files pair into one granule
+    SATELLITES: dict[str, tuple[str, ...]] = {}
     suffix = ".nc"
     #: CMR ``version`` to restrict to, if any
     version: str | None = None
+
+    def __init__(
+        self,
+        satellite: str = "both",
+        username: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+    ):
+        if satellite == "both":
+            self._satellites = tuple(self.SATELLITES)
+        elif satellite in self.SATELLITES:
+            self._satellites = (satellite,)
+        else:
+            raise ValueError(f"unknown satellite {satellite!r}; known: both, {', '.join(self.SATELLITES)}")
+        super().__init__(username, password, token)
+        self.satellite = satellite
+
+    @property
+    def short_names(self) -> tuple[str, ...]:
+        """Every short name searched, across :meth:`_groups`."""
+        return tuple(name for group in self._groups() for name in group)
 
     def _pair_key(self, filename: str) -> str:
         """What a granule's files share across :attr:`short_names`; by
@@ -128,9 +135,9 @@ class CMRConnector(EarthdataLogin, Connector):
 
     def _groups(self) -> list[tuple[str, ...]]:
         """The products to search: each a tuple of short names whose files
-        pair into one granule. One product -- :attr:`short_names` -- unless a
-        subclass offers alternatives (NOAA-20 / NOAA-21, Terra / Aqua)."""
-        return [self.short_names]
+        pair into one granule -- one per chosen satellite (NOAA-20 / NOAA-21,
+        Terra / Aqua)."""
+        return [self.SATELLITES[s] for s in self._satellites]
 
     def _search_group(self, short_names: tuple[str, ...], params: dict) -> list[dict]:
         found: dict[str, dict] = {}

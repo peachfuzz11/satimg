@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import datetime
 from functools import cached_property
 
 import numpy
 import PIL.Image
 import xarray
-from rasterio.control import GroundControlPoint
 
 from satimg.metadata.metadata import Metadata
 from satimg.product import Product
 from satimg.products.viirs.dnb import viirs_dnb_parsing
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import fit_thumbnail
-from satimg.readers.vrt import vrt
+from satimg.readers.thumbnail import thumbnail_from_visual
+from satimg.readers.vrt import gcps, vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source.source import Source
@@ -40,7 +38,6 @@ NANOWATTS = 1e9
 #: centres saturating; day, sunlit ground
 _NIGHT_STRETCH = (0.1, 100.0)
 _DAY_STRETCH = (3e4, 3e7)
-
 
 
 @register(r"^V(NP|J\d)02DNB(_NRT)?\.A\d{7}\.\d{4}\.\d{3}")
@@ -102,17 +99,8 @@ class ViirsDNB(Product):
         """The radiance through a VRT carrying a few GCPs -- just so
         GDAL sees it as georeferenced; satimg's own :attr:`transformer` is
         what maps it."""
-        t = self._coarse_transformer
-        rows = numpy.linspace(0, self.height, 5)
-        cols = numpy.linspace(0, self.width, 5)
-        rr, cc = (a.ravel() for a in numpy.meshgrid(rows, cols, indexing="ij"))
-        latlon = t.rowcol_to_latlon(numpy.column_stack((rr, cc)))
-        gcps = [
-            GroundControlPoint(row=r, col=c, x=lon, y=lat)
-            for r, c, (lat, lon) in zip(rr, cc, latlon)
-        ]
         path = viirs_dnb_parsing.gdal_path(self._source.raster_path(self._radiance_file), viirs_dnb_parsing.RADIANCE)
-        return vrt(path, self._shape, gcps=gcps)
+        return vrt(path, self._shape, gcps=gcps(self._coarse_transformer, self._shape))
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         if overview != 1:
@@ -132,8 +120,7 @@ class ViirsDNB(Product):
     def thumbnail(self) -> PIL.Image.Image:
         """Rendered from :attr:`visual`, decimated -- neither format ships a
         quick-look."""
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(self.visual[0, ::step, ::step].values, mode="L"))
+        return thumbnail_from_visual(self.visual)
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
@@ -153,10 +140,6 @@ class ViirsDNB(Product):
         return self._shape[1]
 
     @property
-    def transformer(self) -> SwathTransformer:
-        return self._transformer
-
-    @property
     def geometry(self) -> SceneGeometry:
         """As :attr:`Product.geometry`: the transformer at
         :data:`GEOMETRY_TOLERANCE_M`, the angle fields on a
@@ -165,11 +148,3 @@ class ViirsDNB(Product):
         return SceneGeometry(
             self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape
         )
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint

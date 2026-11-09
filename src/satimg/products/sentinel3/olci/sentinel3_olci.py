@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import datetime
 from functools import cached_property
 
 import numpy
 import PIL.Image
 import xarray
-from rasterio.control import GroundControlPoint
 
 from satimg.metadata.metadata import Metadata
 from satimg.product import Product
@@ -16,8 +14,8 @@ from satimg.products import swath_nodes
 from satimg.products.sentinel3.olci import sentinel3_olci_parsing
 from satimg.readers.hdf5 import open_h5
 from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import fit_thumbnail, load_thumbnail
-from satimg.readers.vrt import vrt
+from satimg.readers.thumbnail import load_thumbnail, thumbnail_from_visual
+from satimg.readers.vrt import gcps, vrt
 from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source.source import Source
@@ -35,7 +33,6 @@ GEOMETRY_GRID = 32
 #: the visual's true colour bands (R, G, B) and the reflectance its stretch tops out at
 _RGB = ("Oa08", "Oa06", "Oa04")
 _VISUAL_MAX = 0.3
-
 
 
 @register(r"^S3[A-D]_OL_1_EFR____\d{8}T\d{6}_\d{8}T\d{6}_")
@@ -94,14 +91,10 @@ class Sentinel3OLCI(Product):
     def _band_paths(self) -> list[str]:
         """Each band through a VRT carrying a few GCPs -- just so GDAL sees
         it as georeferenced; :attr:`transformer` is what maps it."""
-        rows = numpy.linspace(0, self.height, 5)
-        cols = numpy.linspace(0, self.width, 5)
-        rr, cc = (a.ravel() for a in numpy.meshgrid(rows, cols, indexing="ij"))
-        latlon = self._coarse_transformer.rowcol_to_latlon(numpy.column_stack((rr, cc)))
-        gcps = [GroundControlPoint(row=r, col=c, x=lon, y=lat) for r, c, (lat, lon) in zip(rr, cc, latlon)]
+        points = gcps(self._coarse_transformer, self._shape)
         return [
             vrt(sentinel3_olci_parsing.gdal_path(self._source.raster_path(f"{self._dir}{sentinel3_olci_parsing.band_file(b)}"), b),
-                self._shape, gcps=gcps, dtype="UInt16", nodata=65535)
+                self._shape, gcps=points, dtype="UInt16", nodata=65535)
             for b in sentinel3_olci_parsing.BANDS
         ]
 
@@ -139,8 +132,7 @@ class Sentinel3OLCI(Product):
         quicklook = self._source.find_file("quicklook.jpg")
         if quicklook is not None:
             return load_thumbnail(self._source, quicklook)
-        step = max(1, max(self._shape) // 400)
-        return fit_thumbnail(PIL.Image.fromarray(numpy.moveaxis(self.visual[:, ::step, ::step].values, 0, -1)))
+        return thumbnail_from_visual(self.visual)
 
     # -- geometry -------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
@@ -160,18 +152,6 @@ class Sentinel3OLCI(Product):
         return self._shape[1]
 
     @property
-    def transformer(self) -> SwathTransformer:
-        return self._transformer
-
-    @property
     def geometry(self) -> SceneGeometry:
         shape = (self.height, self.width)
         return SceneGeometry(self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape)
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint

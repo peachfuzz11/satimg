@@ -22,18 +22,18 @@ import os
 
 import requests
 
-from satimg.connectors.connector import Connector
-from satimg.connectors.nasa_earthdata_connector import EarthdataLogin, stream
+from satimg.connectors.connector import Connector, stream
+from satimg.connectors.nasa_earthdata_connector import EarthdataLogin
+from satimg.geojson import geometry_of
 
 logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://api.daac.asf.alaska.edu/services/search/param"
+
+
 def _wkt(geojson: dict) -> str:
     """A GeoJSON Polygon / Feature / single-feature FeatureCollection as WKT."""
-    if geojson.get("type") == "FeatureCollection":
-        geojson = geojson["features"][0]
-    if geojson.get("type") == "Feature":
-        geojson = geojson["geometry"]
+    geojson = geometry_of(geojson)
     if geojson["type"] == "Point":
         lon, lat = geojson["coordinates"][:2]
         return f"POINT({lon} {lat})"

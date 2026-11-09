@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import os
 import re
 from functools import cached_property
@@ -106,14 +105,6 @@ class Sentinel1GRD(Product):
         :class:`~satimg.products.sentinel1.grd.sentinel1_grd_geometry.Sentinel1GRDGeometry` -- which the
         transformer, metadata and SAR geometry methods below delegate to."""
         return self._geometry
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint
 
     def thumbnail(self) -> PIL.Image.Image:
         """The shipped preview PNG, forced to greyscale: SAR quick-looks ship

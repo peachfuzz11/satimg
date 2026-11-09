@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
-
 import numpy
 import xarray
 
@@ -17,7 +15,6 @@ from satimg.registry import register
 from satimg.scene_geometry import SceneGeometry, coarsen
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
-from satimg.transform.affine_transformer import AffineTransformer
 
 #: side of the square grid :attr:`LandsatC2L1.geometry` stores each angle field on
 GEOMETRY_GRID = 32
@@ -90,10 +87,6 @@ class LandsatC2L1(Product):
         return self._shape[1]
 
     @property
-    def transformer(self) -> AffineTransformer:
-        return self._transformer
-
-    @property
     def geometry(self) -> SceneGeometry:
         """As :attr:`Product.geometry`, with the angle fields resampled to a
         :data:`GEOMETRY_GRID` square grid -- the decimated rasters
@@ -104,14 +97,6 @@ class LandsatC2L1(Product):
         return SceneGeometry(
             self.transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self.metadata.attrs, shape
         )
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint
 
     def thumbnail(self):
         entries = self._source.listdir()
