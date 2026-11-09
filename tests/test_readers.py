@@ -1,4 +1,4 @@
-"""``merge_bands`` must open each band pre-chunked to the caller's ``tile``,
+"""A ``BandStack`` must open each band pre-chunked to the caller's ``tile``,
 never collapsed to one whole-band chunk -- and ``Product.patches()`` /
 ``patches_at()`` must open their own raw / visual view chunked to exactly the
 loop's own window size (an argument, not a size read back off the product).
@@ -6,7 +6,7 @@ loop's own window size (an argument, not a size read back off the product).
 A single chunk defeats every windowed read: rechunking a *single* dask chunk
 into tiles still depends on one task that reads the entire band, so every
 ``patch.raw`` / ``patch.visual`` access would re-decode the whole scene
-instead of just its own tile. See ``satimg.readers.raster.merge_bands`` and
+instead of just its own tile. See ``satimg.readers.stack.BandStack.open`` and
 ``satimg.product.Product.patches`` / ``patches_at``.
 """
 
@@ -78,13 +78,13 @@ def test_visual_builds_once_per_loop(name):
     product = _fresh(name)
     calls = []
     cls = type(product)
-    original = cls._render_visual
+    original = cls._open_visual
 
-    def spy(self, raw, tile):
+    def spy(self, tile, overview=1, raw=None):
         calls.append(tile)
-        return original(self, raw, tile)
+        return original(self, tile, overview, raw)
 
-    cls._render_visual = spy
+    cls._open_visual = spy
     try:
         patches = list(product.patches_at([(600, 600), (700, 700)], 256))
         assert calls == [CHUNK_PX], "patches_at should build visual once, at the default chunks"
@@ -95,5 +95,5 @@ def test_visual_builds_once_per_loop(name):
         next(iter(product.patches(256)))
         assert calls == [CHUNK_PX, 256], "patches should build visual once, for its own tile"
     finally:
-        cls._render_visual = original
+        cls._open_visual = original
         product._close()
