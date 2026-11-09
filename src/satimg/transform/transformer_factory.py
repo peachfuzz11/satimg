@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from satimg.transform.affine_transformer import AffineTransformer
-from satimg.transform.transformer import Transformer
 from satimg.transform.gcp_transformer import GCPTransformer
 from satimg.transform.swath_transformer import SwathTransformer
+from satimg.transform.transformer import Transformer
 
 
 def load_transformer(data: dict) -> Transformer:

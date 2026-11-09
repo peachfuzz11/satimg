@@ -34,6 +34,7 @@ class ViirsDNBConnector(CMRConnector):
     granules boat lights show in."""
 
     collection = "viirs-dnb"
+    SATELLITES = SHORT_NAMES
 
     def __init__(
         self,
@@ -43,19 +44,10 @@ class ViirsDNBConnector(CMRConnector):
         password: str | None = None,
         token: str | None = None,
     ):
-        if satellite == "both":
-            satellites = tuple(SHORT_NAMES)
-        elif satellite in SHORT_NAMES:
-            satellites = (satellite,)
-        else:
-            raise ValueError(f"unknown satellite {satellite!r}; known: both, {', '.join(SHORT_NAMES)}")
-        super().__init__(username, password, token)
-        self.satellite = satellite
+        super().__init__(satellite, username, password, token)
         self.nrt = nrt
-        suffix = "_NRT" if nrt else ""
-        self._pairs = [tuple(f"{stem}{suffix}" for stem in SHORT_NAMES[s]) for s in satellites]
-        self.short_names = tuple(name for pair in self._pairs for name in pair)
 
     def _groups(self) -> list[tuple[str, ...]]:
-        # NOAA-20 and NOAA-21 are alternatives, each granule a radiance + geolocation pair
-        return self._pairs
+        # the near-real-time products are the archive's short names + "_NRT"
+        suffix = "_NRT" if self.nrt else ""
+        return [tuple(f"{stem}{suffix}" for stem in group) for group in super()._groups()]

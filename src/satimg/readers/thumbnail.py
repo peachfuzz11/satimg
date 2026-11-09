@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy
 import PIL.Image
 
 if TYPE_CHECKING:  # pragma: no cover
+    import xarray
+
     from satimg.source.source import Source
 
 #: uniform size every :func:`load_thumbnail` returns, regardless of what the
@@ -45,3 +48,14 @@ def fit_thumbnail(img: PIL.Image.Image) -> PIL.Image.Image:
     left = (covered.width - target_w) // 2
     top = (covered.height - target_h) // 2
     return covered.crop((left, top, left + target_w, top + target_h))
+
+
+def thumbnail_from_visual(visual: xarray.DataArray) -> PIL.Image.Image:
+    """A thumbnail rendered from a ``(band, y, x)`` ``uint8`` visual (one
+    greyscale or three RGB bands) -- for products that ship no quick-look.
+    Reads it decimated to ~400 pixels on the long side, then fits it to
+    :data:`THUMBNAIL_SIZE` (see :func:`fit_thumbnail`)."""
+    step = max(1, max(visual.sizes["y"], visual.sizes["x"]) // 400)
+    pixels = visual[:, ::step, ::step].values
+    img = pixels[0] if pixels.shape[0] == 1 else numpy.moveaxis(pixels, 0, -1)
+    return fit_thumbnail(PIL.Image.fromarray(img))

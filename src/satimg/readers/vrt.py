@@ -2,7 +2,27 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
+
+import numpy
+from rasterio.control import GroundControlPoint
+
+if TYPE_CHECKING:  # pragma: no cover
+    from satimg.transform.transformer import Transformer
+
+
+def gcps(transformer: Transformer, shape: tuple[int, int], per_side: int = 5) -> list[GroundControlPoint]:
+    """A ``per_side`` x ``per_side`` grid of ground control points across a
+    ``shape`` image, placed by ``transformer`` -- just enough for GDAL to see
+    a swath raster (VIIRS, OLCI) as georeferenced in :func:`vrt`; satimg's
+    own transformer is what actually maps it."""
+    height, width = shape
+    rows = numpy.linspace(0, height, per_side)
+    cols = numpy.linspace(0, width, per_side)
+    rr, cc = (a.ravel() for a in numpy.meshgrid(rows, cols, indexing="ij"))
+    latlon = transformer.rowcol_to_latlon(numpy.column_stack((rr, cc)))
+    return [GroundControlPoint(row=r, col=c, x=lon, y=lat) for r, c, (lat, lon) in zip(rr, cc, latlon)]
 
 
 def vrt(

@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import zipfile
 
-from satimg.source.zip_source import zip_source
-from satimg.source.source import Source
 from satimg.source.local_source import DirSource, FileSource
+from satimg.source.source import Source
+from satimg.source.zip_source import zip_source
 
 
 def open_source(path: str) -> Source:

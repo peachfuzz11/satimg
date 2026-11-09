@@ -157,11 +157,22 @@ def test_connector_downloads_the_lowercase_product_asset(tmp_path):
 
     class Response:
         status_code = 200
-        content = payload.getvalue()
         headers = {}
 
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield payload.getvalue()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
     class Session:
-        def get(self, url, allow_redirects=True):
+        def get(self, url, **kwargs):
             assert url == "https://download.example/odata/product"
             return Response()
 

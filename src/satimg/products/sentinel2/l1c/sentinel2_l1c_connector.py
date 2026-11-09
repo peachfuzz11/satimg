@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from satimg.connectors.copernicus_dataspace_connector import CopernicusDataspaceConnector
+from satimg.connectors.copernicus_dataspace_connector import (
+    CopernicusDataspaceConnector,
+)
 
 
 class Sentinel2L1CConnector(CopernicusDataspaceConnector):

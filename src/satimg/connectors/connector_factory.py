@@ -13,7 +13,9 @@ from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
 from satimg.products.sentinel1.grd.sentinel1_grd_connector import Sentinel1GRDConnector
 from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CConnector
-from satimg.products.sentinel3.olci.sentinel3_olci_connector import Sentinel3OLCIConnector
+from satimg.products.sentinel3.olci.sentinel3_olci_connector import (
+    Sentinel3OLCIConnector,
+)
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 
 _CONNECTORS: dict[str, type[Connector]] = {

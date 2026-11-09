@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 from functools import cached_property
 
 import numpy
@@ -148,14 +147,6 @@ class NisarGCOV(Product):
         return NisarGCOVGeometry(
             self.transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self.metadata.attrs, shape
         )
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._footprint
 
     # -- SAR geometry (see NisarGCOVGeometry) ---------------------------------------
     def heading_in_image(self, rowcol, heading_deg):

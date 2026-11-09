@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
-
 import xarray
 
 from satimg.metadata.metadata import Metadata
@@ -30,6 +28,7 @@ class Sentinel2L1C(Product):
         self._meta = sentinel2_l1c_parsing.parse_mtd(self._source)
         self._tl = sentinel2_l1c_parsing.parse_tl(self._source)
         self._timestamp = self._tl["timestamp"]
+        self._footprint = self._meta["footprint"]
         self._gsd = sentinel2_l1c_parsing.BAND_GSD_M[self._meta["band_names"][1]]
         self._transformer = AffineTransformer(self._tl["transforms"][self._gsd], self._tl["crs"])
 
@@ -79,18 +78,6 @@ class Sentinel2L1C(Product):
     def width(self) -> int:
         """See :attr:`height`."""
         return self._tl["pixel_shapes"][self._gsd][1]
-
-    @property
-    def transformer(self) -> AffineTransformer:
-        return self._transformer
-
-    @property
-    def timestamp(self) -> datetime.datetime:
-        return self._timestamp
-
-    @property
-    def footprint(self) -> dict:
-        return self._meta["footprint"]
 
     def thumbnail(self):
         name = next(o for o in self._source.listdir() if o.endswith("-ql.jpg"))
