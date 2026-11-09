@@ -9,12 +9,13 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors import Sentinel3Connector, get_connector
-from satimg.masks.land import LandMask
-from satimg.products import Sentinel3OLCIProduct
+from satimg.connectors.sentinel_connector import Sentinel3Connector
+from satimg.connectors.connector_factory import get_connector
+from satimg.masks.land_mask import LandMask
+from satimg.products.sentinel3.olci.sentinel3_olci import Sentinel3OLCI
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform.swath import SwathTransformer
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import minify_sentinel3 as fx
 from tests.conftest import _PRODUCTS
 
@@ -50,7 +51,7 @@ def _metres(a, b):
     "S3B_OL_1_EFR____20261105T105357_20261105T105657_20261105T131948_0180_126_265_1980_ESA_O_NR_004.SEN3",
 ])
 def test_resolves(name):
-    assert resolve(name) is Sentinel3OLCIProduct
+    assert resolve(name) is Sentinel3OLCI
 
 
 def test_shape_bands_time_attrs(product):
@@ -106,7 +107,7 @@ def test_transformer_matches_sea_level_pixels(product, truth):
     rc = numpy.column_stack((rr + 0.5, cc + 0.5))
     error = _metres(product.transformer.rowcol_to_latlon(rc), numpy.column_stack((lat[rr, cc], lon[rr, cc])))
     # the per-pixel positions are terrain corrected and, at sea, sit ~100 m
-    # (a third of a pixel) from the tie points -- see satimg.products.sentinel3.files
+    # (a third of a pixel) from the tie points -- see satimg.products.sentinel3.olci.sentinel3_olci_parsing
     assert numpy.median(error) < 150
     assert numpy.percentile(error, 99) < 250
 
@@ -128,7 +129,7 @@ def test_patches_and_zip(product, tmp_path):
         for f in FOLDER.iterdir():
             z.write(f, f"{NAME}/{f.name}")
     with satimg.open(str(archive)) as p:
-        assert isinstance(p, Sentinel3OLCIProduct)
+        assert isinstance(p, Sentinel3OLCI)
         assert p.raw.sel(band="Oa08").values[fx.TARGET] == fx.TARGET_DN
 
 

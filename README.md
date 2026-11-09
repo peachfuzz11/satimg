@@ -260,20 +260,20 @@ Every product's `geometry` -- its transformer, image shape, coarse metadata
 grids and scene attrs -- is a small dict that survives strict JSON (e.g. a
 PostgreSQL `jsonb` column; `NaN` is stored as `null`). Store it while the
 product is open and keep converting coordinates and sampling metadata after the
-file is gone. For Sentinel-1, load it as a `Sentinel1Geometry` to also get the
+file is gone. For Sentinel-1, load it as a `Sentinel1GRDGeometry` to also get the
 SAR geometry (Doppler shift, headings):
 
 ```python
 with satimg.open("S1A_IW_GRDH_....SAFE.zip") as product:
     stored = product.geometry.to_dict()      # ~30-80 KB
 
-geometry = satimg.Sentinel1Geometry.from_dict(stored)   # SceneGeometry for other products
+geometry = satimg.Sentinel1GRDGeometry.from_dict(stored)   # SceneGeometry for other products
 geometry.transformer.latlon_to_rowcol((lat, lon))
 geometry.metadata.incidence_angle.at((row, col))
 geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
 ```
 
-For NISAR, load it as a `NisarGeometry` the same way. Whichever class loads it,
+For NISAR, load it as a `NisarGCOVGeometry` the same way. Whichever class loads it,
 the transformer comes back as the kind that was stored: affine, ground control
 points (Sentinel-1) or swath (VIIRS, MODIS, OLCI; stored to within a third of a pixel).
 
@@ -341,7 +341,7 @@ scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
 they are found by a spike detector rather than the image model:
 
 ```python
-from satimg.prediction import ViirsBoatDetector
+from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
 
 lights = ViirsBoatDetector(product).detect()          # every light, tagged
 boats = [d for d in lights if "on_land" not in d.tags and "platform" not in d.tags]
@@ -445,11 +445,11 @@ Every mask answers `mask.contains(lat, lon)` for matching `lat`/`lon` points
 (scalars or arrays of any shape), giving booleans of that shape:
 
 ```python
-from satimg.masks.fishfarms import FishFarmMask
-from satimg.masks.land import LandMask
-from satimg.masks.platforms import PlatformMask
-from satimg.masks.ports import HarborMask, PortMask, features_in_bbox
-from satimg.masks.windfarms import WindfarmMask
+from satimg.masks.fishfarm_mask import FishFarmMask
+from satimg.masks.land_mask import LandMask
+from satimg.masks.platform_mask import PlatformMask
+from satimg.masks.port_mask import HarborMask, PortMask, features_in_bbox
+from satimg.masks.windfarm_mask import WindfarmMask
 
 LandMask().contains(lat, lon)              # on land
 WindfarmMask(year=2025).contains(lat, lon)  # in a wind farm built by 2025 (any farm without a year)
@@ -504,32 +504,42 @@ per-pixel metadata, and register a filename pattern. For `visual_overview`,
 from satimg.registry import register
 
 @register(r"^MY_SENSOR_\d{8}.*$")
-class MySensorProduct(Product):
+class MySensorL1(Product):
     ...
 ```
 
-Importing `satimg.products` registers the built-ins.
+Importing `satimg` registers the built-ins.
 
 ### Package layout
 
 ```
 satimg/
   product.py, patch.py, registry.py      the Product base, patches, filename registry
-  transform/   base · affine · gcp · swath      pixel <-> lat/lon, one module per kind
-  source/      base · local · archive           where a product's files live (dir, file, zip)
+  transform/   transformer · affine_transformer · gcp_transformer · swath_transformer
+               · transformer_factory     pixel <-> lat/lon, one module per kind
+  source/      source · local_source · zip_source · source_factory
+                                         where a product's files live (dir, file, zip)
   readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
-  metadata/    field · collection · patch · grids   per-pixel metadata fields
-  masks/       land · ports · platforms · windfarms · fishfarms
-  products/    one package per sensor: product.py (+ files.py, geometry.py)
-               swath.py: node grids shared by VIIRS, MODIS, OLCI
+  metadata/    field · metadata · patch_meta · grids   per-pixel metadata fields
+  masks/       mask · land_mask · port_mask · platform_mask · windfarm_mask · fishfarm_mask
+  products/    <constellation>/<product>/: <constellation>_<product>.py,
+               <constellation>_<product>_parsing.py (+ _geometry.py), e.g.
+               sentinel2/l1c/sentinel2_l1c.py holds Sentinel2L1C;
+               swath_nodes.py: node grids shared by VIIRS, MODIS, OLCI
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
-  connectors/  search + download, one module per data provider
+  connectors/  connector · connector_factory · <provider>_connector · earthdata
   prediction/  detectors and characterisers
 ```
 
-A new sensor goes in `products/<sensor>/`: `product.py` for the `Product`
-subclass, `files.py` for parsing its file format. Add `geometry.py` if it needs a
-`SceneGeometry` subclass.
+Every module is named for what it holds, so no two share a file name. Package
+`__init__.py` files are empty; only the top-level `satimg` re-exports the
+public classes (`from satimg import Sentinel2L1C, get_connector, Detector`).
+
+A new product goes in `products/<constellation>/<product>/`, e.g.
+`products/sentinel2/l1c/`: `sentinel2_l1c.py` for the `Product` subclass
+(`Sentinel2L1C`, named constellation + product, no `Product` suffix),
+`sentinel2_l1c_parsing.py` for parsing its file format. Add
+`<constellation>_<product>_geometry.py` if it needs a `SceneGeometry` subclass.
 
 ## Logging
 

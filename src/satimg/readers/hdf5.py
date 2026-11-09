@@ -13,7 +13,7 @@ import numpy
 import xarray
 
 if TYPE_CHECKING:  # pragma: no cover
-    from satimg.source.base import Source
+    from satimg.source.source import Source
 
 
 @contextmanager

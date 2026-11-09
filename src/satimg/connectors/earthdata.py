@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import requests
 
 from satimg.connectors._credentials import Credentials, CredentialsError
-from satimg.connectors.base import Connector
+from satimg.connectors.connector import Connector
 
 logger = logging.getLogger(__name__)
 

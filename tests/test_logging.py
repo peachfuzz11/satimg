@@ -70,6 +70,6 @@ def test_registry_resolution_is_logged(caplog):
     caplog.set_level(logging.DEBUG, logger="satimg")
     resolve("S2A_MSIL1C_20220114T103401_N0301_R108_T33UUB_20220114T123457.SAFE")
     assert any(
-        "Sentinel2L1CProduct" in r.message and "pattern" in r.message
+        "Sentinel2L1C" in r.message and "pattern" in r.message
         for r in caplog.records
     )

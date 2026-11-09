@@ -3,7 +3,7 @@ import json
 import numpy
 import pytest
 
-from satimg import Sentinel1Geometry
+from satimg import Sentinel1GRDGeometry
 
 
 @pytest.fixture(scope="module")
@@ -14,7 +14,7 @@ def stored(sentinel1_iw):
 
 @pytest.fixture(scope="module")
 def geometry(stored):
-    return Sentinel1Geometry.from_dict(stored)
+    return Sentinel1GRDGeometry.from_dict(stored)
 
 
 def _rowcols(product):

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import PIL.Image
 
 if TYPE_CHECKING:  # pragma: no cover
-    from satimg.source.base import Source
+    from satimg.source.source import Source
 
 #: uniform size every :func:`load_thumbnail` returns, regardless of what the
 #: shipped quick-look's own dimensions are.

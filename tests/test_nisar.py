@@ -7,15 +7,16 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 
 import satimg
-from satimg import NisarGeometry
-from satimg.connectors import NisarConnector, get_connector
+from satimg import NisarGCOVGeometry
+from satimg.connectors.nisar_connector import NisarConnector
+from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
-from satimg.connectors.nisar import _wkt
-from satimg.products import NisarGCOVProduct
-from satimg.products.nisar.files import parse_polygon, parse_time
+from satimg.connectors.nisar_connector import _wkt
+from satimg.products.nisar.gcov.nisar_gcov import NisarGCOV
+from satimg.products.nisar.gcov.nisar_gcov_parsing import parse_polygon, parse_time
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform.affine import AffineTransformer
+from satimg.transform.affine_transformer import AffineTransformer
 from tests import nisar_fixture as fx
 from tests.test_helper import h5_reads
 
@@ -53,12 +54,12 @@ def test_parse_polygon_drops_height_and_closes():
     "NISAR_L2_UR_GCOV_035_005_D_083_4005_DHDH_A_20261105T132813_20261105T132832_P05023_F_P_J_001.h5",
 ])
 def test_resolves(name):
-    assert resolve(name) is NisarGCOVProduct
+    assert resolve(name) is NisarGCOV
 
 
 # -- product ------------------------------------------------------------------
 def test_opens_a_bare_h5(product):
-    assert isinstance(product, NisarGCOVProduct)
+    assert isinstance(product, NisarGCOV)
     assert product.shape == (2, fx.HEIGHT, fx.WIDTH)
     assert list(product.raw.band.values) == ["HHHH", "HVHV"]
     assert product.dtype == numpy.float32
@@ -129,7 +130,7 @@ def test_zip_native(h5_path, tmp_path):
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
         z.write(h5_path, fx.NAME)
     with satimg.open(str(archive)) as p:
-        assert isinstance(p, NisarGCOVProduct)
+        assert isinstance(p, NisarGCOV)
         assert p.raw.sel(band="HHHH").values[fx.SHIP] == pytest.approx(fx.SHIP_POWER)
 
 
@@ -194,7 +195,7 @@ def test_north_angle_on_a_polar_grid():
 def test_geometry_round_trips_and_keeps_sar_methods(product):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
     assert len(json.dumps(stored)) < 200_000
-    geometry = NisarGeometry.from_dict(stored)
+    geometry = NisarGCOVGeometry.from_dict(stored)
     towards_satellite = (fx.LOOK + 180) % 360
     assert geometry.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite) == pytest.approx(
         product.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite), rel=1e-6

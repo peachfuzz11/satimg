@@ -7,11 +7,12 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors import ModisConnector, get_connector
-from satimg.products import ModisProduct
+from satimg.connectors.modis_connector import ModisConnector
+from satimg.connectors.connector_factory import get_connector
+from satimg.products.modis.qkm.modis_qkm import ModisQKM
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform.swath import SwathTransformer
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import modis_fixture as fx
 from tests.test_helper import h5_reads
 
@@ -39,7 +40,7 @@ def _metres(a, b):
 
 @pytest.mark.parametrize("name", [fx.TERRA, fx.AQUA, fx.TERRA[:-3], "MYD02QKM_NRT.A2026305.1250.007.nc"])
 def test_resolves(name):
-    assert resolve(name) is ModisProduct
+    assert resolve(name) is ModisQKM
 
 
 def test_terra_and_aqua(folder):
