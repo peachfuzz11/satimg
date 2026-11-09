@@ -522,12 +522,13 @@ satimg/
   readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
   metadata/    field · metadata · patch_meta · grids   per-pixel metadata fields
   masks/       mask · land_mask · port_mask · platform_mask · windfarm_mask · fishfarm_mask
-  products/    <constellation>/<product>/: <constellation>_<product>.py,
+  products/    <constellation>/<product>/: <constellation>_<product>.py, _connector.py,
                <constellation>_<product>_parsing.py (+ _geometry.py), e.g.
                sentinel2/l1c/sentinel2_l1c.py holds Sentinel2L1C;
                swath_nodes.py: node grids shared by VIIRS, MODIS, OLCI
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
-  connectors/  connector · connector_factory · <provider>_connector · earthdata
+  connectors/  shared by the per-product connectors: connector · connector_factory
+               · dataspace_connector (Copernicus) · earthdata (NASA) · usgs_ers_login
   prediction/  detectors and characterisers
 ```
 

@@ -7,7 +7,7 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors.modis_connector import ModisConnector
+from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.products.modis.qkm.modis_qkm import ModisQKM
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
@@ -174,14 +174,14 @@ def test_connector_searches_terra_and_aqua(monkeypatch):
         return Response({"feed": {"entry": feeds[params["short_name"]]}})
 
     monkeypatch.setattr(earthdata.requests, "get", get)
-    items = ModisConnector().search(day_night="day")
+    items = ModisQKMConnector().search(day_night="day")
     # by time, both satellites; the 12:55 Aqua granule has no MYD03 yet
     assert [i["id"][:8] for i in items] == ["MYD02QKM", "MOD02QKM", "MYD02QKM"]
     assert set(items[1]["assets"]) == {"MOD02QKM", "MOD03"}
     assert {c["short_name"] for c in calls} == {"MOD02QKM", "MOD03", "MYD02QKM", "MYD03"}
     assert all(c["version"] == "7" for c in calls)
     calls.clear()
-    assert [i["id"] for i in ModisConnector("terra").search()] == [fx.TERRA[:-3]]
+    assert [i["id"] for i in ModisQKMConnector("terra").search()] == [fx.TERRA[:-3]]
     assert {c["short_name"] for c in calls} == {"MOD02QKM", "MOD03"}
 
 
@@ -189,4 +189,4 @@ def test_connector_satellites():
     assert get_connector("modis-qkm").short_names == ("MOD02QKM", "MOD03", "MYD02QKM", "MYD03")
     assert get_connector("modis-qkm", satellite="aqua").short_names == ("MYD02QKM", "MYD03")
     with pytest.raises(ValueError, match="unknown satellite"):
-        ModisConnector("suomi")
+        ModisQKMConnector("suomi")

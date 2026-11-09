@@ -8,19 +8,21 @@ environment variables (see :mod:`satimg.connectors._credentials`).
 from __future__ import annotations
 
 from satimg.connectors.connector import Connector
-from satimg.connectors.landsat_connector import LandsatConnector
-from satimg.connectors.modis_connector import ModisConnector
-from satimg.connectors.nisar_connector import NisarConnector
-from satimg.connectors.sentinel_connector import Sentinel1Connector, Sentinel2Connector, Sentinel3Connector
-from satimg.connectors.viirs_connector import ViirsDNBConnector
+from satimg.products.landsat.c2l1.landsat_c2l1_connector import LandsatC2L1Connector
+from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
+from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
+from satimg.products.sentinel1.grd.sentinel1_grd_connector import Sentinel1GRDConnector
+from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CConnector
+from satimg.products.sentinel3.olci.sentinel3_olci_connector import Sentinel3OLCIConnector
+from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 
 _CONNECTORS: dict[str, type[Connector]] = {
-    "sentinel-1-grd": Sentinel1Connector,
-    "sentinel-2-l1c": Sentinel2Connector,
-    "landsat-c2l1": LandsatConnector,
-    "modis-qkm": ModisConnector,
-    "nisar-gcov": NisarConnector,
-    "sentinel-3-olci-efr": Sentinel3Connector,
+    "sentinel-1-grd": Sentinel1GRDConnector,
+    "sentinel-2-l1c": Sentinel2L1CConnector,
+    "landsat-c2l1": LandsatC2L1Connector,
+    "modis-qkm": ModisQKMConnector,
+    "nisar-gcov": NisarGCOVConnector,
+    "sentinel-3-olci-efr": Sentinel3OLCIConnector,
     "viirs-dnb": ViirsDNBConnector,
 }
 

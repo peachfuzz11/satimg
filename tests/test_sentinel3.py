@@ -9,7 +9,7 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors.sentinel_connector import Sentinel3Connector
+from satimg.products.sentinel3.olci.sentinel3_olci_connector import Sentinel3OLCIConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.masks.land_mask import LandMask
 from satimg.products.sentinel3.olci.sentinel3_olci import Sentinel3OLCI
@@ -147,7 +147,7 @@ def test_connector_timeliness():
     assert get_connector("sentinel-3-olci-efr").collection == "sentinel-3-olci-1-efr-nrt"
     assert get_connector("sentinel-3-olci-efr", timeliness="ntc").collection == "sentinel-3-olci-1-efr-ntc"
     with pytest.raises(ValueError, match="timeliness"):
-        Sentinel3Connector(timeliness="fast")
+        Sentinel3OLCIConnector(timeliness="fast")
 
 
 def test_connector_downloads_the_lowercase_product_asset(tmp_path):
@@ -165,7 +165,7 @@ def test_connector_downloads_the_lowercase_product_asset(tmp_path):
             assert url == "https://download.example/odata/product"
             return Response()
 
-    connector = Sentinel3Connector()
+    connector = Sentinel3OLCIConnector()
     connector._get_session = lambda: Session()
     item = {"id": NAME[:-5], "assets": {"product": {"href": "https://download.example/odata/product"}}}
     out = connector.download(item, str(tmp_path / "olci.zip"))

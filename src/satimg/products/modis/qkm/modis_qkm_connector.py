@@ -22,7 +22,7 @@ from satimg.connectors.earthdata import CMRConnector
 SHORT_NAMES = {"terra": ("MOD02QKM", "MOD03"), "aqua": ("MYD02QKM", "MYD03")}
 
 
-class ModisConnector(CMRConnector):
+class ModisQKMConnector(CMRConnector):
     """MODIS 250 m L1B granules from Terra and Aqua (``satellite="both"``,
     the default) or one of them. Only day-mode granules carry 250 m data,
     so pass ``day_night="day"``."""

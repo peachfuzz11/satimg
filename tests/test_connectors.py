@@ -1,8 +1,8 @@
 import pytest
 
 from satimg.connectors._credentials import CredentialsError
-from satimg.connectors.landsat_connector import LandsatConnector
-from satimg.connectors.sentinel_connector import Sentinel2Connector
+from satimg.products.landsat.c2l1.landsat_c2l1_connector import LandsatC2L1Connector
+from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import Credentials
 
@@ -39,13 +39,13 @@ class TestConnectors:
         for var in ("CDSE_USERNAME", "CDSE_PASSWORD"):
             monkeypatch.delenv(var, raising=False)
         with pytest.raises(CredentialsError):
-            Sentinel2Connector()._get_session()
+            Sentinel2L1CConnector()._get_session()
 
     def test_credentials_passed_through_factory(self, monkeypatch):
         for var in ("USGS_USERNAME", "USGS_PASSWORD", "USGS_TOKEN"):
             monkeypatch.delenv(var, raising=False)
         connector = get_connector("landsat-c2l1", username="u", password="p", token="t")
-        assert isinstance(connector, LandsatConnector)
+        assert isinstance(connector, LandsatC2L1Connector)
         assert (connector._username, connector._password, connector._token) == ("u", "p", "t")
 
     def test_unknown_collection(self):
