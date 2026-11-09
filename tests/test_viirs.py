@@ -102,9 +102,10 @@ def test_raw_fill_is_nan(product):
 def test_visual_stretches_lights_bright(product):
     v = product.visual.values[0]
     assert v.dtype == numpy.uint8
-    # 60 nW on the 0.5 - 500 nW log stretch: ~70% up; the sea is near the bottom
+    # 60 nW on the 0.1 - 100 nW log stretch: ~90% up; the sea is near the
+    # bottom, but not clipped black
     assert v[fx.BOATS[0]] > 150
-    assert numpy.median(v) < 100
+    assert 0 < numpy.median(v) < 100
     assert v[fx.FILL] == 0
     assert product.thumbnail().size == THUMBNAIL_SIZE
 
