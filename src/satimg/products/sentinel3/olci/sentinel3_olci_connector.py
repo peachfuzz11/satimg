@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from satimg.connectors.dataspace_connector import DataspaceConnector
+from satimg.connectors.copernicus_dataspace_connector import CopernicusDataspaceConnector
 
 
-class Sentinel3OLCIConnector(DataspaceConnector):
+class Sentinel3OLCIConnector(CopernicusDataspaceConnector):
     """Sentinel-3 OLCI Level-1B full resolution (``OL_1_EFR___``), A and B.
     ``timeliness="nrt"`` (the default) searches the near-real-time products,
     out within hours; ``"ntc"`` the consolidated non-time-critical ones, out

@@ -1,4 +1,9 @@
-"""USGS ERS (EarthExplorer) form login -> authenticated ``requests.Session``.
+"""USGS connectors: a USGS ERS (EarthExplorer) account -> an authenticated
+STAC session.
+
+Downloads need a USGS EarthExplorer / ERS account. Pass it explicitly
+(``username=``, ``password=``, optionally ``token=``) or set
+``USGS_USERNAME`` / ``USGS_PASSWORD`` (and ``USGS_TOKEN``) in the environment.
 
 Login-form handling adapted from the ``landsatlook-stac`` package.
 """
@@ -11,6 +16,9 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter, Retry
+
+from satimg.connectors._credentials import Credentials
+from satimg.connectors.connector import STACConnector
 
 logger = logging.getLogger(__name__)
 
@@ -85,3 +93,26 @@ def ers_login(username: str, password: str, token: str | None = None) -> request
         s.headers.update({"Authorization": f"Bearer {token}"})
     logger.debug("ERS login complete for %s", username)
     return s
+
+
+class UsgsErsConnector(STACConnector):
+    """A USGS STAC catalogue whose downloads log in with a USGS ERS account."""
+
+    ENV_PREFIX = "USGS"
+    SERVICE = "USGS EarthExplorer"
+
+    def __init__(self, username: str | None = None, password: str | None = None, token: str | None = None):
+        self._username = username
+        self._password = password
+        self._token = token
+
+    def _get_session(self, *args, **kwargs) -> requests.Session:
+        creds = Credentials.resolve(
+            self._username,
+            self._password,
+            self._token,
+            service=self.SERVICE,
+            env_prefix=self.ENV_PREFIX,
+        )
+        logger.debug("logging in to %s as %s", self.SERVICE, creds.username)
+        return ers_login(creds.username, creds.password, creds.token)

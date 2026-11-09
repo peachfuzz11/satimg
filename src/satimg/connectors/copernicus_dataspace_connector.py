@@ -26,7 +26,7 @@ _TOKEN_URL = (
 )
 
 
-class DataspaceConnector(STACConnector):
+class CopernicusDataspaceConnector(STACConnector):
     STAC_ENDPOINT = "https://stac.dataspace.copernicus.eu/v1/"
     ENV_PREFIX = "CDSE"
     SERVICE = "Copernicus Data Space"

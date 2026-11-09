@@ -23,7 +23,7 @@ import os
 import requests
 
 from satimg.connectors.connector import Connector
-from satimg.connectors.earthdata import EarthdataLogin, stream
+from satimg.connectors.nasa_earthdata_connector import EarthdataLogin, stream
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from satimg.connectors.dataspace_connector import DataspaceConnector
+from satimg.connectors.copernicus_dataspace_connector import CopernicusDataspaceConnector
 
 
-class Sentinel2L1CConnector(DataspaceConnector):
+class Sentinel2L1CConnector(CopernicusDataspaceConnector):
     collection = "sentinel-2-l1c"

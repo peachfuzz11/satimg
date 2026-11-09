@@ -4,7 +4,7 @@
 
 Search is anonymous, through NASA's CMR -- catalogued, so a footprint or
 night-only filter costs nothing; download needs an Earthdata Login (see
-:mod:`satimg.connectors.earthdata`) and writes each granule's radiance and
+:mod:`satimg.connectors.nasa_earthdata_connector`) and writes each granule's radiance and
 geolocation files into one zip ``satimg.open`` reads::
 
     connector = get_connector("viirs-dnb")                     # NOAA-20 and NOAA-21; satellite= for one
@@ -18,7 +18,7 @@ instead, for older dates.
 
 from __future__ import annotations
 
-from satimg.connectors.earthdata import CMRConnector
+from satimg.connectors.nasa_earthdata_connector import CMRConnector
 
 #: satellite -> (radiance, geolocation) short-name stems
 SHORT_NAMES = {

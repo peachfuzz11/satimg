@@ -3,7 +3,7 @@ and ``MYD02QKM`` (Aqua), each with its ``MOD03`` / ``MYD03`` geolocation --
 from LAADS DAAC.
 
 Search is anonymous, through NASA's CMR; download needs an Earthdata Login
-(see :mod:`satimg.connectors.earthdata`) and writes the granule's two ``.nc``
+(see :mod:`satimg.connectors.nasa_earthdata_connector`) and writes the granule's two ``.nc``
 files into one zip ``satimg.open`` reads::
 
     connector = get_connector("modis-qkm")                   # Terra and Aqua; satellite="terra" / "aqua"
@@ -16,7 +16,7 @@ read.
 
 from __future__ import annotations
 
-from satimg.connectors.earthdata import CMRConnector
+from satimg.connectors.nasa_earthdata_connector import CMRConnector
 
 #: satellite -> (250 m L1B, geolocation) short names
 SHORT_NAMES = {"terra": ("MOD02QKM", "MOD03"), "aqua": ("MYD02QKM", "MYD03")}

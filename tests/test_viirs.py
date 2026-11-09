@@ -251,7 +251,7 @@ def _cmr_entry(name, day_night="NIGHT"):
 
 
 def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
-    from satimg.connectors import earthdata
+    from satimg.connectors import nasa_earthdata_connector
 
     feeds = {
         "VJ102DNB_NRT": [_cmr_entry("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc"),
@@ -276,7 +276,7 @@ def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
         calls.append(params)
         return Response({"feed": {"entry": feeds[params["short_name"]]}})
 
-    monkeypatch.setattr(earthdata.requests, "get", get)
+    monkeypatch.setattr(nasa_earthdata_connector.requests, "get", get)
     aoi = {"type": "Polygon", "coordinates": [[[123, 33], [135, 33], [135, 40], [123, 33]]]}
     items = ViirsDNBConnector().search(
         geojson=aoi, start_datetime=datetime.datetime(2026, 11, 5, 15), stop_datetime=datetime.datetime(2026, 11, 5, 18),
