@@ -33,8 +33,9 @@ GEOMETRY_GRID = 32
 NANOWATTS = 1e9
 
 #: (low, high) radiance, nW / (cm^2 sr), the visual's log stretch spans:
-#: night shows moonlit cloud to bright boat and city lights; day, sunlit ground
-_NIGHT_STRETCH = (0.5, 500.0)
+#: night shows the moonless sea (~0.1 - 0.5) to boat lights (~5 - 100), city
+#: centres saturating; day, sunlit ground
+_NIGHT_STRETCH = (0.1, 100.0)
 _DAY_STRETCH = (3e4, 3e7)
 
 
