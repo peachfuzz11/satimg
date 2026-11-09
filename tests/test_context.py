@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy
 
-from satimg.prediction import Detector
+from satimg.prediction.detector import Detector
 from satimg.prediction.context import FISHERY, IN_HARBOR, IN_PORT, ON_LAND, PLATFORM, TURBINE, context_tags
 
 # (lat, lon)

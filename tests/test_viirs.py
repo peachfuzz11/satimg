@@ -8,15 +8,16 @@ import pytest
 
 import satimg
 from satimg import SceneGeometry
-from satimg.connectors import ViirsDNBConnector, get_connector
+from satimg.connectors.viirs_connector import ViirsDNBConnector
+from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
-from satimg.prediction import ViirsBoatDetector
-from satimg.products import ViirsDNBProduct
-from satimg.products.swath import node_columns, scan_edge_rows
-from satimg.products.viirs.files import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
+from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
+from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
+from satimg.products.swath_nodes import node_columns, scan_edge_rows
+from satimg.products.viirs.dnb.viirs_dnb_parsing import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform.swath import SwathTransformer
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 from tests.test_helper import h5_reads
@@ -56,7 +57,7 @@ def _metres(a, b):
     "VNP02DNB.A2026305.1630.002.2026305232544.nc",
 ])
 def test_resolves(name):
-    assert resolve(name) is ViirsDNBProduct
+    assert resolve(name) is ViirsDNB
 
 
 def test_pairs_by_granule_not_production_time():
@@ -79,7 +80,7 @@ def test_opens_every_layout(how, tmp_path):
             for f in (L1B, GEO):
                 z.write(f, f"{NAME}/{f.name}")
     with satimg.open(str(path)) as p:
-        assert isinstance(p, ViirsDNBProduct)
+        assert isinstance(p, ViirsDNB)
         assert p.raw.values[0, fx.BOATS[0][0], fx.BOATS[0][1]] > 50e-9
 
 
@@ -290,7 +291,7 @@ def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
     assert calls[0]["bounding_box"] == "123,33,135,40"
     assert calls[0]["temporal"] == "2026-11-05T15:00:00Z,2026-11-05T18:00:00Z"
     assert calls[0]["day_night_flag"] == "night"
-    assert all(resolve(i["id"]) is ViirsDNBProduct for i in items)
+    assert all(resolve(i["id"]) is ViirsDNB for i in items)
 
 
 def test_connector_satellites_archive_and_login(monkeypatch):

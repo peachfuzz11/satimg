@@ -28,10 +28,10 @@ many products, to avoid leaking handles.
 
 ``satimg.open(path)`` takes either a product directory or a zip archive --
 detected by content, not by extension -- via a
-:class:`~satimg.source.base.Source` factory (:func:`~satimg.source.factory.open_source`).
+:class:`~satimg.source.source.Source` factory (:func:`~satimg.source.source_factory.open_source`).
 A zip is read zip-native, straight off the archive with nothing ever
 extracted: metadata files through Python's ``zipfile``, rasters by GDAL's
-``/vsizip/`` (see :meth:`~satimg.source.base.Source.raster_path`), so every view
+``/vsizip/`` (see :meth:`~satimg.source.source.Source.raster_path`), so every view
 -- ``raw`` / ``visual`` / ``patches`` / ``metadata`` included -- works as it
 does on a directory. GDAL seeks inside a stored (uncompressed) member at
 plain file speed; a deflated member works too, but each seek re-inflates
@@ -57,19 +57,19 @@ import PIL.Image
 import xarray
 
 from satimg.geometry import EdgeMode, Grid, Window, windows_at
-from satimg.metadata.collection import Metadata
+from satimg.metadata.metadata import Metadata
 from satimg.metadata.field import Field
-from satimg.metadata.patch import PatchMeta
+from satimg.metadata.patch_meta import PatchMeta
 from satimg.patch import Patch
 from satimg.readers.raster import CHUNK_PX, Tile, keep_open
 from satimg.readers.stack import BandStack
 from satimg.readers.thumbnail import THUMBNAIL_SIZE, fit_thumbnail
 from satimg.scene_geometry import SceneGeometry
-from satimg.source.base import Source
+from satimg.source.source import Source
 from satimg.tiling import read_window
 
 if TYPE_CHECKING:  # pragma: no cover
-    from satimg.transform.base import Transformer
+    from satimg.transform.transformer import Transformer
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ class Product(abc.ABC):
         Does not touch a raw/visual view opened by an in-flight
         :meth:`patches` / :meth:`patches_at` call -- those close themselves
         when their own loop ends. Called on ``with`` exit; idempotent (both
-        this and :meth:`~satimg.source.base.Source.close` are). A later access
+        this and :meth:`~satimg.source.source.Source.close` are). A later access
         rebuilds :attr:`raw` / :attr:`visual`: GDAL reopens a zip-native
         product's archive by path, not through the closed source.
         """
@@ -323,13 +323,13 @@ class Product(abc.ABC):
     def metadata(self) -> Metadata:
         """Per-pixel ancillary geometry (incidence / sun / view angles, ...).
 
-        See :class:`~satimg.metadata.collection.Metadata`. Empty for products that do not
+        See :class:`~satimg.metadata.metadata.Metadata`. Empty for products that do not
         override :meth:`_read_metadata`.
         """
         return self._read_metadata()
 
     def _read_metadata(self) -> Metadata:
-        """Build this product's :class:`~satimg.metadata.collection.Metadata`. Override in a
+        """Build this product's :class:`~satimg.metadata.metadata.Metadata`. Override in a
         subclass; the default has no fields."""
         return Metadata({})
 
@@ -382,8 +382,8 @@ def open(path: str) -> Product:
     """Open ``path``, returning the matching :class:`Product`.
 
     ``path`` may be a product directory or a zip archive -- resolved to a
-    :class:`~satimg.source.base.Source` by the
-    :func:`~satimg.source.factory.open_source` factory (detected by content, not
+    :class:`~satimg.source.source.Source` by the
+    :func:`~satimg.source.source_factory.open_source` factory (detected by content, not
     extension); the concrete :class:`Product` subclass is then resolved by
     :func:`~satimg.registry.resolve` against the source's own identity name.
     A zip archive resolves to a zip-native source (see the module
@@ -394,7 +394,7 @@ def open(path: str) -> Product:
     handles promptly rather than waiting on garbage collection.
     """
     from satimg.registry import resolve  # deferred: registry imports Product
-    from satimg.source.factory import open_source
+    from satimg.source.source_factory import open_source
 
     source = open_source(path)
     cls = resolve(source.name)

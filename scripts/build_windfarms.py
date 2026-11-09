@@ -13,7 +13,7 @@ import requests
 import shapely
 from osm import disc, feature, literal, polygonal, select, tags, write_features
 
-from satimg.masks.land import LandMask
+from satimg.masks.land_mask import LandMask
 
 EMODNET_URL = ("https://ows.emodnet-humanactivities.eu/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature"
                "&typeNames=emodnet:windfarmspoly&outputFormat=application/json")

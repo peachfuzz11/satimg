@@ -13,11 +13,11 @@ import pytest
 import xarray
 
 from satimg.geometry import Window
-from satimg.metadata.collection import Metadata
+from satimg.metadata.metadata import Metadata
 from satimg.metadata.grids import bilinear
 from satimg.product import Product
 from satimg.readers.raster import CHUNK_PX
-from satimg.source.local import DirSource
+from satimg.source.local_source import DirSource
 from satimg.tiling import read_window
 
 # -- the kernel --------------------------------------------------------

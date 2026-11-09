@@ -16,7 +16,7 @@ from satimg.readers.raster import Raster, Tile, tile_xy
 from satimg.tiling import as_band_yx
 
 if TYPE_CHECKING:  # pragma: no cover
-    from satimg.source.base import Source
+    from satimg.source.source import Source
 
 
 @contextmanager

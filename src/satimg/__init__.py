@@ -22,37 +22,86 @@ try:
 except PackageNotFoundError:  # a source tree without an install
     __version__ = "0.0.0"
 
-from satimg import products as _products  # noqa: F401  (populates the registry)
-from satimg.connectors import CredentialsError, get_connector
+from satimg.connectors._credentials import CredentialsError
+from satimg.connectors.connector import Connector
+from satimg.connectors.connector_factory import get_connector
+from satimg.connectors.landsat_connector import LandsatConnector
+from satimg.connectors.modis_connector import ModisConnector
+from satimg.connectors.nisar_connector import NisarConnector
+from satimg.connectors.sentinel_connector import Sentinel1Connector, Sentinel2Connector, Sentinel3Connector
+from satimg.connectors.viirs_connector import ViirsDNBConnector
 from satimg.geometry import Grid, Window, windows_at
-from satimg.metadata.collection import Metadata
+from satimg.metadata.metadata import Metadata
 from satimg.metadata.field import Field
 from satimg.patch import Patch
+from satimg.prediction.characteriser import Characteriser
+from satimg.prediction.detector import Detector, DetectorConfig
+from satimg.prediction.models import CharacterisationModel, Yolo26Model
+from satimg.prediction.types import BBox, Characterisation, Coordinate, Detection
+from satimg.prediction.viirs_boat_detector import ViirsBoatConfig, ViirsBoatDetector
 from satimg.product import Product, open, open_zip
-from satimg.products.nisar.geometry import NisarGeometry
-from satimg.products.sentinel1.geometry import Sentinel1Geometry
+from satimg.products.landsat.c2l1.landsat_c2l1 import LandsatC2L1
+from satimg.products.modis.qkm.modis_qkm import ModisQKM
+from satimg.products.nisar.gcov.nisar_gcov_geometry import NisarGCOVGeometry
+from satimg.products.nisar.gcov.nisar_gcov import NisarGCOV
+from satimg.products.sentinel1.grd.sentinel1_grd_geometry import Sentinel1GRDGeometry
+from satimg.products.sentinel1.grd.sentinel1_grd import Sentinel1GRD
+from satimg.products.sentinel2.l1c.sentinel2_l1c import Sentinel2L1C
+from satimg.products.sentinel3.olci.sentinel3_olci import Sentinel3OLCI
+from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
 from satimg.registry import UnknownProductError
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 
 __all__ = [
     "__version__",
+    # opening products
     "open",
     "open_zip",
-    "get_connector",
     "Product",
     "Patch",
-    "read_window",
-    "as_band_yx",
-    "label_bands",
+    "UnknownProductError",
+    "LandsatC2L1",
+    "ModisQKM",
+    "NisarGCOV",
+    "Sentinel1GRD",
+    "Sentinel2L1C",
+    "Sentinel3OLCI",
+    "ViirsDNB",
+    # tiling
     "Window",
     "Grid",
     "windows_at",
+    "read_window",
+    "as_band_yx",
+    "label_bands",
+    # geometry and metadata
+    "SceneGeometry",
+    "Sentinel1GRDGeometry",
+    "NisarGCOVGeometry",
     "Metadata",
     "Field",
-    "SceneGeometry",
-    "Sentinel1Geometry",
-    "NisarGeometry",
-    "UnknownProductError",
+    # downloading
+    "get_connector",
+    "Connector",
     "CredentialsError",
+    "LandsatConnector",
+    "ModisConnector",
+    "NisarConnector",
+    "Sentinel1Connector",
+    "Sentinel2Connector",
+    "Sentinel3Connector",
+    "ViirsDNBConnector",
+    # prediction
+    "Detector",
+    "DetectorConfig",
+    "Yolo26Model",
+    "Characteriser",
+    "CharacterisationModel",
+    "ViirsBoatDetector",
+    "ViirsBoatConfig",
+    "Detection",
+    "Characterisation",
+    "BBox",
+    "Coordinate",
 ]

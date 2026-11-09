@@ -1,11 +1,9 @@
 import pytest
 
-from satimg.connectors import (
-    CredentialsError,
-    LandsatConnector,
-    Sentinel2Connector,
-    get_connector,
-)
+from satimg.connectors._credentials import CredentialsError
+from satimg.connectors.landsat_connector import LandsatConnector
+from satimg.connectors.sentinel_connector import Sentinel2Connector
+from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import Credentials
 
 

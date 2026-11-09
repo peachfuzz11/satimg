@@ -10,7 +10,7 @@ import xarray
 
 from satimg import sar
 from satimg.geometry import Window
-from satimg.products.landsat.files import BANDS as _LS_BANDS
+from satimg.products.landsat.c2l1.landsat_c2l1_parsing import BANDS as _LS_BANDS
 from satimg.tiling import read_window
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]

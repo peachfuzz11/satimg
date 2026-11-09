@@ -12,7 +12,7 @@ import xarray
 from satimg.metadata.grids import bilinear
 from satimg.readers.raster import CHUNK_PX
 from satimg.tiling import read_window
-from satimg.transform.base import as_n2
+from satimg.transform.transformer import as_n2
 
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window
@@ -24,7 +24,7 @@ CORNER_KEYS = ("top_left", "top_right", "bottom_left", "bottom_right", "center")
 
 def corner_center(height: float, width: float) -> list[tuple[float, float]]:
     """The five ``(row, col)`` points for a ``height`` x ``width`` grid: the four
-    corner pixels, then the centre (matching :meth:`~satimg.metadata.patch.PatchMeta.sample`)."""
+    corner pixels, then the centre (matching :meth:`~satimg.metadata.patch_meta.PatchMeta.sample`)."""
     h, w = height - 1, width - 1
     return [(0.0, 0.0), (0.0, w), (h, 0.0), (h, w), (height / 2, width / 2)]
 
