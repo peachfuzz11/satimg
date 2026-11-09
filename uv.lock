@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "satimg"
-version = "0.29.0"
+version = "0.24.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
