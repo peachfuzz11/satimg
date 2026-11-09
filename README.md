@@ -341,7 +341,7 @@ scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
 they are found by a spike detector rather than the image model:
 
 ```python
-from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
+from satimg import ViirsBoatDetector
 
 lights = ViirsBoatDetector(product).detect()          # every light, tagged
 boats = [d for d in lights if "on_land" not in d.tags and "platform" not in d.tags]
