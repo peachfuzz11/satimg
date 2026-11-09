@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from satimg.connectors.dataspace_connector import DataspaceConnector
+from satimg.connectors.copernicus_dataspace_connector import CopernicusDataspaceConnector
 
 
-class Sentinel1GRDConnector(DataspaceConnector):
+class Sentinel1GRDConnector(CopernicusDataspaceConnector):
     collection = "sentinel-1-grd"
     product_type = "IW_GRDH_1S"

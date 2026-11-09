@@ -1,11 +1,7 @@
-"""USGS LandsatLook connector.
-
-Downloads need a USGS EarthExplorer / ERS account. Pass it explicitly::
+"""Landsat Collection 2 Level-1 from USGS LandsatLook (a USGS ERS account,
+see :mod:`satimg.connectors.usgs_ers_connector`)::
 
     LandsatC2L1Connector(username="me", password="...", token="...")
-
-or set ``USGS_USERNAME`` / ``USGS_PASSWORD`` (and optionally ``USGS_TOKEN``) in
-the environment.
 """
 
 from __future__ import annotations
@@ -15,9 +11,7 @@ import os
 import zipfile
 from pathlib import Path
 
-from satimg.connectors.usgs_ers_login import ers_login
-from satimg.connectors._credentials import Credentials
-from satimg.connectors.connector import STACConnector
+from satimg.connectors.usgs_ers_connector import UsgsErsConnector
 
 logger = logging.getLogger(__name__)
 
@@ -28,32 +22,9 @@ _ASSETS = (
 )
 
 
-class LandsatC2L1Connector(STACConnector):
+class LandsatC2L1Connector(UsgsErsConnector):
     STAC_ENDPOINT = "https://landsatlook.usgs.gov/stac-server"
     collection = "landsat-c2l1"
-    ENV_PREFIX = "USGS"
-    SERVICE = "USGS EarthExplorer"
-
-    def __init__(
-        self,
-        username: str | None = None,
-        password: str | None = None,
-        token: str | None = None,
-    ):
-        self._username = username
-        self._password = password
-        self._token = token
-
-    def _get_session(self, *args, **kwargs):
-        creds = Credentials.resolve(
-            self._username,
-            self._password,
-            self._token,
-            service=self.SERVICE,
-            env_prefix=self.ENV_PREFIX,
-        )
-        logger.debug("logging in to %s as %s", self.SERVICE, creds.username)
-        return ers_login(creds.username, creds.password, creds.token)
 
     def download(self, item: dict, save_path: str) -> str:
         assets = [name for name in item["assets"] if name in _ASSETS]

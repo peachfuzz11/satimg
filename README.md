@@ -540,8 +540,9 @@ satimg/
                sentinel2/l1c/sentinel2_l1c.py holds Sentinel2L1C;
                swath_nodes.py: node grids shared by VIIRS, MODIS, OLCI
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
-  connectors/  shared by the per-product connectors: connector · connector_factory
-               · dataspace_connector (Copernicus) · earthdata (NASA) · usgs_ers_login
+  connectors/  the generic and provider connectors the product ones subclass:
+               connector · connector_factory
+               · copernicus_dataspace_connector · nasa_earthdata_connector · usgs_ers_connector
   prediction/  detectors and characterisers
 ```
 

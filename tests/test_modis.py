@@ -142,7 +142,7 @@ def test_geometry_round_trips(terra):
 
 # -- connector ------------------------------------------------------------------
 def test_connector_searches_terra_and_aqua(monkeypatch):
-    from satimg.connectors import earthdata
+    from satimg.connectors import nasa_earthdata_connector
 
     def entry(name, start):
         return {"time_start": start, "day_night_flag": "DAY", "links": [
@@ -173,7 +173,7 @@ def test_connector_searches_terra_and_aqua(monkeypatch):
         calls.append(params)
         return Response({"feed": {"entry": feeds[params["short_name"]]}})
 
-    monkeypatch.setattr(earthdata.requests, "get", get)
+    monkeypatch.setattr(nasa_earthdata_connector.requests, "get", get)
     items = ModisQKMConnector().search(day_night="day")
     # by time, both satellites; the 12:55 Aqua granule has no MYD03 yet
     assert [i["id"][:8] for i in items] == ["MYD02QKM", "MOD02QKM", "MYD02QKM"]
