@@ -7,15 +7,17 @@ import numpy
 import pytest
 
 import satimg
-from satimg import ViirsGeometry
-from satimg.connectors import ViirsDNBConnector, get_connector
+from satimg import SceneGeometry
+from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
+from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
-from satimg.prediction import ViirsBoatDetector
-from satimg.products import ViirsDNBProduct
+from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
+from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
+from satimg.products.swath_nodes import node_columns, scan_edge_rows
+from satimg.products.viirs.dnb.viirs_dnb_parsing import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.swath import node_columns, scan_edge_rows
-from satimg.transform import SwathTransformer
-from satimg.viirs_utils import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
 from tests.test_helper import h5_reads
@@ -55,7 +57,7 @@ def _metres(a, b):
     "VNP02DNB.A2026305.1630.002.2026305232544.nc",
 ])
 def test_resolves(name):
-    assert resolve(name) is ViirsDNBProduct
+    assert resolve(name) is ViirsDNB
 
 
 def test_pairs_by_granule_not_production_time():
@@ -78,7 +80,7 @@ def test_opens_every_layout(how, tmp_path):
             for f in (L1B, GEO):
                 z.write(f, f"{NAME}/{f.name}")
     with satimg.open(str(path)) as p:
-        assert isinstance(p, ViirsDNBProduct)
+        assert isinstance(p, ViirsDNB)
         assert p.raw.values[0, fx.BOATS[0][0], fx.BOATS[0][1]] > 50e-9
 
 
@@ -106,7 +108,29 @@ def test_visual_stretches_lights_bright(product):
     assert v[fx.BOATS[0]] > 150
     assert 0 < numpy.median(v) < 100
     assert v[fx.FILL] == 0
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert product.thumbnail().size == THUMBNAIL_SIZE
+
+
+def test_geolocation_is_the_scan_edge_rows(truth):
+    # from #33: the rows read are exactly the file's scan-edge rows, scaled
+    lat, lon = truth
+    with h5py.File(GEO) as g:
+        geolocation = read_geolocation(g)
+    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
+    assert geolocation["shape"] == lat.shape
+    numpy.testing.assert_array_equal(geolocation["rows"], rows)
+    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
+        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
+
+
+def test_open_reads_no_full_resolution_array():
+    """Opening reads only the geolocation's scan-edge rows and a sparse
+    sample -- never a full-resolution variable, nor any radiance."""
+    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
+        assert p.height > 0
+    big = [r for r in reads if r[2] >= 1000]
+    assert big and all(n <= size / 4 for _, n, size in big), big
+    assert not [r for r in reads if "observation_data" in r[0]]
 
 
 def test_metadata_is_night(product):
@@ -167,31 +191,9 @@ def test_node_columns_meet_their_tolerance(truth):
     assert len(loose) < len(tight)
 
 
-def test_geolocation_is_the_scan_edge_rows(truth):
-    # the rows read are exactly the file's scan-edge rows, scaled
-    lat, lon = truth
-    with h5py.File(GEO) as g:
-        geolocation = read_geolocation(g)
-    rows = scan_edge_rows(lat.shape[0], SCAN_ROWS)
-    assert geolocation["shape"] == lat.shape
-    numpy.testing.assert_array_equal(geolocation["rows"], rows)
-    for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
-        numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
-
-
-def test_open_reads_no_full_resolution_array():
-    """Opening reads only the geolocation's scan-edge rows and a sparse
-    sample -- never a full-resolution variable, nor any radiance."""
-    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
-        assert p.height > 0
-    big = [r for r in reads if r[2] >= 1000]
-    assert big and all(n <= size / 4 for _, n, size in big), big
-    assert not [r for r in reads if "observation_data" in r[0]]
-
-
 def test_geometry_round_trips(product, truth):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
-    geometry = ViirsGeometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     lat, lon = truth
     got = geometry.transformer.rowcol_to_latlon((40.5, 180.5))
@@ -249,7 +251,7 @@ def _cmr_entry(name, day_night="NIGHT"):
 
 
 def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
-    from satimg.connectors import earthdata
+    from satimg.connectors import nasa_earthdata_connector
 
     feeds = {
         "VJ102DNB_NRT": [_cmr_entry("VJ102DNB_NRT.A2026309.1654.021.2026309185751.nc"),
@@ -274,7 +276,7 @@ def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
         calls.append(params)
         return Response({"feed": {"entry": feeds[params["short_name"]]}})
 
-    monkeypatch.setattr(earthdata.requests, "get", get)
+    monkeypatch.setattr(nasa_earthdata_connector.requests, "get", get)
     aoi = {"type": "Polygon", "coordinates": [[[123, 33], [135, 33], [135, 40], [123, 33]]]}
     items = ViirsDNBConnector().search(
         geojson=aoi, start_datetime=datetime.datetime(2026, 11, 5, 15), stop_datetime=datetime.datetime(2026, 11, 5, 18),
@@ -289,7 +291,7 @@ def test_connector_pairs_nrt_granules_from_both_satellites(monkeypatch):
     assert calls[0]["bounding_box"] == "123,33,135,40"
     assert calls[0]["temporal"] == "2026-11-05T15:00:00Z,2026-11-05T18:00:00Z"
     assert calls[0]["day_night_flag"] == "night"
-    assert all(resolve(i["id"]) is ViirsDNBProduct for i in items)
+    assert all(resolve(i["id"]) is ViirsDNB for i in items)
 
 
 def test_connector_satellites_archive_and_login(monkeypatch):

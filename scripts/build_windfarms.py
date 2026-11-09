@@ -11,9 +11,9 @@ most farms have no outline -- each become a 50 m disc.
 import numpy
 import requests
 import shapely
-
 from osm import disc, feature, literal, polygonal, select, tags, write_features
-from satimg.landmask import LandMask
+
+from satimg.masks.land_mask import LandMask
 
 EMODNET_URL = ("https://ows.emodnet-humanactivities.eu/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature"
                "&typeNames=emodnet:windfarmspoly&outputFormat=application/json")

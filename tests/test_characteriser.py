@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import numpy
 import pytest
 
-from satimg.prediction import CharacterisationModel, Characteriser
+from satimg.prediction.models import CharacterisationModel
+from satimg.prediction.characteriser import Characteriser
 from satimg.prediction.characteriser import SHIP_TYPES, TASKS, bin_values, decode
 
 #: logits wide enough to put ~all softmax mass on one bin

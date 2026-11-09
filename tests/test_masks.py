@@ -1,11 +1,11 @@
 import numpy
 import pytest
 
-from satimg.fishfarms import FishFarmMask
-from satimg.landmask import LandMask
-from satimg.platforms import PlatformMask
-from satimg.ports import HarborMask, PortMask, features_in_bbox
-from satimg.windfarms import WindfarmMask
+from satimg.masks.fishfarm_mask import FishFarmMask
+from satimg.masks.land_mask import LandMask
+from satimg.masks.platform_mask import PlatformMask
+from satimg.masks.port_mask import HarborMask, PortMask, features_in_bbox
+from satimg.masks.windfarm_mask import WindfarmMask
 
 # (lat, lon)
 COPENHAGEN_CITY_HALL = (55.6757, 12.5694)

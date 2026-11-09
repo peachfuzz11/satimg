@@ -13,12 +13,12 @@ import pytest
 import xarray
 
 from satimg.geometry import Window
-from satimg.metadata import Metadata, bilinear
+from satimg.metadata.metadata import Metadata
+from satimg.metadata.grids import bilinear
 from satimg.product import Product
-from satimg.readers import CHUNK_PX
-from satimg.source import DirSource
+from satimg.readers.raster import CHUNK_PX
+from satimg.source.local_source import DirSource
 from satimg.tiling import read_window
-
 
 # -- the kernel --------------------------------------------------------
 
@@ -154,7 +154,7 @@ def test_field_grid_is_lazy_full_grid(sentinel1_iw):
 
 
 def test_field_grid_is_tile_chunked(sentinel1_iw):
-    # chunked at the shared default (satimg.readers.CHUNK_PX) instead of a
+    # chunked at the shared default (satimg.readers.raster.CHUNK_PX) instead of a
     # much larger (or unbounded) block regardless of the patch size read.
     grid = sentinel1_iw.metadata.incidence_angle.grid
     y_chunks, x_chunks = grid.chunks
@@ -225,7 +225,7 @@ def test_patch_meta_corners(sentinel1_iw):
 
 
 def test_field_corners_without_grid_raises():
-    from satimg.metadata import Field
+    from satimg.metadata.field import Field
 
     bare = Field([0, 1], [0, 1], [[0.0, 1.0], [2.0, 3.0]], name="x")
     with pytest.raises(AttributeError):

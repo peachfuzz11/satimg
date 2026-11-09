@@ -6,11 +6,13 @@ import numpy
 import pytest
 
 import satimg
-from satimg import ModisGeometry
-from satimg.connectors import ModisConnector, get_connector
-from satimg.products import ModisProduct
+from satimg import SceneGeometry
+from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
+from satimg.connectors.connector_factory import get_connector
+from satimg.products.modis.qkm.modis_qkm import ModisQKM
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import modis_fixture as fx
 from tests.test_helper import h5_reads
 
@@ -38,7 +40,7 @@ def _metres(a, b):
 
 @pytest.mark.parametrize("name", [fx.TERRA, fx.AQUA, fx.TERRA[:-3], "MYD02QKM_NRT.A2026305.1250.007.nc"])
 def test_resolves(name):
-    assert resolve(name) is ModisProduct
+    assert resolve(name) is ModisQKM
 
 
 def test_terra_and_aqua(folder):
@@ -96,7 +98,7 @@ def test_reflectance_and_visual(terra):
     assert v[fx.SHIP] > 200
     assert v[60, 20] < 100
     assert (v[fx.FILL_ROWS] == 0).all()
-    assert terra.thumbnail().size == satimg.readers.THUMBNAIL_SIZE
+    assert terra.thumbnail().size == THUMBNAIL_SIZE
 
 
 def test_patches_and_zip(terra, folder, tmp_path):
@@ -132,7 +134,7 @@ def test_transformer_inverse(terra):
 
 def test_geometry_round_trips(terra):
     stored = json.loads(json.dumps(terra.geometry.to_dict(), allow_nan=False))
-    geometry = ModisGeometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     rc = (60.5, 128.5)
     assert _metres(geometry.transformer.rowcol_to_latlon(rc), terra.transformer.rowcol_to_latlon(rc))[0] < 150
@@ -140,7 +142,7 @@ def test_geometry_round_trips(terra):
 
 # -- connector ------------------------------------------------------------------
 def test_connector_searches_terra_and_aqua(monkeypatch):
-    from satimg.connectors import earthdata
+    from satimg.connectors import nasa_earthdata_connector
 
     def entry(name, start):
         return {"time_start": start, "day_night_flag": "DAY", "links": [
@@ -171,15 +173,15 @@ def test_connector_searches_terra_and_aqua(monkeypatch):
         calls.append(params)
         return Response({"feed": {"entry": feeds[params["short_name"]]}})
 
-    monkeypatch.setattr(earthdata.requests, "get", get)
-    items = ModisConnector().search(day_night="day")
+    monkeypatch.setattr(nasa_earthdata_connector.requests, "get", get)
+    items = ModisQKMConnector().search(day_night="day")
     # by time, both satellites; the 12:55 Aqua granule has no MYD03 yet
     assert [i["id"][:8] for i in items] == ["MYD02QKM", "MOD02QKM", "MYD02QKM"]
     assert set(items[1]["assets"]) == {"MOD02QKM", "MOD03"}
     assert {c["short_name"] for c in calls} == {"MOD02QKM", "MOD03", "MYD02QKM", "MYD03"}
     assert all(c["version"] == "7" for c in calls)
     calls.clear()
-    assert [i["id"] for i in ModisConnector("terra").search()] == [fx.TERRA[:-3]]
+    assert [i["id"] for i in ModisQKMConnector("terra").search()] == [fx.TERRA[:-3]]
     assert {c["short_name"] for c in calls} == {"MOD02QKM", "MOD03"}
 
 
@@ -187,4 +189,4 @@ def test_connector_satellites():
     assert get_connector("modis-qkm").short_names == ("MOD02QKM", "MOD03", "MYD02QKM", "MYD03")
     assert get_connector("modis-qkm", satellite="aqua").short_names == ("MYD02QKM", "MYD03")
     with pytest.raises(ValueError, match="unknown satellite"):
-        ModisConnector("suomi")
+        ModisQKMConnector("suomi")

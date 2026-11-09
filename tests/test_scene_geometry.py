@@ -4,9 +4,11 @@ import numpy
 import pytest
 
 import satimg
-from satimg import SceneGeometry, Sentinel1Geometry
-from satimg.products.landsat import GEOMETRY_GRID
-from satimg.transform import GCPTransformer, Transformer
+from satimg import SceneGeometry, Sentinel1GRDGeometry
+from satimg.products.landsat.c2l1.landsat_c2l1 import GEOMETRY_GRID
+from satimg.transform.affine_transformer import AffineTransformer
+from satimg.transform.transformer_factory import load_transformer
+from satimg.transform.gcp_transformer import GCPTransformer
 from tests.test_zip_native import _build_zip
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
@@ -23,7 +25,7 @@ def _stored(product):
 
 
 def _load(product, stored):
-    cls = Sentinel1Geometry if isinstance(product.geometry, Sentinel1Geometry) else SceneGeometry
+    cls = Sentinel1GRDGeometry if isinstance(product.geometry, Sentinel1GRDGeometry) else SceneGeometry
     return cls.from_dict(stored)
 
 
@@ -38,8 +40,8 @@ def test_round_trips_through_strict_json(product):
 
 
 def test_sentinel1_loads_with_its_gcp_transformer(sentinel1_iw):
-    geometry = Sentinel1Geometry.from_dict(_stored(sentinel1_iw))
-    assert type(geometry) is Sentinel1Geometry
+    geometry = Sentinel1GRDGeometry.from_dict(_stored(sentinel1_iw))
+    assert type(geometry) is Sentinel1GRDGeometry
     assert type(geometry.transformer) is GCPTransformer
 
 
@@ -60,7 +62,7 @@ def test_metadata_matches(product):
     assert geometry.metadata.attrs == product.metadata.attrs
     rowcols = _rowcols(product)
     # Landsat's fields are coarsened to GEOMETRY_GRID; angles are smooth
-    atol = 0.05 if type(product).__name__ == "LandsatProduct" else 1e-9
+    atol = 0.05 if type(product).__name__ == "LandsatC2L1" else 1e-9
     for name in geometry.metadata.fields:
         numpy.testing.assert_allclose(
             geometry.metadata[name].at(rowcols), product.metadata[name].at(rowcols), atol=atol
@@ -94,9 +96,7 @@ def _affine_transformer():
     from rasterio.crs import CRS
     from rasterio.transform import Affine
 
-    from satimg.transform import Transformer
-
-    return Transformer(Affine(10, 0, 300000, 0, -10, 6200000), CRS.from_epsg(32633))
+    return AffineTransformer(Affine(10, 0, 300000, 0, -10, 6200000), CRS.from_epsg(32633))
 
 
 @pytest.mark.parametrize("key", ["sentinel1_iw", "sentinel2_l1c", "landsat"])
@@ -106,14 +106,20 @@ def test_zip_native_geometry_matches(key, request, tmp_path_factory):
     assert stored == _stored(request.getfixturevalue(key))
 
 
-@pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", Transformer)])
+@pytest.mark.parametrize("key, kind", [("sentinel1_iw", GCPTransformer), ("sentinel2_l1c", AffineTransformer)])
 def test_transformer_round_trips_through_dict(key, kind, request):
     product = request.getfixturevalue(key)
     stored = json.loads(json.dumps(product.transformer.to_dict(), allow_nan=False))
     transformer = kind.from_dict(stored)
     assert type(transformer) is kind
+    assert type(load_transformer(stored)) is kind
     assert transformer.to_dict() == stored
     rowcols = _rowcols(product)
     numpy.testing.assert_allclose(
         transformer.rowcol_to_latlon(rowcols), product.transformer.rowcol_to_latlon(rowcols)
     )
+
+
+def test_load_transformer_rejects_an_unknown_kind():
+    with pytest.raises(ValueError, match="not a stored transformer"):
+        load_transformer({"polynomial": []})

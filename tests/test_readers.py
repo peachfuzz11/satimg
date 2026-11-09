@@ -6,7 +6,7 @@ loop's own window size (an argument, not a size read back off the product).
 A single chunk defeats every windowed read: rechunking a *single* dask chunk
 into tiles still depends on one task that reads the entire band, so every
 ``patch.raw`` / ``patch.visual`` access would re-decode the whole scene
-instead of just its own tile. See ``satimg.readers.merge_bands`` and
+instead of just its own tile. See ``satimg.readers.raster.merge_bands`` and
 ``satimg.product.Product.patches`` / ``patches_at``.
 """
 
@@ -15,7 +15,7 @@ import os
 import pytest
 
 import satimg
-from satimg.readers import CHUNK_PX
+from satimg.readers.raster import CHUNK_PX
 from tests.conftest import PRODUCT_PATHS
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]

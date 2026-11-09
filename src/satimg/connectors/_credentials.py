@@ -3,7 +3,7 @@
 Searching a STAC catalogue needs no account; only :meth:`Connector.download`
 does. Provide credentials either explicitly::
 
-    Sentinel2Connector(username="me@example.com", password="...")
+    Sentinel2L1CConnector(username="me@example.com", password="...")
 
 or leave them unset and export the service's environment variables
 (``<PREFIX>_USERNAME`` / ``<PREFIX>_PASSWORD`` / optional ``<PREFIX>_TOKEN``).

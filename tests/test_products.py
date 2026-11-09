@@ -8,9 +8,9 @@ import numpy
 import pytest
 import xarray
 
-from satimg import sar_utils
+from satimg import sar
 from satimg.geometry import Window
-from satimg.products.landsat import BANDS as _LS_BANDS
+from satimg.products.landsat.c2l1.landsat_c2l1_parsing import BANDS as _LS_BANDS
 from satimg.tiling import read_window
 
 PRODUCTS = ["sentinel1_iw", "sentinel2_l1c", "landsat"]
@@ -179,7 +179,7 @@ def test_sentinel1_mode(sentinel1_iw):
 def _local_platform_heading(product, rowcol):
     lat = product.transformer.rowcol_to_latlon(rowcol)[:, 0]
     ascending = product.metadata.attrs["pass"].lower() == "ascending"
-    return sar_utils.ground_track_heading(lat, product.metadata.attrs["orbit_inclination"], ascending)[0]
+    return sar.ground_track_heading(lat, product.metadata.attrs["orbit_inclination"], ascending)[0]
 
 
 def test_sentinel1_heading_to_los(sentinel1_iw):

@@ -8,12 +8,14 @@ import numpy
 import pytest
 
 import satimg
-from satimg import Sentinel3Geometry
-from satimg.connectors import Sentinel3Connector, get_connector
-from satimg.landmask import LandMask
-from satimg.products import Sentinel3OLCIProduct
+from satimg import SceneGeometry
+from satimg.products.sentinel3.olci.sentinel3_olci_connector import Sentinel3OLCIConnector
+from satimg.connectors.connector_factory import get_connector
+from satimg.masks.land_mask import LandMask
+from satimg.products.sentinel3.olci.sentinel3_olci import Sentinel3OLCI
+from satimg.readers.thumbnail import THUMBNAIL_SIZE
 from satimg.registry import resolve
-from satimg.transform import SwathTransformer
+from satimg.transform.swath_transformer import SwathTransformer
 from tests import minify_sentinel3 as fx
 from tests.conftest import _PRODUCTS
 
@@ -49,7 +51,7 @@ def _metres(a, b):
     "S3B_OL_1_EFR____20261105T105357_20261105T105657_20261105T131948_0180_126_265_1980_ESA_O_NR_004.SEN3",
 ])
 def test_resolves(name):
-    assert resolve(name) is Sentinel3OLCIProduct
+    assert resolve(name) is Sentinel3OLCI
 
 
 def test_shape_bands_time_attrs(product):
@@ -80,7 +82,7 @@ def test_visual_true_colour(product):
     assert list(product.visual.band.values) == ["red", "green", "blue"]
     assert (v[:, fx.TARGET[0], fx.TARGET[1]] == 255).all()
     assert (v[:, fx.FILL[0], fx.FILL[1]] == 0).all()
-    assert product.thumbnail().size == satimg.readers.THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
+    assert product.thumbnail().size == THUMBNAIL_SIZE  # no quicklook in the fixture: rendered
 
 
 def test_metadata_angles_from_the_tie_points(product):
@@ -105,7 +107,7 @@ def test_transformer_matches_sea_level_pixels(product, truth):
     rc = numpy.column_stack((rr + 0.5, cc + 0.5))
     error = _metres(product.transformer.rowcol_to_latlon(rc), numpy.column_stack((lat[rr, cc], lon[rr, cc])))
     # the per-pixel positions are terrain corrected and, at sea, sit ~100 m
-    # (a third of a pixel) from the tie points -- see satimg.s3_utils
+    # (a third of a pixel) from the tie points -- see satimg.products.sentinel3.olci.sentinel3_olci_parsing
     assert numpy.median(error) < 150
     assert numpy.percentile(error, 99) < 250
 
@@ -127,13 +129,13 @@ def test_patches_and_zip(product, tmp_path):
         for f in FOLDER.iterdir():
             z.write(f, f"{NAME}/{f.name}")
     with satimg.open(str(archive)) as p:
-        assert isinstance(p, Sentinel3OLCIProduct)
+        assert isinstance(p, Sentinel3OLCI)
         assert p.raw.sel(band="Oa08").values[fx.TARGET] == fx.TARGET_DN
 
 
 def test_geometry_round_trips(product):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
-    geometry = Sentinel3Geometry.from_dict(stored)
+    geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     rc = (64.5, 128.5)
     assert _metres(geometry.transformer.rowcol_to_latlon(rc), product.transformer.rowcol_to_latlon(rc))[0] < 100
@@ -145,7 +147,7 @@ def test_connector_timeliness():
     assert get_connector("sentinel-3-olci-efr").collection == "sentinel-3-olci-1-efr-nrt"
     assert get_connector("sentinel-3-olci-efr", timeliness="ntc").collection == "sentinel-3-olci-1-efr-ntc"
     with pytest.raises(ValueError, match="timeliness"):
-        Sentinel3Connector(timeliness="fast")
+        Sentinel3OLCIConnector(timeliness="fast")
 
 
 def test_connector_downloads_the_lowercase_product_asset(tmp_path):
@@ -163,7 +165,7 @@ def test_connector_downloads_the_lowercase_product_asset(tmp_path):
             assert url == "https://download.example/odata/product"
             return Response()
 
-    connector = Sentinel3Connector()
+    connector = Sentinel3OLCIConnector()
     connector._get_session = lambda: Session()
     item = {"id": NAME[:-5], "assets": {"product": {"href": "https://download.example/odata/product"}}}
     out = connector.download(item, str(tmp_path / "olci.zip"))

@@ -1,7 +1,7 @@
 """A product's scene geometry, detached from the product files.
 
 :class:`SceneGeometry` holds what it takes to map pixels to coordinates and
-sample per-pixel metadata -- the :class:`~satimg.transform.Transformer`, the
+sample per-pixel metadata -- the :class:`~satimg.transform.transformer.Transformer`, the
 image shape, the coarse metadata grids and the scene-wide attrs -- and
 round-trips through a plain JSON-serialisable dict. An app can store it while
 the product is open and keep using it after the product file is gone::
@@ -20,8 +20,10 @@ import math
 
 import numpy
 
-from satimg.metadata import Field, Metadata
-from satimg.transform import Transformer
+from satimg.metadata.metadata import Metadata
+from satimg.metadata.field import Field
+from satimg.transform.transformer import Transformer
+from satimg.transform.transformer_factory import load_transformer
 
 
 def _nan_to_none(values) -> list:
@@ -41,12 +43,9 @@ class SceneGeometry:
     """Pixel <-> lat/lon conversion plus per-pixel metadata of one scene.
 
     ``fields`` maps a field name to ``(rows, cols, values, units)`` -- the
-    coarse grid a :class:`~satimg.metadata.Field` interpolates -- and ``shape``
+    coarse grid a :class:`~satimg.metadata.field.Field` interpolates -- and ``shape``
     is the full image's ``(height, width)``.
     """
-
-    #: the transformer class :meth:`from_dict` loads the stored transformer as
-    transformer_cls = Transformer
 
     def __init__(self, transformer: Transformer, fields: dict, attrs: dict, shape: tuple[int, int]):
         self._transformer = transformer
@@ -96,13 +95,13 @@ class SceneGeometry:
     @classmethod
     def from_dict(cls, data: dict) -> SceneGeometry:
         """Rebuild a geometry from :meth:`to_dict` -- as ``cls``, so
-        ``Sentinel1Geometry.from_dict`` gives back the SAR methods too."""
+        ``Sentinel1GRDGeometry.from_dict`` gives back the SAR methods too."""
         fields = {
             name: (f["rows"], f["cols"], _none_to_nan(f["values"]), f["units"])
             for name, f in data["fields"].items()
         }
         return cls(
-            cls.transformer_cls.from_dict(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
+            load_transformer(data["transformer"]), fields, data["attrs"], tuple(data["shape"])
         )
 
     # -- shape / transform / metadata -----------------------------------

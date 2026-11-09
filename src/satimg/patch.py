@@ -11,7 +11,7 @@ import numpy
 import xarray
 
 from satimg.geometry import Window
-from satimg.metadata import PatchMeta
+from satimg.metadata.patch_meta import PatchMeta
 
 if TYPE_CHECKING:  # pragma: no cover
     import PIL.Image

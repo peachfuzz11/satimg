@@ -4,7 +4,7 @@ its own. These tests pin that contract and a few high-value records."""
 import logging
 
 import satimg  # noqa: F401  (import triggers the NullHandler registration)
-from satimg.connectors import _auth
+from satimg.connectors import usgs_ers_connector
 from satimg.connectors._credentials import Credentials
 from satimg.registry import resolve
 
@@ -39,7 +39,7 @@ class _FakeSession:
 
 def test_login_form_missing_warns(caplog):
     caplog.set_level(logging.WARNING, logger="satimg")
-    _auth._submit_login_form(_FakeSession(), "user", "pw")
+    usgs_ers_connector._submit_login_form(_FakeSession(), "user", "pw")
     assert any(
         r.levelno == logging.WARNING and "login form not found" in r.message
         for r in caplog.records
@@ -70,6 +70,6 @@ def test_registry_resolution_is_logged(caplog):
     caplog.set_level(logging.DEBUG, logger="satimg")
     resolve("S2A_MSIL1C_20220114T103401_N0301_R108_T33UUB_20220114T123457.SAFE")
     assert any(
-        "Sentinel2L1CProduct" in r.message and "pattern" in r.message
+        "Sentinel2L1C" in r.message and "pattern" in r.message
         for r in caplog.records
     )

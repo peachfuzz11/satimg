@@ -7,11 +7,11 @@ from functools import cache
 
 import numpy
 
-from satimg.fishfarms import FishFarmMask
-from satimg.landmask import LandMask
-from satimg.platforms import PlatformMask
-from satimg.ports import HarborMask, PortMask
-from satimg.windfarms import WindfarmMask
+from satimg.masks.fishfarm_mask import FishFarmMask
+from satimg.masks.land_mask import LandMask
+from satimg.masks.platform_mask import PlatformMask
+from satimg.masks.port_mask import HarborMask, PortMask
+from satimg.masks.windfarm_mask import WindfarmMask
 
 ON_LAND = "on_land"
 TURBINE = "turbine"
