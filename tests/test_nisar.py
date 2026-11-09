@@ -16,6 +16,7 @@ from satimg.products import NisarGCOVProduct
 from satimg.registry import resolve
 from satimg.transform import Transformer
 from tests import nisar_fixture as fx
+from tests.test_helper import h5_reads
 
 SPEED = 10.0  # m/s
 
@@ -65,6 +66,14 @@ def test_opens_a_bare_h5(product):
     assert product.metadata.attrs["pass"] == "descending"
     assert product.metadata.attrs["platform_velocity"] == pytest.approx(fx.PLATFORM_SPEED)
     assert product.bounds() == pytest.approx((14.8, 68.47, 14.95, 68.55))
+
+
+def test_open_reads_no_pixels(h5_path):
+    """Opening reads the grid's coordinates and the (small) radar-grid cube
+    -- no covariance term; those stay lazy."""
+    with h5_reads() as reads, satimg.open(str(h5_path)) as p:
+        assert p.height == fx.HEIGHT
+    assert reads and not [r for r in reads if "/grids/" in r[0] and r[2] == fx.HEIGHT * fx.WIDTH]
 
 
 def test_raw_is_linear_power_with_nan_outside_the_swath(product):

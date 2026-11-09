@@ -51,13 +51,13 @@ def scan_edge_rows(height: int, scan_rows: int) -> numpy.ndarray:
     return numpy.unique(numpy.r_[starts, numpy.minimum(starts + scan_rows - 1, height - 1)])
 
 
-def read_scaled(dataset, fill_below: float | None = None, rows: numpy.ndarray | None = None) -> numpy.ndarray:
-    """An HDF5 / netCDF4 variable as ``float``, its CF ``_FillValue`` (and
+def read_scaled(dataset, fill_below: float | None = None, key=()) -> numpy.ndarray:
+    """An HDF5 / netCDF4 variable -- or just its ``key`` selection (rows,
+    slices: anything ``h5py`` indexes by), so a full-resolution variable
+    need not be read whole -- as ``float``, its CF ``_FillValue`` (and
     anything at or below ``fill_below``) as ``NaN``, ``scale_factor`` /
-    ``add_offset`` applied -- ``h5py`` applies none of them itself.
-    ``rows`` (increasing, unique) reads only those rows: a full-swath
-    ``float`` array is ~100 MB, and a node grid needs only a few rows."""
-    raw = dataset[()] if rows is None else dataset[rows]
+    ``add_offset`` applied -- ``h5py`` applies none of them itself."""
+    raw = dataset[key]
     data = raw.astype(float)
     attrs = dataset.attrs
     if "_FillValue" in attrs:

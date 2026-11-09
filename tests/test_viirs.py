@@ -15,9 +15,10 @@ from satimg.products import ViirsDNBProduct
 from satimg.registry import resolve
 from satimg.swath import node_columns, scan_edge_rows
 from satimg.transform import SwathTransformer
-from satimg.viirs_utils import FIELDS, FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
+from satimg.viirs_utils import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from tests import minify_viirs as fx
 from tests.conftest import _PRODUCTS
+from tests.test_helper import h5_reads
 
 NAME = "VJ102DNB.A2026305.1630.021.2026305232544"
 FOLDER = _PRODUCTS / NAME
@@ -165,9 +166,8 @@ def test_node_columns_meet_their_tolerance(truth):
     assert len(loose) < len(tight)
 
 
-def test_geolocation_reads_only_the_scan_edge_rows(truth):
-    # every full-swath float array is ~100 MB on a real granule; opening one
-    # must not hold them -- the node grid only ever uses the scan-edge rows
+def test_geolocation_is_the_scan_edge_rows(truth):
+    # the rows read are exactly the file's scan-edge rows, scaled
     lat, lon = truth
     with h5py.File(GEO) as g:
         geolocation = read_geolocation(g)
@@ -176,8 +176,16 @@ def test_geolocation_reads_only_the_scan_edge_rows(truth):
     numpy.testing.assert_array_equal(geolocation["rows"], rows)
     for got, full in ((geolocation["lat"], lat), (geolocation["lon"], lon)):
         numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
-    for field in FIELDS:
-        assert geolocation[field].shape == (len(rows), lat.shape[1])
+
+
+def test_open_reads_no_full_resolution_array():
+    """Opening reads only the geolocation's scan-edge rows and a sparse
+    sample -- never a full-resolution variable, nor any radiance."""
+    with h5_reads() as reads, satimg.open(str(FOLDER)) as p:
+        assert p.height > 0
+    big = [r for r in reads if r[2] >= 1000]
+    assert big and all(n <= size / 4 for _, n, size in big), big
+    assert not [r for r in reads if "observation_data" in r[0]]
 
 
 def test_geometry_round_trips(product, truth):
