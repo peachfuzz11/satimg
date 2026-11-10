@@ -2,12 +2,14 @@
 
 ``search`` is anonymous; ``download`` needs an account -- pass ``username=`` /
 ``password=`` (and ``token=`` for USGS / NASA Earthdata) or set the service's
-environment variables (see :mod:`satimg.connectors._credentials`).
+environment variables (see :mod:`satimg.connectors._credentials`) -- except
+for Umbra and Capella, whose open data downloads anonymously too.
 """
 
 from __future__ import annotations
 
 from satimg.connectors.connector import Connector
+from satimg.products.capella.gec.capella_gec_connector import CapellaGECConnector
 from satimg.products.landsat.c2l1.landsat_c2l1_connector import LandsatC2L1Connector
 from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
@@ -16,6 +18,7 @@ from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CCo
 from satimg.products.sentinel3.olci.sentinel3_olci_connector import (
     Sentinel3OLCIConnector,
 )
+from satimg.products.umbra.gec.umbra_gec_connector import UmbraGECConnector
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 
 _CONNECTORS: dict[str, type[Connector]] = {
@@ -26,6 +29,8 @@ _CONNECTORS: dict[str, type[Connector]] = {
     "nisar-gcov": NisarGCOVConnector,
     "sentinel-3-olci-efr": Sentinel3OLCIConnector,
     "viirs-dnb": ViirsDNBConnector,
+    "umbra-gec": UmbraGECConnector,
+    "capella-gec": CapellaGECConnector,
 }
 
 

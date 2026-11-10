@@ -7,7 +7,8 @@ where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
 NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time),
-MODIS 250 m L1B (Terra and Aqua), Sentinel-3 OLCI EFR.
+MODIS 250 m L1B (Terra and Aqua), Sentinel-3 OLCI EFR, Umbra GEC and
+Capella GEC (sub-metre X-band SAR open data).
 
 ## Concepts
 
@@ -310,6 +311,53 @@ but L-band at 10-20 m is a different look -- expect to fine-tune before
 trusting them on it. NISAR also images the open ocean only sparsely; coasts,
 straits and sea ice are where its coverage is.
 
+## Umbra and Capella
+
+Umbra and Capella publish part of their commercial X-band SAR as open data
+(CC BY 4.0) in public AWS buckets: spotlight collects at ~0.25-1 m, tasked
+rather than systematic -- ports, straits, cities -- and still growing. At
+that resolution a ship is hundreds of pixels, with its shape. satimg reads
+each one's **GEC** (geocoded, ellipsoid corrected): the least-processed
+product that is already on a map grid -- detected and projected onto the
+WGS 84 ellipsoid (exact at sea level), not terrain corrected. Open the
+product folder as the bucket lays it out, a zip of it (what the connectors
+write), or the `.tif` with its metadata JSON beside it:
+
+```python
+product = satimg.open("2025-01-31-14-10-48_UMBRA-08")    # _GEC.tif + .stac.v2.json / _METADATA.json
+product.raw                  # uint8 amplitude, Umbra's own scaling (uncalibrated), band VV / HH
+product.visual               # 1-band dB stretch: water dark, ships bright
+
+product = satimg.open("CAPELLA_C13_SP_GEC_HH_20260116014108_20260116014119")   # .tif + _extended.json
+product.raw                  # uint16 amplitude numbers, band HH / VV
+product.sigma0(product.raw)  # calibrated sigma-nought, linear, NaN off the image
+product.visual               # 1-band dB stretch of sigma0
+
+product.metadata.attrs       # incidence_angle, squint_angle, look_direction, pass, pixel_spacing, ...
+```
+
+An Umbra GEC is on an EPSG:4326 grid rotated to the collect (the
+`transformer` is a full affine), a Capella GEC on a north-up UTM grid; both
+have overviews, so `visual_overview` and `thumbnail` read a few hundred KB.
+The metadata is scene-centre values only -- no per-pixel fields, and no
+moving-target Doppler correction yet. The image models were trained on
+10 m Sentinel-1; at sub-metre resolution a ship looks nothing like that, so
+expect to fine-tune (or tile coarser) before trusting them here.
+
+`get_connector("umbra-gec")` / `get_connector("capella-gec")` search each
+bucket's static STAC catalogue and download anonymously -- no account:
+
+```python
+connector = get_connector("capella-gec")
+items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1)
+connector.download(items[0], "/data/collect.zip")    # GEC + metadata (+ quick-look), a few hundred MB
+```
+
+There is no search API behind either catalogue, so `search` walks its tree,
+skipping the year / month / day branches outside the time range: a date
+range of a few weeks takes seconds, the whole catalogue up to a minute.
+Umbra's catalogue lags its bucket by a few months.
+
 ## VIIRS Day/Night Band
 
 The VIIRS Day/Night Band sees light at night down to a few nW / (cm^2 sr):
@@ -416,7 +464,8 @@ and downloads with the same CDSE account as Sentinel-1 / -2.
 
 ## Downloading
 
-`search` is anonymous; `download` needs a (free) account for the archive.
+`search` is anonymous; `download` needs a (free) account for the archive --
+except Umbra and Capella, which need none at all.
 Pass credentials to the connector, or set environment variables
 (`CDSE_USERNAME` / `CDSE_PASSWORD` for Copernicus, `USGS_USERNAME` /
 `USGS_PASSWORD` / optional `USGS_TOKEN` for USGS, `EARTHDATA_TOKEN` -- or
@@ -531,7 +580,7 @@ satimg/
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
   geojson.py   unwrapping a GeoJSON geometry / Feature, its bounding box
   connectors/  the generic and provider connectors the product ones subclass:
-               connector · connector_factory
+               connector · connector_factory · static_stac_connector
                · copernicus_dataspace_connector · nasa_earthdata_connector · usgs_ers_connector
   prediction/  detectors and characterisers
 ```
