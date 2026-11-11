@@ -7,7 +7,7 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 
 import satimg
-from satimg import NisarGCOVGeometry
+from satimg import SAROrbitGeometry
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
@@ -66,7 +66,8 @@ def test_opens_a_bare_h5(product):
     assert product.timestamp.isoformat() == "2026-08-01T06:10:17.750000"
     assert product.metadata.attrs["look_direction"] == "left"
     assert product.metadata.attrs["pass"] == "descending"
-    assert product.metadata.attrs["platform_velocity"] == pytest.approx(fx.PLATFORM_SPEED)
+    speeds = numpy.linalg.norm(product.metadata.attrs["orbit"]["velocities"], axis=1)
+    assert speeds == pytest.approx(fx.PLATFORM_SPEED)
     assert product.bounds() == pytest.approx((14.8, 68.47, 14.95, 68.55))
 
 
@@ -135,53 +136,63 @@ def test_zip_native(h5_path, tmp_path):
 
 
 # -- SAR geometry ---------------------------------------------------------------
-CENTRE = (fx.HEIGHT / 2, fx.WIDTH / 2)
+@pytest.fixture(scope="module")
+def centre(product):
+    """The pixel the synthetic orbit images broadside."""
+    return tuple(product.transformer.latlon_to_rowcol(fx.TARGET)[0])
 
 
-def test_heading_to_los_follows_the_left_look(product):
-    assert product.heading_to_los(CENTRE, fx.LOOK) == pytest.approx(0.0, abs=1e-3)
-    assert abs(product.heading_to_los(CENTRE, fx.PLATFORM_HEADING)) == pytest.approx(90.0, abs=1e-3)
+def test_orbit_is_timed_from_the_granule_centre(product):
+    orbit = product.metadata.attrs["orbit"]
+    assert orbit["epoch"] == "2026-08-01T06:10:17.750000Z"
+    assert orbit["times"][0] == pytest.approx(-fx.ORBIT_OFFSET)
 
 
-def test_no_shift_moving_along_track(product):
-    assert product.doppler_azimuth_shift_m(CENTRE, SPEED, fx.PLATFORM_HEADING) == pytest.approx(0.0, abs=1e-3)
+def test_heading_to_los_follows_the_left_look(product, centre):
+    assert product.heading_to_los(centre, fx.LOOK) == pytest.approx(0.0, abs=1e-3)
+    assert abs(product.heading_to_los(centre, fx.PLATFORM_HEADING)) == pytest.approx(90.0, abs=1e-3)
 
 
-def test_closing_target_shifts_forward_by_the_textbook_amount(product):
+def test_no_shift_moving_along_track(product, centre):
+    # (centimetres: the scene-centre reference is half a pixel off the target)
+    assert product.doppler_azimuth_shift_m(centre, SPEED, fx.PLATFORM_HEADING) == pytest.approx(0.0, abs=0.05)
+
+
+def test_closing_target_shifts_forward_by_the_textbook_amount(product, centre):
     towards_satellite = (fx.LOOK + 180) % 360
-    shift = product.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite)
+    shift = product.doppler_azimuth_shift_m(centre, SPEED, towards_satellite)
     expected = SPEED * numpy.sin(numpy.deg2rad(fx.INCIDENCE_0)) * fx.SLANT_RANGE_0 / fx.PLATFORM_SPEED
     assert shift == pytest.approx(expected, rel=1e-4)
     # receding: the same, backwards
-    assert product.doppler_azimuth_shift_m(CENTRE, SPEED, fx.LOOK) == pytest.approx(-expected, rel=1e-4)
+    assert product.doppler_azimuth_shift_m(centre, SPEED, fx.LOOK) == pytest.approx(-expected, rel=1e-4)
 
 
-def test_pixel_shift_points_along_the_ground_track(product):
+def test_pixel_shift_points_along_the_ground_track(product, centre):
     towards_satellite = (fx.LOOK + 180) % 360
-    d_row, d_col = product.doppler_pixel_shift(CENTRE, SPEED, towards_satellite)
-    shift_px = product.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite) / fx.SPACING
+    d_row, d_col = product.doppler_pixel_shift(centre, SPEED, towards_satellite)
+    shift_px = product.doppler_azimuth_shift_m(centre, SPEED, towards_satellite) / fx.SPACING
     assert numpy.hypot(d_row, d_col) == pytest.approx(shift_px, rel=1e-3)
     # flying 192 degrees: down the image, a little left (plus UTM convergence)
     direction = numpy.rad2deg(numpy.arctan2(d_col, -d_row)) % 360
-    assert direction == pytest.approx(product.heading_in_image(CENTRE, fx.PLATFORM_HEADING), abs=1e-6)
+    assert direction == pytest.approx(product.heading_in_image(centre, fx.PLATFORM_HEADING), abs=1e-3)
     assert d_row > 0 and d_col < 0
 
 
-def test_correct_position_undoes_the_shift(product):
+def test_correct_position_undoes_the_shift(product, centre):
     towards_satellite = (fx.LOOK + 180) % 360
-    true_lat, true_lon = product.transformer.rowcol_to_latlon(CENTRE)[0]
-    shift = product.doppler_pixel_shift(CENTRE, SPEED, towards_satellite)
-    seen_lat, seen_lon = product.transformer.rowcol_to_latlon(numpy.add(CENTRE, shift))[0]
+    true_lat, true_lon = product.transformer.rowcol_to_latlon(centre)[0]
+    shift = product.doppler_pixel_shift(centre, SPEED, towards_satellite)
+    seen_lat, seen_lon = product.transformer.rowcol_to_latlon(numpy.add(centre, shift))[0]
     lat, lon = product.correct_position(seen_lat, seen_lon, SPEED, towards_satellite)
     assert (lat, lon) == pytest.approx((true_lat, true_lon), abs=1e-6)
 
 
-def test_heading_round_trip_and_convergence(product):
+def test_heading_round_trip_and_convergence(product, centre):
     # ~1.2 degrees west of zone 33's 15 E meridian at 68.5 N: grid convergence
     # of about 1.2 * sin(68.5) = 1.1 degrees, true north clockwise of grid north
-    image = product.heading_in_image(CENTRE, 45.0)
+    image = product.heading_in_image(centre, 45.0)
     assert image - 45.0 == pytest.approx(1.1, abs=0.1)
-    assert product.heading_from_image(CENTRE, image) == pytest.approx(45.0)
+    assert product.heading_from_image(centre, image) == pytest.approx(45.0)
 
 
 def test_north_angle_on_a_polar_grid():
@@ -195,10 +206,11 @@ def test_north_angle_on_a_polar_grid():
 def test_geometry_round_trips_and_keeps_sar_methods(product):
     stored = json.loads(json.dumps(product.geometry.to_dict(), allow_nan=False))
     assert len(json.dumps(stored)) < 200_000
-    geometry = NisarGCOVGeometry.from_dict(stored)
+    geometry = SAROrbitGeometry.from_dict(stored)
+    centre = (fx.HEIGHT / 2, fx.WIDTH / 2)
     towards_satellite = (fx.LOOK + 180) % 360
-    assert geometry.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite) == pytest.approx(
-        product.doppler_azimuth_shift_m(CENTRE, SPEED, towards_satellite), rel=1e-6
+    assert geometry.doppler_azimuth_shift_m(centre, SPEED, towards_satellite) == pytest.approx(
+        product.doppler_azimuth_shift_m(centre, SPEED, towards_satellite), rel=1e-6
     )
     assert geometry.correct_position(68.5, 14.9, SPEED, 0.0) == pytest.approx(
         product.correct_position(68.5, 14.9, SPEED, 0.0), abs=1e-7

@@ -1,34 +1,20 @@
-"""SAR-specific per-pixel geometry: ground-track heading, line-of-sight bearing,
-image-frame heading, and the moving-target Doppler azimuth-shift effect.
+"""SAR geometry: the moving-target Doppler azimuth shift, worked out on the
+ground from the sensor's Earth-fixed orbit.
 
-A ground target with a non-zero velocity relative to the radar's line of sight (LOS)
-is displaced from its true position along the *azimuth* axis of a focused SAR image
--- the effect behind a ship appearing offset from its own wake. ``heading_in_image``
-re-expresses a compass heading in the image's own rotated *and mirrored*,
-native-sensor-geometry pixel frame -- a SAR-only concern, since a map-projected
-optical raster is already north-up. The functions here are pure geometry, taking already-extracted scalars,
-so they're reusable and testable independently of any product class; see
-:meth:`satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.doppler_azimuth_shift`,
-:meth:`~satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.heading_to_los`,
-:meth:`~satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.heading_in_image` and
-:meth:`~satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.correct_position` for the
-product-facing entry points.
-
-The second half works on the ground instead, from the sensor's Earth-fixed
-orbit: :func:`moving_target_shift` gives the displacement in metres and its
-compass bearing for any geometry -- either look side, any squint, any pixel
-frame -- with the ellipsoid / orbit helpers it needs. That is what
-:class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` (Umbra, Capella, ICEYE)
-builds on.
+A ground target with a non-zero velocity along the radar's line of sight is
+displaced from its true position along track in a focused SAR image -- the
+effect behind a ship appearing offset from its own wake.
+:func:`moving_target_shift` gives that displacement in metres and its compass
+bearing from the sensor's position and velocity when it images the target,
+for any geometry: either look side, any squint, any pixel frame. The rest are
+the WGS 84 / orbit helpers it needs. Pure functions on already-extracted
+values; :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` is what every
+SAR product (:class:`~satimg.sar_product.SARProduct`) builds on them.
 """
 
 from __future__ import annotations
 
 import numpy
-
-#: metres/second
-SPEED_OF_LIGHT = 299_792_458.0
-
 
 def ground_track_heading(latitude_deg, inclination_deg, ascending):
     """Satellite ground-track heading (degrees clockwise from true north) at a
@@ -50,110 +36,6 @@ def ground_track_heading(latitude_deg, inclination_deg, ascending):
     az = numpy.where(numpy.asarray(ascending), az_ascending, 180.0 - az_ascending)
     return (az + 180.0) % 360.0 - 180.0
 
-
-def heading_to_los(heading_deg, platform_heading_deg):
-    """Convert a compass heading (degrees clockwise from true north) into the
-    object's bearing relative to the radar's ground-projected line of sight.
-
-    Sentinel-1 is always right-looking, so the LOS ground direction (pointing away
-    from the satellite, i.e. towards increasing ground range) sits 90 degrees
-    clockwise of the platform's own ground-track heading ``platform_heading_deg``.
-
-    Returns degrees wrapped to ``[-180, 180)``: ``0`` means the object is moving
-    directly away from the satellite (ground range increasing), ``-180`` directly
-    towards it, and ``+-90`` means it's moving purely along-track -- which produces
-    no azimuth shift at all (see :func:`azimuth_shift_m`).
-    """
-    look_direction = (numpy.asarray(platform_heading_deg, dtype=float) + 90.0) % 360.0
-    heading = numpy.asarray(heading_deg, dtype=float)
-    return (heading - look_direction + 180.0) % 360.0 - 180.0
-
-
-def heading_in_image(heading_deg, platform_heading_deg):
-    """Convert a compass heading (degrees clockwise from true north) into the
-    direction it points within a SAR GRD's own pixel frame.
-
-    ``platform_heading_deg`` is the satellite's ground-track heading (see
-    :func:`ground_track_heading`). GRD imagery is still in native sensor
-    geometry: row increases along that heading (image "down") and column
-    increases towards the look direction, ``platform_heading_deg + 90`` for a
-    right-looking sensor (image "right"). The raster is therefore a *mirror
-    image* of the map -- "right" sits counter-clockwise of "up" -- so the sense
-    of every angle reverses, and this is not a plain subtraction of a rotation.
-    See :meth:`~satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.heading_in_image`.
-
-    Returns degrees wrapped to ``[0, 360)`` measured clockwise from image
-    "up": ``0``/``360`` means the object points towards the top of the image
-    (decreasing row), ``90`` towards the right, ``180`` towards the bottom.
-    Drawn as an arrow on the raster, it lies along the ship's heading as it
-    appears in the image.
-    """
-    heading = numpy.asarray(heading_deg, dtype=float)
-    platform_heading = numpy.asarray(platform_heading_deg, dtype=float)
-    return (platform_heading + 180.0 - heading) % 360.0
-
-
-def heading_from_image(image_heading_deg, platform_heading_deg):
-    """Convert a direction in a SAR GRD's own pixel frame (degrees clockwise
-    from image "up", as returned by :func:`heading_in_image`) back into a
-    compass heading (degrees clockwise from true north), wrapped to
-    ``[0, 360)``.
-
-    The image is a mirror of the map, so the conversion is its own inverse:
-    this is the same arithmetic as :func:`heading_in_image`, named for the
-    direction it is used in.
-    """
-    image_heading = numpy.asarray(image_heading_deg, dtype=float)
-    platform_heading = numpy.asarray(platform_heading_deg, dtype=float)
-    return (platform_heading + 180.0 - image_heading) % 360.0
-
-
-def azimuth_shift_m(
-    speed,
-    heading_deg,
-    platform_heading_deg,
-    incidence_angle_deg,
-    slant_range_m,
-    platform_velocity_mps,
-):
-    """Azimuth displacement (metres) of a moving target in a focused SAR image.
-
-    A target with radial velocity is indistinguishable, to the azimuth-compression
-    matched filter, from a *stationary* target sitting at a shifted azimuth
-    position -- that shifted position is what this returns. It depends only on the
-    target's ground-range-relative motion, the imaging geometry, and the platform's
-    velocity; the radar wavelength cancels out of the derivation entirely, so it
-    isn't a parameter here.
-
-    ``speed`` in m/s; ``heading_deg``, ``platform_heading_deg`` and
-    ``incidence_angle_deg`` in degrees; ``slant_range_m`` and
-    ``platform_velocity_mps`` in metres and m/s (Sentinel-1's orbital speed is
-    about 7.4 km/s).
-
-    Sign convention: positive means the target appears shifted towards *later*
-    azimuth (acquisition) time -- the direction of increasing row index in a
-    Sentinel-1 GRD product -- which happens when the object moves *towards* the
-    satellite (decreasing ground range); a receding object is shifted towards
-    earlier time. (A target with range rate ``v_r`` picks up a Doppler offset
-    the focusing reads as a stationary target ``-R * v_r / V`` along-track, so
-    the sign is opposite to ``v_r``.) Purely along-track motion
-    (:func:`heading_to_los` == +-90) produces zero shift.
-    """
-    los_angle = numpy.deg2rad(heading_to_los(heading_deg, platform_heading_deg))
-    incidence = numpy.deg2rad(numpy.asarray(incidence_angle_deg, dtype=float))
-    v_ground_away = numpy.asarray(speed, dtype=float) * numpy.cos(los_angle)
-    v_radial = v_ground_away * numpy.sin(incidence)
-    return -v_radial * numpy.asarray(slant_range_m, dtype=float) / numpy.asarray(
-        platform_velocity_mps, dtype=float
-    )
-
-
-# -- moving targets from the sensor's own orbit ---------------------------------
-# Products that ship their sensor's state vectors (or enough to rebuild them)
-# don't need a per-product pixel frame: the shift is worked out on the ground,
-# in east / north metres, from the sensor's Earth-fixed position and velocity
-# at the moment it images the target. See
-# :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry`.
 
 #: WGS 84 semi-major axis (metres) and first eccentricity squared
 WGS84_A = 6_378_137.0
@@ -275,10 +157,11 @@ def moving_target_shift(lat_deg, lon_deg, sensor_position, sensor_velocity, spee
 
     ``bearing_deg`` is ``g``'s compass bearing, taken on the side the sensor
     is flying towards; ``shift_m`` is positive along it -- a target closing
-    on the sensor is shifted forward, a receding one back, as in
-    :func:`azimuth_shift_m` (which is this at broadside, zero squint, with
-    the platform speed for ``g . v_s``). Purely along-``g`` motion gives no
-    shift. Squint needs no special handling: it is in ``u`` and ``v_s``.
+    on the sensor is shifted forward, a receding one back. Broadside, with
+    the sensor's speed ``V`` all square to the line of sight, this is the
+    textbook ``-v_r R / V`` (``v_r`` the target's range rate). Purely
+    along-``g`` motion gives no shift. Squint needs no special handling: it
+    is in ``u`` and ``v_s`` (``g . v_s`` shrinks, the shift grows).
     """
     axes = enu_axes(lat_deg, lon_deg)
     los = numpy.atleast_2d(sensor_position) - geodetic_to_ecef(lat_deg, lon_deg)

@@ -7,12 +7,12 @@ import PIL.Image
 import xarray
 
 from satimg.metadata.metadata import Metadata
-from satimg.product import Product
 from satimg.products.iceye.grd import iceye_grd_parsing
 from satimg.readers.raster import keep_open, merge_bands
 from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
 from satimg.sar_orbit_geometry import SAROrbitGeometry
+from satimg.sar_product import SARProduct
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.swath_transformer import SwathTransformer
@@ -26,7 +26,7 @@ _VISUAL_SLOPE = 0.3
 
 
 @register(r"^ICEYE_[0-9A-Z]{6}_\d{8}T\d{6}Z_\d+_X\d+_[0-9A-Z]+(_GRD\.tif)?$")
-class IceyeGRD(Product):
+class IceyeGRD(SARProduct):
     """One ICEYE X-band SAR image (spotlight ~0.5-1 m, stripmap ~3 m, scan
     ~15 m): its GRD -- the least-processed geocoded product ICEYE publishes:
     detected, multilooked and projected to ground range on the ellipsoid, in
@@ -48,11 +48,9 @@ class IceyeGRD(Product):
     ``squint_angle``, ``look_direction``, ``pass``, ...) and the
     ``calibration_factor``.
 
-    The moving-target methods -- :meth:`doppler_azimuth_shift_m`,
-    :meth:`doppler_pixel_shift`, :meth:`correct_position`,
-    :meth:`heading_to_los` -- work from the sensor orbit in ``attrs["orbit"]``
-    (ICEYE's own orbit state vectors) and live on
-    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry`.
+    The moving-target correction and heading conversions
+    (:class:`~satimg.sar_product.SARProduct`) work from the sensor orbit in ``attrs["orbit"]``
+    (ICEYE's own orbit state vectors).
     """
 
     def __init__(self, source: Source):
@@ -111,36 +109,3 @@ class IceyeGRD(Product):
     # -- metadata ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
         return self._geometry.metadata
-
-    @property
-    def height(self) -> int:
-        """From the GeoTIFF header -- no ``raw`` open needed."""
-        return self._shape[0]
-
-    @property
-    def width(self) -> int:
-        return self._shape[1]
-
-    # -- SAR geometry (see SAROrbitGeometry) ----------------------------------------
-    @property
-    def geometry(self) -> SAROrbitGeometry:
-        """As :attr:`Product.geometry`, as a
-        :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` -- which the
-        moving-target methods below delegate to."""
-        return self._geometry
-
-    def heading_to_los(self, rowcol, heading_deg):
-        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.heading_to_los`."""
-        return self._geometry.heading_to_los(rowcol, heading_deg)
-
-    def doppler_azimuth_shift_m(self, rowcol, speed: float, heading_deg: float):
-        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_azimuth_shift_m`."""
-        return self._geometry.doppler_azimuth_shift_m(rowcol, speed, heading_deg)
-
-    def doppler_pixel_shift(self, rowcol, speed: float, heading_deg: float):
-        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_pixel_shift`."""
-        return self._geometry.doppler_pixel_shift(rowcol, speed, heading_deg)
-
-    def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
-        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.correct_position`."""
-        return self._geometry.correct_position(lat, lon, speed, heading_deg)

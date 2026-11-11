@@ -95,7 +95,7 @@ class SceneGeometry:
     @classmethod
     def from_dict(cls, data: dict) -> SceneGeometry:
         """Rebuild a geometry from :meth:`to_dict` -- as ``cls``, so
-        ``Sentinel1GRDGeometry.from_dict`` gives back the SAR methods too."""
+        ``SAROrbitGeometry.from_dict`` gives back the SAR methods too."""
         fields = {
             name: (f["rows"], f["cols"], _none_to_nan(f["values"]), f["units"])
             for name, f in data["fields"].items()

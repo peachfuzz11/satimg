@@ -3,9 +3,9 @@
 :class:`SAROrbitGeometry` is the :class:`~satimg.scene_geometry.SceneGeometry`
 of a SAR scene plus the moving-target Doppler correction, worked out from
 the sensor's own Earth-fixed state vectors (``attrs["orbit"]``) rather than
-from the image's pixel frame -- so one implementation serves every such
-product, map-projected (Capella, Umbra) or in radar geometry (ICEYE),
-right- or left-looking, broadside or squinted::
+from the image's pixel frame -- so one implementation serves every SAR
+product, map-projected (NISAR, Capella, Umbra) or in radar geometry
+(Sentinel-1, ICEYE), right- or left-looking, broadside or squinted::
 
     with satimg.open(path) as product:
         stored = product.geometry.to_dict()
@@ -37,6 +37,9 @@ class SAROrbitGeometry(SceneGeometry):
     centre's Doppler cone angle -- its zero-Doppler time for a broadside
     collect, its aperture centre for a squinted one.
     """
+
+    #: pixels stepped to measure the local pixel grid
+    _STEP_PX = 1.0
 
     @staticmethod
     def _scalar_or_array(value, single: bool):
@@ -79,14 +82,37 @@ class SAROrbitGeometry(SceneGeometry):
         """A compass heading relative to the ground-projected radar line of
         sight at ``rowcol``, ``[-180, 180)``: ``0`` moving straight away from
         the sensor, ``+-180`` straight towards it, near ``+-90`` along track
-        (little or no Doppler shift). Same convention as
-        :func:`satimg.sar.heading_to_los`, with the look direction taken from
-        the orbit, whichever side the radar looks."""
+        (little or no Doppler shift). The look direction comes from the
+        orbit, whichever side the radar looks."""
         latlon = self._latlon(rowcol)
         position, _ = self._sensor_state(latlon)
         look = sar.look_bearing(latlon[:, 0], latlon[:, 1], position)
         rel = (numpy.asarray(heading_deg, dtype=float) - look + 180.0) % 360.0 - 180.0
         return self._scalar_or_array(rel, numpy.ndim(rowcol) == 1)
+
+    def heading_in_image(self, rowcol, heading_deg):
+        """A compass heading (degrees clockwise from true north) as a
+        direction in the image at ``rowcol``: degrees clockwise from image
+        "up" (decreasing row), ``[0, 360)`` -- e.g. to draw a ship's course
+        as an arrow on the raster. Measured from the local pixel grid, so it
+        holds for any frame: north-up, rotated, or the mirrored radar
+        geometry of a GRD."""
+        rc = numpy.atleast_2d(numpy.asarray(rowcol, dtype=float))
+        heading = numpy.deg2rad(numpy.asarray(heading_deg, dtype=float)) * numpy.ones(len(rc))
+        d_row, d_col = self._to_pixels(rc, self._latlon(rc), numpy.sin(heading), numpy.cos(heading)).T
+        result = numpy.rad2deg(numpy.arctan2(d_col, -d_row)) % 360.0
+        return self._scalar_or_array(result, numpy.ndim(rowcol) == 1)
+
+    def heading_from_image(self, rowcol, image_heading_deg):
+        """The inverse of :meth:`heading_in_image`: a direction in the image
+        (degrees clockwise from image "up") at ``rowcol`` as a compass
+        heading -- e.g. a ship's course as a model read it off the raster."""
+        rc = numpy.atleast_2d(numpy.asarray(rowcol, dtype=float))
+        angle = numpy.deg2rad(numpy.asarray(image_heading_deg, dtype=float)) * numpy.ones(len(rc))
+        pixels = numpy.column_stack((-numpy.cos(angle), numpy.sin(angle)))
+        east, north = numpy.einsum("nij,nj->ni", self._metres_per_pixel(rc, self._latlon(rc)), pixels).T
+        result = numpy.rad2deg(numpy.arctan2(east, north)) % 360.0
+        return self._scalar_or_array(result, numpy.ndim(rowcol) == 1)
 
     def doppler_azimuth_shift_m(self, rowcol, speed: float, heading_deg: float):
         """Ground displacement (metres) of a target moving at ``speed`` (m/s)
@@ -104,15 +130,42 @@ class SAROrbitGeometry(SceneGeometry):
         rc = numpy.atleast_2d(numpy.asarray(rowcol, dtype=float))
         latlon = self._latlon(rc)
         shift, bearing = self._shift(latlon, speed, heading_deg)
-        seen = sar.offset_latlon(latlon[:, 0], latlon[:, 1], shift, bearing)
-        out = self.transformer.latlon_to_rowcol(seen) - rc
+        b = numpy.deg2rad(bearing)
+        out = self._to_pixels(rc, latlon, shift * numpy.sin(b), shift * numpy.cos(b))
         return out[0] if numpy.ndim(rowcol) == 1 else out
+
+    def _metres_per_pixel(self, rc: numpy.ndarray, latlon: numpy.ndarray) -> numpy.ndarray:
+        """The local pixel grid at each pixel: ``(N, 2, 2)`` matrices taking
+        a ``(d_row, d_col)`` step to ``(east, north)`` metres. Measured by
+        stepping a pixel with ``rowcol_to_latlon`` -- smooth for every
+        transformer, where ``latlon_to_rowcol`` may snap to whole pixels
+        (:class:`~satimg.transform.gcp_transformer.GCPTransformer`) -- and
+        backwards where a forward step leaves the grid. Being local, it maps
+        a shift to pixels wherever the shift lands, on the image or off it."""
+        axes = sar.enu_axes(latlon[:, 0], latlon[:, 1])[:, :2]
+        here = sar.geodetic_to_ecef(latlon[:, 0], latlon[:, 1])
+
+        def per_pixel(step) -> numpy.ndarray:
+            moved = self.transformer.rowcol_to_latlon(rc + step)
+            d = sar.geodetic_to_ecef(moved[:, 0], moved[:, 1]) - here
+            return numpy.einsum("nij,nj->ni", axes, d) / numpy.sum(step)
+
+        columns = []
+        for step in ((self._STEP_PX, 0.0), (0.0, self._STEP_PX)):
+            forward = per_pixel(numpy.array(step))
+            columns.append(numpy.where(numpy.isnan(forward), per_pixel(-numpy.array(step)), forward))
+        return numpy.stack(columns, axis=-1)
+
+    def _to_pixels(self, rc: numpy.ndarray, latlon: numpy.ndarray, east, north) -> numpy.ndarray:
+        """``(east, north)`` metres at each pixel as ``(N, 2)`` ``(d_row, d_col)``."""
+        metres = numpy.column_stack((east * numpy.ones(len(rc)), north * numpy.ones(len(rc))))
+        return numpy.linalg.solve(self._metres_per_pixel(rc, latlon), metres[..., None])[..., 0]
 
     def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
         """A moving target's true ``(lat, lon)`` from where it was read off
         the image, given its ``speed`` (m/s) and compass ``heading_deg`` --
         the inverse of :meth:`doppler_pixel_shift`. Same signature as
-        :meth:`satimg.products.sentinel1.grd.sentinel1_grd.Sentinel1GRD.correct_position`."""
+        every :class:`~satimg.sar_product.SARProduct`'s ``correct_position``."""
         seen = numpy.array([[lat, lon]], dtype=float)
         true = seen
         # the shift barely varies over its own length: a few fixed-point

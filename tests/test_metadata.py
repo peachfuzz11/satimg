@@ -81,8 +81,13 @@ class TestSentinel1:
 
     def test_orbit_attrs(self, sentinel1_iw):
         attrs = sentinel1_iw.metadata.attrs
-        assert 7000 < attrs["platform_velocity"] < 7700           # LEO orbital speed, m/s
-        assert attrs["orbit_inclination"] == pytest.approx(98.18, abs=0.5)  # sun-synchronous
+        orbit = attrs["orbit"]
+        assert len(orbit["times"]) == len(orbit["positions"]) == len(orbit["velocities"]) > 4
+        assert orbit["times"][0] < 0 < orbit["times"][-1]           # spans the scene centre
+        speeds = numpy.linalg.norm(orbit["velocities"], axis=1)
+        assert numpy.all((7000 < speeds) & (speeds < 7700))         # LEO, Earth-fixed, m/s
+        radii = numpy.linalg.norm(orbit["positions"], axis=1)
+        assert numpy.all((7000e3 < radii) & (radii < 7100e3))       # ~700 km altitude
         assert attrs["azimuth_pixel_spacing"] > 0
 
     def test_units(self, sentinel1_iw):

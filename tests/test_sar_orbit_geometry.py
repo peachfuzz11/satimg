@@ -1,8 +1,10 @@
-"""The orbit-based moving-target correction on every product that uses it
-(Umbra, Capella, ICEYE) -- see ``satimg/sar_orbit_geometry.py``. Capella's
-and ICEYE's fixtures ship a straight broadside orbit (``orbit_fixture``),
-for which the textbook shift is exact; Umbra's orbit is rebuilt from its
-scene-centre geometry."""
+"""The moving-target correction and heading conversions every SAR product
+shares (:class:`~satimg.sar_product.SARProduct`, on
+``satimg/sar_orbit_geometry.py``): Sentinel-1 (real minified IW and EW
+products), NISAR, Umbra, Capella, ICEYE. The NISAR, Capella and ICEYE
+fixtures fly a straight broadside orbit (``orbit_fixture``), for which the
+textbook shift is exact; Umbra's orbit is rebuilt from its scene-centre
+geometry."""
 
 import json
 
@@ -12,19 +14,33 @@ import pytest
 import satimg
 from satimg import sar
 from satimg.sar_orbit_geometry import SAROrbitGeometry
-from tests import capella_fixture, iceye_fixture, orbit_fixture, umbra_fixture
+from satimg.sar_product import SARProduct
+from tests import capella_fixture, iceye_fixture, nisar_fixture, orbit_fixture, umbra_fixture
+from tests.conftest import PRODUCT_PATHS
 
 #: m/s -- slow enough that the shift stays inside the small fixture images
 SPEED = 3.0
 
 FIXTURES = {"capella": capella_fixture, "iceye": iceye_fixture}
 
+#: what every SAR product answers to
+INTERFACE = (
+    "heading_to_los", "heading_in_image", "heading_from_image",
+    "doppler_azimuth_shift_m", "doppler_pixel_shift", "correct_position",
+)
 
-@pytest.fixture(scope="module", params=["umbra", "capella", "iceye"])
+
+@pytest.fixture(scope="module", params=["sentinel1_iw", "sentinel1_ew", "nisar", "umbra", "capella", "iceye"])
 def product(request, tmp_path_factory):
-    fx = {"umbra": umbra_fixture, **FIXTURES}[request.param]
-    folder = fx.build(tmp_path_factory.mktemp(request.param))
-    with satimg.open(str(folder)) as p:
+    if request.param in PRODUCT_PATHS:
+        path = PRODUCT_PATHS[request.param]
+    elif request.param == "nisar":
+        path = tmp_path_factory.mktemp("nisar") / nisar_fixture.NAME
+        nisar_fixture.build(path)
+    else:
+        fx = {"umbra": umbra_fixture, **FIXTURES}[request.param]
+        path = fx.build(tmp_path_factory.mktemp(request.param))
+    with satimg.open(str(path)) as p:
         yield p
 
 
@@ -37,7 +53,18 @@ def _look(product, rowcol):
     return (0.0 - product.heading_to_los(rowcol, 0.0)) % 360.0
 
 
+def test_every_sar_product_has_the_same_interface():
+    sar_products = [cls for cls in vars(satimg).values() if isinstance(cls, type) and issubclass(cls, SARProduct)]
+    assert {cls.__name__ for cls in sar_products} == {
+        "SARProduct", "Sentinel1GRD", "NisarGCOV", "UmbraGEC", "CapellaGEC", "IceyeGRD"
+    }
+    for cls in sar_products:
+        for name in INTERFACE:
+            assert getattr(cls, name) is getattr(SARProduct, name), (cls, name)
+
+
 def test_geometry_is_an_orbit_geometry(product):
+    assert isinstance(product, SARProduct)
     assert isinstance(product.geometry, SAROrbitGeometry)
     assert set(product.metadata.attrs["orbit"]) == {"epoch", "times", "positions", "velocities"}
 
@@ -73,10 +100,17 @@ def test_pixel_shift_and_correct_position_are_inverses(product):
     heading = (_look(product, rc) + 150.0) % 360.0
     true_lat, true_lon = product.transformer.rowcol_to_latlon(rc)[0]
     shift = product.doppler_pixel_shift(rc, SPEED, heading)
-    assert numpy.hypot(*shift) > 10  # pixels: well off the true position
+    assert numpy.hypot(*shift) > 3  # pixels: well off the true position
     seen_lat, seen_lon = product.transformer.rowcol_to_latlon(rc + shift)[0]
     lat, lon = product.correct_position(seen_lat, seen_lon, SPEED, heading)
     assert (lat, lon) == pytest.approx((true_lat, true_lon), abs=1e-7)
+
+
+def test_headings_round_trip(product):
+    rc = _middle(product)
+    for heading in (0.0, 73.0, 190.0, 300.0):
+        image = product.heading_in_image(rc, heading)
+        assert (product.heading_from_image(rc, image) - heading + 180) % 360 - 180 == pytest.approx(0.0, abs=1e-6)
 
 
 def test_vectorised(product):
@@ -141,3 +175,13 @@ def test_no_orbit_is_a_clear_error(tmp_path):
         assert product.metadata.attrs["orbit"] is None
         with pytest.raises(ValueError, match="no sensor orbit"):
             product.correct_position(*product.transformer.rowcol_to_latlon((10, 10))[0], SPEED, 0.0)
+
+
+def test_pixel_shift_is_finite_when_it_lands_off_the_image(product):
+    # a fast target at a corner: shifted well off the grid, still a shift
+    rc = (2.0, 2.0)
+    towards = (_look(product, rc) + 180.0) % 360.0
+    fast = product.doppler_pixel_shift(rc, 30.0, towards)
+    slow = product.doppler_pixel_shift(rc, 1.0, towards)
+    assert numpy.all(numpy.isfinite(fast))
+    assert fast == pytest.approx(30.0 * slow, rel=1e-6)

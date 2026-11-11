@@ -203,11 +203,16 @@ def read_radar_grid(h5, transform: Affine) -> dict:
     return out
 
 
-def platform_velocity(h5, at: datetime.datetime) -> float:
-    """Platform speed (m/s) from the orbit state vector nearest ``at``."""
-    orbit = h5[ORBIT]
-    times = orbit["time"]
-    epoch = _epoch(_str(times.attrs["units"]))
-    offset = (at - epoch).total_seconds()
-    i = int(numpy.abs(times[()] - offset).argmin())
-    return float(numpy.linalg.norm(orbit["velocity"][i]))
+def orbit(h5, epoch: datetime.datetime) -> dict:
+    """The sensor orbit as
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` reads it: the
+    product's orbit state vectors (Earth-fixed), timed from ``epoch``."""
+    group = h5[ORBIT]
+    times = group["time"]
+    offset = (_epoch(_str(times.attrs["units"])) - epoch).total_seconds()
+    return {
+        "epoch": epoch.isoformat() + "Z",
+        "times": (times[()] + offset).tolist(),
+        "positions": numpy.asarray(group["position"][()], dtype=float).tolist(),
+        "velocities": numpy.asarray(group["velocity"][()], dtype=float).tolist(),
+    }

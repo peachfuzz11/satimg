@@ -8,7 +8,6 @@ import numpy
 import pytest
 import xarray
 
-from satimg import sar
 from satimg.geometry import Window
 from satimg.products.landsat.c2l1.landsat_c2l1_parsing import BANDS as _LS_BANDS
 from satimg.tiling import read_window
@@ -177,30 +176,52 @@ def test_sentinel1_mode(sentinel1_iw):
 
 
 def _local_platform_heading(product, rowcol):
-    lat = product.transformer.rowcol_to_latlon(rowcol)[:, 0]
-    ascending = product.metadata.attrs["pass"].lower() == "ascending"
-    return sar.ground_track_heading(lat, product.metadata.attrs["orbit_inclination"], ascending)[0]
+    """ESA's own annotated platform heading -- an outside check on the one
+    the product's orbit gives (it is scene-wide, so to ~0.5 degrees)."""
+    return product.metadata.attrs["platform_heading"] % 360.0
 
 
 def test_sentinel1_heading_to_los(sentinel1_iw):
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
     look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
-    assert sentinel1_iw.heading_to_los(rowcol, look_direction) == pytest.approx(0.0)
-    assert sentinel1_iw.heading_to_los(rowcol, (look_direction + 180.0) % 360.0) == pytest.approx(-180.0)
+    assert sentinel1_iw.heading_to_los(rowcol, look_direction) == pytest.approx(0.0, abs=0.5)
+    assert abs(sentinel1_iw.heading_to_los(rowcol, (look_direction + 180.0) % 360.0)) == pytest.approx(180.0, abs=0.5)
 
 
 def test_sentinel1_doppler_azimuth_shift_signs(sentinel1_iw):
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
-    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+    look = (-sentinel1_iw.heading_to_los(rowcol, 0.0)) % 360.0
 
-    away = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
-    toward = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 180.0) % 360.0)
-    along_track = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, (look_direction + 90.0) % 360.0)
+    away = sentinel1_iw.doppler_azimuth_shift_m(rowcol, 10.0, look)
+    toward = sentinel1_iw.doppler_azimuth_shift_m(rowcol, 10.0, (look + 180.0) % 360.0)
+    along_track = sentinel1_iw.doppler_azimuth_shift_m(rowcol, 10.0, (look + 90.0) % 360.0)
 
     assert away < 0
     assert toward > 0
-    assert along_track == pytest.approx(0.0, abs=1e-6)
+    assert along_track == pytest.approx(0.0, abs=0.5)
     assert away == pytest.approx(-toward)
+    # the textbook broadside shift, v sin(incidence) R / V: R from the
+    # geolocation grid, V the orbit's speed -- within a couple of percent
+    m = sentinel1_iw.metadata
+    slant_range = m.slant_range_time.at(rowcol) * 299_792_458.0 / 2
+    speed = numpy.linalg.norm(m.attrs["orbit"]["velocities"][0])
+    textbook = 10.0 * numpy.sin(numpy.deg2rad(m.incidence_angle.at(rowcol))) * slant_range / speed
+    assert toward == pytest.approx(textbook, rel=0.02)
+
+
+def test_sentinel1_shift_runs_along_the_rows(sentinel1_iw):
+    # GRD rows are azimuth: the Doppler shift is a row shift, towards
+    # higher rows (later azimuth time) for a closing target
+    rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
+    look = (-sentinel1_iw.heading_to_los(rowcol, 0.0)) % 360.0
+    d_row, d_col = sentinel1_iw.doppler_pixel_shift(rowcol, 10.0, (look + 180.0) % 360.0)
+    spacing = sentinel1_iw.metadata.attrs["azimuth_pixel_spacing"]
+    assert d_row > 0 and abs(d_col) < 0.01 * d_row
+    assert d_row == pytest.approx(sentinel1_iw.doppler_azimuth_shift_m(rowcol, 10.0, look + 180.0) / spacing, rel=0.03)
+
+
+def _angle_diff(a, b):
+    return (a - b + 180.0) % 360.0 - 180.0
 
 
 def test_sentinel1_heading_in_image(sentinel1_iw):
@@ -209,10 +230,9 @@ def test_sentinel1_heading_in_image(sentinel1_iw):
     # (image "right"). Assert the frame directly, not through the formula.
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
     platform = _local_platform_heading(sentinel1_iw, rowcol)
-    assert sentinel1_iw.heading_in_image(rowcol, platform) == pytest.approx(180.0)
-    assert sentinel1_iw.heading_in_image(rowcol, (platform + 180.0) % 360.0) == pytest.approx(0.0)
-    assert sentinel1_iw.heading_in_image(rowcol, (platform + 90.0) % 360.0) == pytest.approx(90.0)
-    assert sentinel1_iw.heading_in_image(rowcol, (platform - 90.0) % 360.0) == pytest.approx(270.0)
+    for offset, image in ((0.0, 180.0), (180.0, 0.0), (90.0, 90.0), (-90.0, 270.0)):
+        got = sentinel1_iw.heading_in_image(rowcol, (platform + offset) % 360.0)
+        assert _angle_diff(got, image) == pytest.approx(0.0, abs=0.5)
 
 
 def test_sentinel1_heading_from_image(sentinel1_iw):
@@ -220,8 +240,8 @@ def test_sentinel1_heading_from_image(sentinel1_iw):
     # image "right" along the look direction
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
     platform = _local_platform_heading(sentinel1_iw, rowcol)
-    assert sentinel1_iw.heading_from_image(rowcol, 0.0) == pytest.approx((platform + 180.0) % 360.0)
-    assert sentinel1_iw.heading_from_image(rowcol, 90.0) == pytest.approx((platform + 90.0) % 360.0)
+    assert _angle_diff(sentinel1_iw.heading_from_image(rowcol, 0.0), platform + 180.0) == pytest.approx(0.0, abs=0.5)
+    assert _angle_diff(sentinel1_iw.heading_from_image(rowcol, 90.0), platform + 90.0) == pytest.approx(0.0, abs=0.5)
     for heading in (0.0, 73.0, 190.0, 300.0):
         image = sentinel1_iw.heading_in_image(rowcol, heading)
         assert sentinel1_iw.heading_from_image(rowcol, image) == pytest.approx(heading)
@@ -239,22 +259,22 @@ def test_sentinel1_descending_pass_is_roughly_north_up(sentinel1_iw):
 def test_sentinel1_correct_position(sentinel1_iw):
     rowcol = (sentinel1_iw.height // 2, sentinel1_iw.width // 2)
     lat, lon = sentinel1_iw.transformer.rowcol_to_latlon(rowcol)[0]
-    look_direction = (_local_platform_heading(sentinel1_iw, rowcol) + 90.0) % 360.0
+    look = (-sentinel1_iw.heading_to_los(rowcol, 0.0)) % 360.0
 
-    shift_px = sentinel1_iw.doppler_azimuth_shift(rowcol, 10.0, look_direction)
-    corrected_lat, corrected_lon = sentinel1_iw.correct_position(lat, lon, 10.0, look_direction)
+    d_row, d_col = sentinel1_iw.doppler_pixel_shift(rowcol, 10.0, look)
+    corrected_lat, corrected_lon = sentinel1_iw.correct_position(lat, lon, 10.0, look)
     corrected_rowcol = sentinel1_iw.transformer.latlon_to_rowcol((corrected_lat, corrected_lon))[0]
 
     # GCPTransformer's polynomial GCP fit isn't an exact sub-pixel round-trip,
     # so check against a 1-pixel tolerance rather than the raw float shift.
-    assert corrected_rowcol[0] == pytest.approx(rowcol[0] - shift_px, abs=1.0)
-    assert corrected_rowcol[1] == pytest.approx(rowcol[1], abs=1.0)
+    assert corrected_rowcol[0] == pytest.approx(rowcol[0] - d_row, abs=1.0)
+    assert corrected_rowcol[1] == pytest.approx(rowcol[1] - d_col, abs=1.0)
 
     # along-track motion produces no azimuth shift, so no correction either
-    along_track = (look_direction + 90.0) % 360.0
+    along_track = (look + 90.0) % 360.0
     unmoved_lat, unmoved_lon = sentinel1_iw.correct_position(lat, lon, 10.0, along_track)
-    assert unmoved_lat == pytest.approx(lat, abs=1e-6)
-    assert unmoved_lon == pytest.approx(lon, abs=1e-6)
+    assert unmoved_lat == pytest.approx(lat, abs=1e-5)
+    assert unmoved_lon == pytest.approx(lon, abs=1e-5)
 
 
 def test_thumbnail_opens(product):
