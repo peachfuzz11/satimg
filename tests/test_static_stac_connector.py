@@ -114,6 +114,7 @@ def test_search_by_ids():
     assert [i["id"] for i in _Connector().search(exclude_ids=["a", "b", "c"])] == ["d"]
 
 
-def test_factory_knows_both_open_catalogues():
+def test_factory_knows_the_open_catalogues():
     assert get_connector("umbra-gec").CATALOG.endswith("/stac/catalog.json")
     assert "by-datetime" in get_connector("capella-gec").CATALOG
+    assert get_connector("iceye-grd").CATALOG.endswith("/collections/iceye-sar.json")

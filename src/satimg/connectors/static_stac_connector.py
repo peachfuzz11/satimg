@@ -1,6 +1,6 @@
 """A connector over a static STAC catalogue: a tree of ``catalog.json`` /
-item files in a bucket, with no search API behind it (Umbra's and Capella's
-open data).
+item files in a bucket, with no search API behind it (Umbra's, Capella's and
+ICEYE's open data).
 
 ``search`` walks the tree from :attr:`StaticSTACConnector.CATALOG` down,
 level by level, fetching each level's catalogues in parallel. A child

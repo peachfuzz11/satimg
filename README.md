@@ -7,8 +7,8 @@ where a window came from.
 
 Supported products: Sentinel-1 GRD (IW / EW), Sentinel-2 L1C, Landsat C2 L1,
 NISAR L2 GCOV, VIIRS Day/Night Band L1B (NOAA-20 / NOAA-21, near-real-time),
-MODIS 250 m L1B (Terra and Aqua), Sentinel-3 OLCI EFR, Umbra GEC and
-Capella GEC (sub-metre X-band SAR open data).
+MODIS 250 m L1B (Terra and Aqua), Sentinel-3 OLCI EFR, Umbra GEC,
+Capella GEC and ICEYE GRD (metre-scale X-band SAR open data).
 
 ## Concepts
 
@@ -311,17 +311,22 @@ but L-band at 10-20 m is a different look -- expect to fine-tune before
 trusting them on it. NISAR also images the open ocean only sparsely; coasts,
 straits and sea ice are where its coverage is.
 
-## Umbra and Capella
+## Umbra, Capella and ICEYE
 
-Umbra and Capella publish part of their commercial X-band SAR as open data
-(CC BY 4.0) in public AWS buckets: spotlight collects at ~0.25-1 m, tasked
-rather than systematic -- ports, straits, cities -- and still growing. At
-that resolution a ship is hundreds of pixels, with its shape. satimg reads
-each one's **GEC** (geocoded, ellipsoid corrected): the least-processed
-product that is already on a map grid -- detected and projected onto the
-WGS 84 ellipsoid (exact at sea level), not terrain corrected. Open the
+Umbra, Capella and ICEYE publish part of their commercial X-band SAR as open
+data (CC BY 4.0) in public AWS buckets: spotlight collects at ~0.25-1 m,
+plus stripmap (~3 m) from Capella and ICEYE and scan (~15 m, 100-200 km
+wide) from ICEYE -- tasked rather than systematic: ports, straits, cities,
+and still growing. At spotlight resolution a ship is hundreds of pixels,
+with its shape. satimg reads the least-processed product each one ships
+that is already geocoded: Umbra's and Capella's **GEC** (geocoded,
+ellipsoid corrected: detected and projected onto the WGS 84 ellipsoid --
+exact at sea level -- not terrain corrected), and ICEYE's **GRD** (ground
+range detected, in the radar's own geometry, located by a grid of ground
+control points -- ICEYE's open data has no map-projected product). Open the
 product folder as the bucket lays it out, a zip of it (what the connectors
-write), or the `.tif` with its metadata JSON beside it:
+write), or the `.tif` (with its metadata JSON beside it, for Umbra and
+Capella):
 
 ```python
 product = satimg.open("2025-01-31-14-10-48_UMBRA-08")    # _GEC.tif + .stac.v2.json / _METADATA.json
@@ -333,18 +338,25 @@ product.raw                  # uint16 amplitude numbers, band HH / VV
 product.sigma0(product.raw)  # calibrated sigma-nought, linear, NaN off the image
 product.visual               # 1-band dB stretch of sigma0
 
+product = satimg.open("ICEYE_W21Z0X_20260827T153629Z_10399690_X61_SM")   # _GRD.tif, self-contained
+product.raw                  # uint16, amplitude packed by the band's scale / offset, band VV
+product.sigma0(product.raw)  # unpacked and calibrated sigma-nought, linear, NaN off the image
+
 product.metadata.attrs       # incidence_angle, squint_angle, look_direction, pass, pixel_spacing, ...
 ```
 
 An Umbra GEC is on an EPSG:4326 grid rotated to the collect (the
-`transformer` is a full affine), a Capella GEC on a north-up UTM grid; both
-have overviews, so `visual_overview` and `thumbnail` read a few hundred KB.
+`transformer` is a full affine), a Capella GEC on a north-up UTM grid, an
+ICEYE GRD in sensor geometry -- range down the rows, azimuth along the
+columns -- with a `SwathTransformer` over its GCP grid (sub-pixel against
+ICEYE's own footprint). All three have overviews, so `visual_overview` and
+`thumbnail` read a few hundred KB.
 The metadata is scene-centre values only -- no per-pixel fields, and no
 moving-target Doppler correction yet. The image models were trained on
 10 m Sentinel-1; at sub-metre resolution a ship looks nothing like that, so
 expect to fine-tune (or tile coarser) before trusting them here.
 
-`get_connector("umbra-gec")` / `get_connector("capella-gec")` search each
+`get_connector("umbra-gec")` / `"capella-gec"` / `"iceye-grd"` search each
 bucket's static STAC catalogue and download anonymously -- no account:
 
 ```python
@@ -353,10 +365,13 @@ items = connector.search(geojson=aoi, start_datetime=t0, stop_datetime=t1)
 connector.download(items[0], "/data/collect.zip")    # GEC + metadata (+ quick-look), a few hundred MB
 ```
 
-There is no search API behind either catalogue, so `search` walks its tree,
+There is no search API behind these catalogues, so `search` walks its tree,
 skipping the year / month / day branches outside the time range: a date
 range of a few weeks takes seconds, the whole catalogue up to a minute.
-Umbra's catalogue lags its bucket by a few months.
+ICEYE's lists its ~700 images flat, with no date branches, so each search
+reads them all (~10 s). Umbra's catalogue lags its bucket by a few months.
+An ICEYE download is the GRD alone (~100 MB for a spotlight, up to ~1 GB
+for a stripmap); it carries its own metadata.
 
 ## VIIRS Day/Night Band
 
@@ -465,7 +480,7 @@ and downloads with the same CDSE account as Sentinel-1 / -2.
 ## Downloading
 
 `search` is anonymous; `download` needs a (free) account for the archive --
-except Umbra and Capella, which need none at all.
+except Umbra, Capella and ICEYE, which need none at all.
 Pass credentials to the connector, or set environment variables
 (`CDSE_USERNAME` / `CDSE_PASSWORD` for Copernicus, `USGS_USERNAME` /
 `USGS_PASSWORD` / optional `USGS_TOKEN` for USGS, `EARTHDATA_TOKEN` -- or

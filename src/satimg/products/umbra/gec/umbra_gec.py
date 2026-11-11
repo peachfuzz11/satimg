@@ -15,6 +15,7 @@ from satimg.registry import register
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
+from satimg.transform.transformer import pixel_spacing
 
 #: where the visual's sigmoid stretch is centred / how steep it is, in dB of
 #: the GEC's own amplitude numbers (``20 log10 DN``; uncalibrated): calm
@@ -22,26 +23,6 @@ from satimg.transform.affine_transformer import AffineTransformer
 #: the 255 ceiling (48 dB).
 _VISUAL_CENTRE_DB = 28.0
 _VISUAL_SLOPE = 0.2
-
-#: mean Earth radius (m), for the local pixel spacing
-_EARTH_RADIUS = 6_371_008.8
-
-
-def _pixel_spacing(transformer: AffineTransformer, shape: tuple[int, int]) -> tuple[float, float]:
-    """Ground size (m) of one pixel step along ``(rows, cols)`` at the scene
-    centre -- the grid is in degrees, rotated, so neither step is a fixed
-    number of metres."""
-    r, c = shape[0] / 2, shape[1] / 2
-    (lat0, lon0), (lat_r, lon_r), (lat_c, lon_c) = transformer.rowcol_to_latlon(
-        [(r, c), (r + 1, c), (r, c + 1)]
-    )
-
-    def metres(lat, lon):
-        dy = numpy.deg2rad(lat - lat0)
-        dx = numpy.deg2rad(lon - lon0) * numpy.cos(numpy.deg2rad(lat0))
-        return float(_EARTH_RADIUS * numpy.hypot(dx, dy))
-
-    return metres(lat_r, lon_r), metres(lat_c, lon_c)
 
 
 @register(r"^\d{4}(-\d{2}){5}_UMBRA-\d{2}(_GEC\.tif)?$")
@@ -75,7 +56,7 @@ class UmbraGEC(Product):
         self._attrs = parsed["attrs"]
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
-        self._attrs["pixel_spacing"] = list(_pixel_spacing(self._transformer, self._shape))
+        self._attrs["pixel_spacing"] = list(pixel_spacing(self._transformer, self._shape))
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         merged = merge_bands([self._tif], tile=tile, overview=overview)

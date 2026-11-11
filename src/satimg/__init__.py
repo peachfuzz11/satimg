@@ -37,6 +37,8 @@ from satimg.prediction.viirs_boat_detector import ViirsBoatConfig, ViirsBoatDete
 from satimg.product import Product, open, open_zip
 from satimg.products.capella.gec.capella_gec import CapellaGEC
 from satimg.products.capella.gec.capella_gec_connector import CapellaGECConnector
+from satimg.products.iceye.grd.iceye_grd import IceyeGRD
+from satimg.products.iceye.grd.iceye_grd_connector import IceyeGRDConnector
 from satimg.products.landsat.c2l1.landsat_c2l1 import LandsatC2L1
 from satimg.products.landsat.c2l1.landsat_c2l1_connector import LandsatC2L1Connector
 from satimg.products.modis.qkm.modis_qkm import ModisQKM
@@ -70,6 +72,7 @@ __all__ = [
     "Patch",
     "UnknownProductError",
     "CapellaGEC",
+    "IceyeGRD",
     "LandsatC2L1",
     "ModisQKM",
     "NisarGCOV",
@@ -96,6 +99,7 @@ __all__ = [
     "Connector",
     "CredentialsError",
     "CapellaGECConnector",
+    "IceyeGRDConnector",
     "LandsatC2L1Connector",
     "ModisQKMConnector",
     "NisarGCOVConnector",

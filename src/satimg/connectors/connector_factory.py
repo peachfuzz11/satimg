@@ -3,13 +3,14 @@
 ``search`` is anonymous; ``download`` needs an account -- pass ``username=`` /
 ``password=`` (and ``token=`` for USGS / NASA Earthdata) or set the service's
 environment variables (see :mod:`satimg.connectors._credentials`) -- except
-for Umbra and Capella, whose open data downloads anonymously too.
+for Umbra, Capella and ICEYE, whose open data downloads anonymously too.
 """
 
 from __future__ import annotations
 
 from satimg.connectors.connector import Connector
 from satimg.products.capella.gec.capella_gec_connector import CapellaGECConnector
+from satimg.products.iceye.grd.iceye_grd_connector import IceyeGRDConnector
 from satimg.products.landsat.c2l1.landsat_c2l1_connector import LandsatC2L1Connector
 from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
@@ -31,6 +32,7 @@ _CONNECTORS: dict[str, type[Connector]] = {
     "viirs-dnb": ViirsDNBConnector,
     "umbra-gec": UmbraGECConnector,
     "capella-gec": CapellaGECConnector,
+    "iceye-grd": IceyeGRDConnector,
 }
 
 
