@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from satimg.connectors.connector import stream_to_zip
+from satimg.connectors.connector_utils import stream_to_zip
 from satimg.connectors.usgs_ers_connector import UsgsErsConnector
 
 logger = logging.getLogger(__name__)

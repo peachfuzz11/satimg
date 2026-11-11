@@ -10,12 +10,12 @@ from satimg.metadata.metadata import Metadata
 from satimg.product import Product
 from satimg.products.umbra.gec import umbra_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
-from satimg.readers.thumbnail import render_thumbnail
+from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
-from satimg.transform.transformer import pixel_spacing
+from satimg.transform.transformer_utils import pixel_spacing
 
 #: where the visual's sigmoid stretch is centred / how steep it is, in dB of
 #: the GEC's own amplitude numbers (``20 log10 DN``; uncalibrated): calm
@@ -77,7 +77,7 @@ class UmbraGEC(Product):
     def thumbnail(self) -> PIL.Image.Image:
         """Rendered from the GEC's smallest overviews (Umbra ships no
         quick-look)."""
-        return render_thumbnail(self._tif, self._render_visual)
+        return thumbnail_from_visual(self.visual_overview(self.visual_overviews[-1]))
 
     def _read_metadata(self) -> Metadata:
         return Metadata({}, self._attrs)

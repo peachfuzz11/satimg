@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import numpy
 import PIL.Image
-import rasterio
-import xarray
 
 if TYPE_CHECKING:  # pragma: no cover
+    import xarray
+
     from satimg.source.source import Source
 
 #: uniform size every :func:`load_thumbnail` returns, regardless of what the
@@ -59,19 +59,3 @@ def thumbnail_from_visual(visual: xarray.DataArray) -> PIL.Image.Image:
     pixels = visual[:, ::step, ::step].values
     img = pixels[0] if pixels.shape[0] == 1 else numpy.moveaxis(pixels, 0, -1)
     return fit_thumbnail(PIL.Image.fromarray(img))
-
-
-def render_thumbnail(
-    path: str, render: Callable[[xarray.DataArray, tuple[int, int]], xarray.DataArray]
-) -> PIL.Image.Image:
-    """A greyscale thumbnail of the first band of the raster at ``path``,
-    read decimated to about :data:`THUMBNAIL_SIZE` -- off its overviews, for
-    a cloud-optimised GeoTIFF, so only a few hundred kilobytes are read --
-    and turned into ``uint8`` by ``render`` (a product's ``_render_visual``),
-    for a product that ships no quick-look of its own."""
-    with rasterio.open(path) as src:
-        scale = max(src.height, src.width) / max(THUMBNAIL_SIZE)
-        shape = (max(1, round(src.height / scale)), max(1, round(src.width / scale)))
-        data = src.read(1, out_shape=shape)
-    raw = xarray.DataArray(data[numpy.newaxis], dims=("band", "y", "x"))
-    return fit_thumbnail(PIL.Image.fromarray(render(raw, shape).values[0], mode="L"))

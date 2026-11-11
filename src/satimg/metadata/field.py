@@ -12,7 +12,7 @@ import xarray
 from satimg.metadata.grids import bilinear
 from satimg.readers.raster import CHUNK_PX
 from satimg.tiling import read_window
-from satimg.transform.transformer import as_n2
+from satimg.transform.transformer_utils import as_n2
 
 if TYPE_CHECKING:  # pragma: no cover
     from satimg.geometry import Window

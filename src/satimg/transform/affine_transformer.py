@@ -7,7 +7,8 @@ from rasterio import warp
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
-from satimg.transform.transformer import Coords, Transformer, as_n2
+from satimg.transform.transformer import Coords, Transformer
+from satimg.transform.transformer_utils import as_n2
 
 
 class AffineTransformer(Transformer):

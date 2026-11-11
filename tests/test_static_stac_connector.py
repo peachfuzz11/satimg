@@ -3,7 +3,8 @@ import datetime
 import pytest
 
 from satimg.connectors.connector_factory import get_connector
-from satimg.connectors.static_stac_connector import StaticSTACConnector, link_period
+from satimg.connectors.static_stac_connector import StaticSTACConnector
+from satimg.connectors.static_stac_utils import link_period
 
 UTC = datetime.timezone.utc
 

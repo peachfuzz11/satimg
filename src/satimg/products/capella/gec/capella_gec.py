@@ -10,7 +10,7 @@ from satimg.metadata.metadata import Metadata
 from satimg.product import Product
 from satimg.products.capella.gec import capella_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
-from satimg.readers.thumbnail import load_thumbnail, render_thumbnail
+from satimg.readers.thumbnail import load_thumbnail, thumbnail_from_visual
 from satimg.registry import register
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
@@ -93,11 +93,11 @@ class CapellaGEC(Product):
 
     def thumbnail(self) -> PIL.Image.Image:
         """The quick-look PNG Capella publishes with the GEO product, if it
-        was downloaded alongside; else rendered from the GEC's smallest
-        overviews."""
+        was downloaded alongside; else rendered from :attr:`visual` at the
+        GEC's smallest overview."""
         if self._thumb is not None:
             return load_thumbnail(self._source, self._thumb, greyscale=True)
-        return render_thumbnail(self._tif, self._render_visual)
+        return thumbnail_from_visual(self.visual_overview(self.visual_overviews[-1]))
 
     # -- metadata ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

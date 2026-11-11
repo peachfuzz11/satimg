@@ -44,6 +44,13 @@ def find_files(source: Source) -> tuple[str, str]:
     raise FileNotFoundError(f"no {s}.stac.v2.json or {s}_METADATA.json under {source.name}")
 
 
+def folder_time(folder: str) -> datetime.datetime:
+    """The start time a collect folder's name gives
+    (``2025-01-31-14-10-46_UMBRA-08``), timezone-aware UTC."""
+    stamp = NAME.match(folder)["stamp"]
+    return datetime.datetime.strptime(stamp, "%Y-%m-%d-%H-%M-%S").replace(tzinfo=datetime.timezone.utc)
+
+
 def _time(text: str) -> datetime.datetime:
     """A UTC timestamp as a naive datetime (satimg's convention)."""
     t = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))

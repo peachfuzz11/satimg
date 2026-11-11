@@ -10,12 +10,12 @@ from satimg.metadata.metadata import Metadata
 from satimg.product import Product
 from satimg.products.iceye.grd import iceye_grd_parsing
 from satimg.readers.raster import keep_open, merge_bands
-from satimg.readers.thumbnail import render_thumbnail
+from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.swath_transformer import SwathTransformer
-from satimg.transform.transformer import pixel_spacing
+from satimg.transform.transformer_utils import pixel_spacing
 
 #: where the visual's sigmoid stretch is centred / how steep it is (sigma0,
 #: dB) -- as for Capella: calm sea around -20 to -10 dB, wind-roughened sea
@@ -97,8 +97,8 @@ class IceyeGRD(Product):
         return label_bands(as_band_yx(u8), ("amplitude",))
 
     def thumbnail(self) -> PIL.Image.Image:
-        """Rendered from the GRD's smallest overviews."""
-        return render_thumbnail(self._tif, self._render_visual)
+        """Rendered from :attr:`visual` at the GRD's smallest overview."""
+        return thumbnail_from_visual(self.visual_overview(self.visual_overviews[-1]))
 
     # -- metadata ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:

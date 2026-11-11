@@ -582,7 +582,7 @@ Importing `satimg` registers the built-ins.
 satimg/
   product.py, patch.py, registry.py      the Product base, patches, filename registry
   transform/   transformer · affine_transformer · gcp_transformer · swath_transformer
-               · transformer_factory     pixel <-> lat/lon, one module per kind
+               · transformer_factory · transformer_utils   pixel <-> lat/lon, one module per kind
   source/      source · local_source · zip_source · source_factory
                                          where a product's files live (dir, file, zip)
   readers/     raster · hdf5 · vrt · thumbnail  file IO shared by the products
@@ -595,12 +595,16 @@ satimg/
   sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
   geojson.py   unwrapping a GeoJSON geometry / Feature, its bounding box
   connectors/  the generic and provider connectors the product ones subclass:
-               connector · connector_factory · static_stac_connector
-               · copernicus_dataspace_connector · nasa_earthdata_connector · usgs_ers_connector
+               connector · connector_factory · connector_utils · static_stac_connector
+               · static_stac_utils · copernicus_dataspace_connector · nasa_earthdata_connector
+               · usgs_ers_connector
   prediction/  detectors and characterisers
 ```
 
-Every module is named for what it holds, so no two share a file name. Package
+Every module is named for what it holds, so no two share a file name. A
+module named for a class holds that class only; the functions it needs live
+in a sibling `*_utils.py` (shared ones) or in the product's own
+`_parsing.py` (product-specific ones -- never in a common module). Package
 `__init__.py` files are empty; only the top-level `satimg` re-exports the
 public classes (`from satimg import Sentinel2L1C, get_connector, Detector`).
 

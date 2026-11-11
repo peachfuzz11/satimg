@@ -7,7 +7,8 @@ import rasterio.transform
 from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 
-from satimg.transform.transformer import Coords, Transformer, as_n2
+from satimg.transform.transformer import Coords, Transformer
+from satimg.transform.transformer_utils import as_n2
 
 
 class GCPTransformer(Transformer):

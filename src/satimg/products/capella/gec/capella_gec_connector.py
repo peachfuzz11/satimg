@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import posixpath
 
-from satimg.connectors.connector import stream_to_zip
+from satimg.connectors.connector_utils import stream_to_zip
 from satimg.connectors.static_stac_connector import StaticSTACConnector
 
 logger = logging.getLogger(__name__)

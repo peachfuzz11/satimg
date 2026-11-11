@@ -19,8 +19,6 @@ from __future__ import annotations
 import abc
 import datetime
 import logging
-import posixpath
-import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin
 
@@ -28,54 +26,13 @@ import requests
 import shapely.geometry
 
 from satimg.connectors.connector import Connector
+from satimg.connectors.static_stac_utils import link_period, overlaps, parse_datetime, utc
 from satimg.geojson import geometry_of
 
 logger = logging.getLogger(__name__)
 
 #: parallel requests while walking a catalogue
 WORKERS = 16
-
-#: a trailing ``YYYY``, ``YYYY-MM`` or ``YYYY-MM-DD``
-_PERIOD = re.compile(r"(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$")
-
-
-def _utc(t: datetime.datetime | None) -> datetime.datetime | None:
-    """``t`` timezone-aware; a naive datetime is taken as UTC."""
-    if t is None or t.tzinfo is not None:
-        return t
-    return t.replace(tzinfo=datetime.timezone.utc)
-
-
-def parse_datetime(text: str) -> datetime.datetime:
-    """A STAC ``datetime`` (``...Z`` or ``+00:00``) as an aware datetime."""
-    return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
-
-
-def link_period(link: dict) -> tuple[datetime.datetime, datetime.datetime] | None:
-    """``[start, end)`` of the date period a child link names in its title
-    (``"2025-08"``, ``"Capella Open Data 2025-08"``) or its directory
-    (``./2025-08/catalog.json``) -- ``None`` if it names none."""
-    directory = posixpath.basename(posixpath.dirname(link["href"]))
-    for text in (link.get("title") or "", directory):
-        m = _PERIOD.search(text.strip())
-        if not m:
-            continue
-        year, month, day = (int(g) if g else None for g in m.groups())
-        utc = datetime.timezone.utc
-        if month is None:
-            return datetime.datetime(year, 1, 1, tzinfo=utc), datetime.datetime(year + 1, 1, 1, tzinfo=utc)
-        if day is None:
-            end = datetime.datetime(year + month // 12, month % 12 + 1, 1, tzinfo=utc)
-            return datetime.datetime(year, month, 1, tzinfo=utc), end
-        start = datetime.datetime(year, month, day, tzinfo=utc)
-        return start, start + datetime.timedelta(days=1)
-    return None
-
-
-def _overlaps(period, start, stop) -> bool:
-    if period is None:
-        return True
-    return (start is None or period[1] > start) and (stop is None or period[0] <= stop)
 
 
 class StaticSTACConnector(Connector, abc.ABC):
@@ -119,7 +76,7 @@ class StaticSTACConnector(Connector, abc.ABC):
                     href = urljoin(url, link["href"])
                     if link["rel"] == "item" and self._wanted(href):
                         items.append(href)
-                    elif link["rel"] == "child" and _overlaps(link_period(link), start, stop):
+                    elif link["rel"] == "child" and overlaps(link_period(link), start, stop):
                         children.append(href)
             logger.debug("static STAC: %d catalogue(s) read, %d item(s) so far", len(level), len(items))
             level = children
@@ -137,7 +94,7 @@ class StaticSTACConnector(Connector, abc.ABC):
         """STAC items (dicts) whose ``datetime`` lies in ``[start_datetime,
         stop_datetime]`` (naive datetimes are UTC) and whose geometry
         intersects ``geojson``, oldest first."""
-        start, stop = _utc(start_datetime), _utc(stop_datetime)
+        start, stop = utc(start_datetime), utc(stop_datetime)
         session = self._get_session()
         hrefs = self._item_hrefs(session, start, stop)
         area = shapely.geometry.shape(geometry_of(geojson)) if geojson is not None else None
