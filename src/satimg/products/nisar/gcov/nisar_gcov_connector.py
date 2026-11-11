@@ -22,7 +22,8 @@ import os
 
 import requests
 
-from satimg.connectors.connector import Connector, stream
+from satimg.connectors.connector import Connector
+from satimg.connectors.connector_utils import stream
 from satimg.connectors.nasa_earthdata_connector import EarthdataLogin
 from satimg.geojson import geometry_of
 

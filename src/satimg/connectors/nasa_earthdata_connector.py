@@ -18,7 +18,8 @@ from urllib.parse import urlparse
 import requests
 
 from satimg.connectors._credentials import Credentials, CredentialsError
-from satimg.connectors.connector import Connector, stream
+from satimg.connectors.connector import Connector
+from satimg.connectors.connector_utils import stream
 from satimg.geojson import bbox
 
 logger = logging.getLogger(__name__)

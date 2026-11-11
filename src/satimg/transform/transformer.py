@@ -7,16 +7,10 @@ from collections.abc import Sequence
 
 import numpy
 
+from satimg.transform.transformer_utils import as_n2
+
 #: a ``(a, b)`` pair, a list of pairs, or an ``(N, 2)`` array
 Coords = Sequence[float] | Sequence[Sequence[float]] | numpy.ndarray
-
-
-def as_n2(coords: Coords) -> numpy.ndarray:
-    """``coords`` as a float ``(N, 2)`` array."""
-    arr = numpy.array(coords, dtype=float)
-    if arr.ndim == 1:
-        arr = arr.reshape(1, 2)
-    return arr
 
 
 class Transformer(abc.ABC):

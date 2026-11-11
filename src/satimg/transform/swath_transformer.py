@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import numpy
 
-from satimg.transform.transformer import Coords, Transformer, as_n2
+from satimg.transform.transformer import Coords, Transformer
+from satimg.transform.transformer_utils import as_n2
 
 #: mean earth radius, metres
 EARTH_RADIUS_M = 6_371_000.0

@@ -98,3 +98,10 @@ def merge_bands(
         merged = merged.chunk({"band": -1, "x": tw, "y": th})
     merged.set_close(lambda: [band.close() for band in opened])
     return merged
+
+
+def raster_grid(path: str) -> tuple:
+    """``(transform, crs, (height, width))`` of the raster at ``path``, from
+    its header alone -- no pixel read."""
+    with rasterio.open(path) as src:
+        return src.transform, src.crs, (src.height, src.width)
