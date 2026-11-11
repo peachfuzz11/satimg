@@ -335,7 +335,8 @@ class Product(abc.ABC):
         """This scene's :class:`~satimg.scene_geometry.SceneGeometry` -- its
         :attr:`transformer`, :attr:`metadata` and shape, detached from the
         product files. ``geometry.to_dict()`` is what to store to keep using
-        them (and, for Sentinel-1, the SAR geometry) after the file is gone."""
+        them (and, for SAR products, the moving-target correction) after the file
+        is gone."""
         return SceneGeometry.from_metadata(self.transformer, self.metadata, (self.height, self.width))
 
     def _field(self, rows, cols, values, *, name: str, units: str = "") -> Field:

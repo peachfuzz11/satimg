@@ -45,10 +45,8 @@ from satimg.products.modis.qkm.modis_qkm import ModisQKM
 from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.products.nisar.gcov.nisar_gcov import NisarGCOV
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
-from satimg.products.nisar.gcov.nisar_gcov_geometry import NisarGCOVGeometry
 from satimg.products.sentinel1.grd.sentinel1_grd import Sentinel1GRD
 from satimg.products.sentinel1.grd.sentinel1_grd_connector import Sentinel1GRDConnector
-from satimg.products.sentinel1.grd.sentinel1_grd_geometry import Sentinel1GRDGeometry
 from satimg.products.sentinel2.l1c.sentinel2_l1c import Sentinel2L1C
 from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CConnector
 from satimg.products.sentinel3.olci.sentinel3_olci import Sentinel3OLCI
@@ -60,6 +58,8 @@ from satimg.products.umbra.gec.umbra_gec_connector import UmbraGECConnector
 from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 from satimg.registry import UnknownProductError
+from satimg.sar_orbit_geometry import SAROrbitGeometry
+from satimg.sar_product import SARProduct
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 
@@ -69,6 +69,7 @@ __all__ = [
     "open",
     "open_zip",
     "Product",
+    "SARProduct",
     "Patch",
     "UnknownProductError",
     "CapellaGEC",
@@ -90,8 +91,7 @@ __all__ = [
     "label_bands",
     # geometry and metadata
     "SceneGeometry",
-    "Sentinel1GRDGeometry",
-    "NisarGCOVGeometry",
+    "SAROrbitGeometry",
     "Metadata",
     "Field",
     # downloading

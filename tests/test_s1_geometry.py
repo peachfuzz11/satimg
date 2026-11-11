@@ -3,7 +3,7 @@ import json
 import numpy
 import pytest
 
-from satimg import Sentinel1GRDGeometry
+from satimg import SAROrbitGeometry
 
 
 @pytest.fixture(scope="module")
@@ -14,7 +14,7 @@ def stored(sentinel1_iw):
 
 @pytest.fixture(scope="module")
 def geometry(stored):
-    return Sentinel1GRDGeometry.from_dict(stored)
+    return SAROrbitGeometry.from_dict(stored)
 
 
 def _rowcols(product):
@@ -53,8 +53,11 @@ def test_metadata_matches(sentinel1_iw, geometry):
 @pytest.mark.parametrize("heading", [0.0, 73.0, 190.0, 300.0])
 def test_sar_geometry_matches(sentinel1_iw, geometry, heading):
     rowcol = tuple(_rowcols(sentinel1_iw)[1])
-    assert geometry.doppler_azimuth_shift(rowcol, 7.5, heading) == pytest.approx(
-        sentinel1_iw.doppler_azimuth_shift(rowcol, 7.5, heading)
+    assert geometry.doppler_azimuth_shift_m(rowcol, 7.5, heading) == pytest.approx(
+        sentinel1_iw.doppler_azimuth_shift_m(rowcol, 7.5, heading)
+    )
+    assert geometry.doppler_pixel_shift(rowcol, 7.5, heading) == pytest.approx(
+        sentinel1_iw.doppler_pixel_shift(rowcol, 7.5, heading)
     )
     assert geometry.heading_to_los(rowcol, heading) == pytest.approx(sentinel1_iw.heading_to_los(rowcol, heading))
     assert geometry.heading_in_image(rowcol, heading) == pytest.approx(
@@ -71,7 +74,7 @@ def test_sar_geometry_matches(sentinel1_iw, geometry, heading):
 
 def test_vectorised_doppler_shift(sentinel1_iw, geometry):
     rowcols = _rowcols(sentinel1_iw)
-    shifts = geometry.doppler_azimuth_shift(rowcols, 7.5, 73.0)
+    shifts = geometry.doppler_azimuth_shift_m(rowcols, 7.5, 73.0)
     assert shifts.shape == (len(rowcols),)
     for rowcol, shift in zip(rowcols, shifts):
-        assert shift == pytest.approx(geometry.doppler_azimuth_shift(tuple(rowcol), 7.5, 73.0))
+        assert shift == pytest.approx(geometry.doppler_azimuth_shift_m(tuple(rowcol), 7.5, 73.0))

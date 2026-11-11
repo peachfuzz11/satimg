@@ -261,24 +261,58 @@ Every product's `geometry` -- its transformer, image shape, coarse metadata
 grids and scene attrs -- is a small dict that survives strict JSON (e.g. a
 PostgreSQL `jsonb` column; `NaN` is stored as `null`). Store it while the
 product is open and keep converting coordinates and sampling metadata after the
-file is gone. For Sentinel-1, load it as a `Sentinel1GRDGeometry` to also get the
-SAR geometry (Doppler shift, headings):
+file is gone. For a SAR product, load it as a `SAROrbitGeometry` to also keep
+the moving-target correction (next section):
 
 ```python
 with satimg.open("S1A_IW_GRDH_....SAFE.zip") as product:
     stored = product.geometry.to_dict()      # ~30-80 KB
 
-geometry = satimg.Sentinel1GRDGeometry.from_dict(stored)   # SceneGeometry for other products
+geometry = satimg.SAROrbitGeometry.from_dict(stored)   # SceneGeometry for optical products
 geometry.transformer.latlon_to_rowcol((lat, lon))
 geometry.metadata.incidence_angle.at((row, col))
-geometry.doppler_azimuth_shift((row, col), speed_mps, heading_deg)   # Sentinel-1 only
+geometry.correct_position(lat, lon, speed_mps, heading_deg)   # SAR only
 ```
 
-For NISAR, load it as a `NisarGCOVGeometry` the same way. Whichever class loads it,
-the transformer comes back as the kind that was stored: affine, ground control
-points (Sentinel-1) or swath (VIIRS, MODIS, OLCI; stored to within a third of a pixel).
+Whichever class loads it, the transformer comes back as the kind that was
+stored: affine, ground control points (Sentinel-1) or swath (VIIRS, MODIS,
+OLCI, ICEYE; stored to within a third of a pixel).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
+
+## Moving targets in SAR
+
+A target moving towards or away from the radar is displaced along track in
+a focused SAR image by its own Doppler shift -- the ship sitting off its own
+wake: tens of metres per m/s of its speed along the line of sight. Every SAR
+product (`SARProduct`: Sentinel-1, NISAR, Umbra, Capella, ICEYE) corrects it
+the same way, given the target's speed and heading (from AIS, say):
+
+```python
+product.correct_position(lat, lon, speed_mps, heading_deg)           # where it was seen -> where it is
+product.doppler_azimuth_shift_m((row, col), speed_mps, heading_deg)  # metres, + towards the way the sensor flies
+product.doppler_pixel_shift((row, col), speed_mps, heading_deg)      # (d_row, d_col), on or off the image
+product.heading_to_los((row, col), heading_deg)                      # 0 moving away from the sensor
+product.heading_in_image((row, col), heading_deg)                    # compass -> direction on the raster
+product.heading_from_image((row, col), image_heading_deg)            # and back
+```
+
+All of it is worked out on the ground from the sensor's own Earth-fixed
+orbit (`metadata.attrs["orbit"]`), not from the pixel frame, so a north-up
+map (NISAR, Capella), a rotated grid (Umbra) and mirrored radar geometry
+(Sentinel-1, ICEYE) work alike, as do either look side and squinted
+collects (the beam aimed fore or aft of square to the flight, as Umbra's
+and Capella's spotlights often are -- it makes the shift larger, by about
+`1 / cos(squint)`). Image-frame headings come from the local pixel grid.
+
+Sentinel-1, NISAR, Capella and ICEYE ship their state vectors, so every
+target gets its own imaging time and geometry. Umbra's GEC metadata has
+none: its orbit is rebuilt from the scene-centre line of sight and slant
+range, assuming the circular sun-synchronous orbit Umbra flies -- within
+0.5 % of the true shift against real collects' SICD aperture positions,
+squinted up to 45 degrees. Against a brute-force focusing simulation on real
+Capella (broadside and 30 degrees squinted), ICEYE and Umbra orbits, the
+shift agrees to within 0.5 %.
 
 ## NISAR
 
@@ -294,16 +328,8 @@ product.visual             # 1-band dB stretch, like Sentinel-1
 
 GCOV is geocoded -- a north-up UTM (or polar stereographic) grid -- not a
 radar-geometry GRD, so it is neither rotated into the flight direction nor
-mirrored. A moving ship's Doppler displacement still runs along the ground
-track, which crosses the image at an angle; NISAR also looks *left*. Both are
-read from the product's own line-of-sight and along-track vectors, so:
-
-```python
-product.doppler_azimuth_shift_m(rowcol, speed_mps, heading_deg)  # metres along track
-product.doppler_pixel_shift(rowcol, speed_mps, heading_deg)      # (d_row, d_col)
-product.correct_position(lat, lon, speed_mps, heading_deg)       # same as Sentinel-1
-product.heading_in_image(rowcol, heading_deg)                    # grid convergence only, no mirroring
-```
+mirrored, and NISAR looks *left*; the moving-target correction (see
+[Moving targets in SAR](#moving-targets-in-sar)) handles both.
 
 The detection / characterisation models were trained on Sentinel-1; NISAR's
 `visual` is stretched so open sea is dark and ships bright in the same way,
@@ -351,10 +377,12 @@ ICEYE GRD in sensor geometry -- range down the rows, azimuth along the
 columns -- with a `SwathTransformer` over its GCP grid (sub-pixel against
 ICEYE's own footprint). All three have overviews, so `visual_overview` and
 `thumbnail` read a few hundred KB.
-The metadata is scene-centre values only -- no per-pixel fields, and no
-moving-target Doppler correction yet. The image models were trained on
+The metadata is scene-centre values only -- no per-pixel fields. The image models were trained on
 10 m Sentinel-1; at sub-metre resolution a ship looks nothing like that, so
 expect to fine-tune (or tile coarser) before trusting them here.
+
+Moving ships: see [Moving targets in SAR](#moving-targets-in-sar) -- at
+these resolutions the Doppler shift is hundreds of pixels.
 
 `get_connector("umbra-gec")` / `"capella-gec"` / `"iceye-grd"` search each
 bucket's static STAC catalogue and download anonymously -- no account:
@@ -589,10 +617,13 @@ satimg/
   metadata/    field · metadata · patch_meta · grids   per-pixel metadata fields
   masks/       mask · land_mask · port_mask · platform_mask · windfarm_mask · fishfarm_mask
   products/    <constellation>/<product>/: <constellation>_<product>.py, _connector.py,
-               <constellation>_<product>_parsing.py (+ _geometry.py), e.g.
+               <constellation>_<product>_parsing.py, e.g.
                sentinel2/l1c/sentinel2_l1c.py holds Sentinel2L1C;
                swath_nodes.py: node grids shared by VIIRS, MODIS, OLCI
-  sar.py       SAR heading / Doppler physics (Sentinel-1, cited by NISAR)
+  sar_product.py  SARProduct: the interface every SAR product shares
+  sar_orbit_geometry.py  SAROrbitGeometry: moving-target correction and headings
+               from the sensor orbit
+  sar.py       the SAR physics behind it: ellipsoid / orbit helpers, ground shift
   geojson.py   unwrapping a GeoJSON geometry / Feature, its bounding box
   connectors/  the generic and provider connectors the product ones subclass:
                connector · connector_factory · connector_utils · static_stac_connector

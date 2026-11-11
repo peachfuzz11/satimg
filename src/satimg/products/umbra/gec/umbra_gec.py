@@ -7,11 +7,12 @@ import PIL.Image
 import xarray
 
 from satimg.metadata.metadata import Metadata
-from satimg.product import Product
 from satimg.products.umbra.gec import umbra_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
 from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
+from satimg.sar_orbit_geometry import SAROrbitGeometry
+from satimg.sar_product import SARProduct
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
@@ -26,7 +27,7 @@ _VISUAL_SLOPE = 0.2
 
 
 @register(r"^\d{4}(-\d{2}){5}_UMBRA-\d{2}(_GEC\.tif)?$")
-class UmbraGEC(Product):
+class UmbraGEC(SARProduct):
     """One Umbra X-band SAR collect (spotlight, ~0.25-1 m): its GEC image --
     the least-processed geocoded product Umbra ships: detected and projected
     onto the WGS 84 ellipsoid, not terrain corrected (at sea level that is
@@ -44,6 +45,11 @@ class UmbraGEC(Product):
     north-up). ``metadata`` has no per-pixel fields; its ``attrs`` carry the
     scene-centre imaging geometry (``incidence_angle``, ``squint_angle``,
     ``look_direction``, ``pass``, ``slant_range``, ...).
+
+    The moving-target correction and heading conversions
+    (:class:`~satimg.sar_product.SARProduct`) work from the sensor orbit in ``attrs["orbit"]``
+    (rebuilt from the scene-centre geometry, see
+    :func:`~satimg.products.umbra.gec.umbra_gec_parsing.orbit`).
     """
 
     def __init__(self, source: Source):
@@ -57,6 +63,9 @@ class UmbraGEC(Product):
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
         self._attrs["pixel_spacing"] = list(pixel_spacing(self._transformer, self._shape))
+        centre = self._transformer.rowcol_to_latlon(((self._shape[0] - 1) / 2, (self._shape[1] - 1) / 2))[0]
+        self._attrs["orbit"] = umbra_gec_parsing.orbit(self._attrs, *centre, self._timestamp)
+        self._geometry = SAROrbitGeometry(self._transformer, {}, self._attrs, self._shape)
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         merged = merge_bands([self._tif], tile=tile, overview=overview)
@@ -80,13 +89,4 @@ class UmbraGEC(Product):
         return thumbnail_from_visual(self.visual_overview(self.visual_overviews[-1]))
 
     def _read_metadata(self) -> Metadata:
-        return Metadata({}, self._attrs)
-
-    @property
-    def height(self) -> int:
-        """From the GeoTIFF header -- no ``raw`` open needed."""
-        return self._shape[0]
-
-    @property
-    def width(self) -> int:
-        return self._shape[1]
+        return self._geometry.metadata

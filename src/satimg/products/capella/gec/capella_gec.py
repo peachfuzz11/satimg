@@ -7,11 +7,12 @@ import PIL.Image
 import xarray
 
 from satimg.metadata.metadata import Metadata
-from satimg.product import Product
 from satimg.products.capella.gec import capella_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
 from satimg.readers.thumbnail import load_thumbnail, thumbnail_from_visual
 from satimg.registry import register
+from satimg.sar_orbit_geometry import SAROrbitGeometry
+from satimg.sar_product import SARProduct
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
@@ -25,7 +26,7 @@ _VISUAL_SLOPE = 0.3
 
 
 @register(r"^CAPELLA_C\d{2}_(SP|SM|SS)_GEC_[HV]{2}_\d{14}_\d{14}(\.tif)?$")
-class CapellaGEC(Product):
+class CapellaGEC(SARProduct):
     """One Capella X-band SAR collect (spotlight, sliding spotlight or
     stripmap, ~0.5-1 m): its GEC image -- the least-processed geocoded
     product Capella ships: detected, multilooked and projected onto the
@@ -44,6 +45,10 @@ class CapellaGEC(Product):
     scene-centre imaging geometry (``incidence_angle``, ``look_angle``,
     ``squint_angle``, ``look_direction``, ``pass``, ...) and the
     ``scale_factor``.
+
+    The moving-target correction and heading conversions
+    (:class:`~satimg.sar_product.SARProduct`) work from the sensor orbit in ``attrs["orbit"]``
+    (the extended metadata's state vectors).
     """
 
     def __init__(self, source: Source):
@@ -57,6 +62,7 @@ class CapellaGEC(Product):
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
         self._footprint = self._grid_outline()
+        self._geometry = SAROrbitGeometry(self._transformer, {}, self._attrs, self._shape)
 
     def _grid_outline(self) -> dict:
         """The image grid's outline as a GeoJSON Feature -- the extended
@@ -101,13 +107,4 @@ class CapellaGEC(Product):
 
     # -- metadata ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
-        return Metadata({}, self._attrs)
-
-    @property
-    def height(self) -> int:
-        """From the GeoTIFF header -- no ``raw`` open needed."""
-        return self._shape[0]
-
-    @property
-    def width(self) -> int:
-        return self._shape[1]
+        return self._geometry.metadata

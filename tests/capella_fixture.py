@@ -10,9 +10,13 @@ sigma0 -20 dB, one bright 'ship' at :data:`SHIP` at +10 dB, a zero
 
 from __future__ import annotations
 
+import datetime
 import json
 
 import numpy
+from pyproj import Transformer
+
+from tests import orbit_fixture
 
 NAME = "CAPELLA_C13_SP_GEC_HH_20260116014108_20260116014119"
 HEIGHT, WIDTH = 256, 200
@@ -22,6 +26,28 @@ EPSG = 32611
 SHIP = (100, 120)
 SCALE = 0.0009
 SEA_DB, SHIP_DB = -20.0, 10.0
+#: the imaging geometry at :data:`TARGET` (the grid's middle), for the
+#: synthetic orbit: left-looking, looking east-north-east
+INCIDENCE, SLANT_RANGE, LOOK = 49.36, 700_000.0, 80.0
+CENTRE_TIME = datetime.datetime(2026, 1, 16, 1, 41, 14, 75999)
+TARGET = tuple(reversed(Transformer.from_crs(EPSG, 4326, always_xy=True).transform(
+    X0 + SPACING * WIDTH / 2, Y0 - SPACING * HEIGHT / 2
+)))
+
+
+def _stamp(seconds: float) -> str:
+    return (CENTRE_TIME + datetime.timedelta(seconds=seconds)).isoformat() + "000Z"
+
+
+def _state_vectors() -> list[dict]:
+    times, positions, velocities = orbit_fixture.states(
+        *TARGET, look_bearing=LOOK, incidence=INCIDENCE, slant_range=SLANT_RANGE, right_looking=False
+    )
+    return [
+        {"time": _stamp(t), "position": p.tolist(), "velocity": v.tolist()}
+        for t, p, v in zip(times, positions, velocities)
+    ]
+
 
 EXTENDED = {
     "product_type": "GEC",
@@ -29,6 +55,8 @@ EXTENDED = {
         "platform": "capella-13",
         "mode": "spotlight",
         "collect_id": "57df49b4-f8fa-4458-b3b2-fbb6f4883da3",
+        "start_timestamp": _stamp(-5.5),
+        "stop_timestamp": _stamp(5.5),
         "image": {
             "scale_factor": SCALE,
             "radiometry": "sigma_nought",
@@ -45,7 +73,7 @@ EXTENDED = {
             },
         },
         "radar": {"pointing": "left", "transmit_polarization": "H", "receive_polarization": "H"},
-        "state": {"direction": "ascending"},
+        "state": {"direction": "ascending", "coordinate_system": {"type": "ecef"}, "state_vectors": _state_vectors()},
     },
 }
 

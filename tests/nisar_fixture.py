@@ -10,6 +10,9 @@ a ``NaN`` (no-data) strip down the left edge.
 from __future__ import annotations
 
 import numpy
+from pyproj import Transformer
+
+from tests import orbit_fixture
 
 NAME = "NISAR_L2_PR_GCOV_008_029_D_010_4005_DHDH_A_20260801T061010_20260801T061025_P05023_F_F_J_001.h5"
 
@@ -30,7 +33,13 @@ LOOK = (PLATFORM_HEADING - 90.0) % 360  # left-looking
 INCIDENCE_0 = 35.0
 SLANT_RANGE_0 = 900_000.0
 CUBE_HEIGHTS = (-500.0, 500.0, 1500.0)
-PLATFORM_SPEED = 7_600.0
+PLATFORM_SPEED = orbit_fixture.SPEED
+#: the grid's middle, which the synthetic orbit images broadside at the
+#: granule's timestamp -- 27.75 s into its orbit times
+TARGET = tuple(reversed(Transformer.from_crs(EPSG, 4326, always_xy=True).transform(
+    X0 + SPACING * (WIDTH - 1) / 2, Y0 - SPACING * (HEIGHT - 1) / 2
+)))
+ORBIT_OFFSET = 27.75
 
 
 def _s(text: str):
@@ -102,8 +111,9 @@ def build(path) -> None:
         times = numpy.arange(0.0, 60.0, 10.0)
         orbit["time"] = times
         orbit["time"].attrs["units"] = _s("seconds since 2026-08-01T06:09:50")
-        heading = numpy.deg2rad(PLATFORM_HEADING)
-        orbit["velocity"] = numpy.tile(
-            [PLATFORM_SPEED * numpy.sin(heading), PLATFORM_SPEED * numpy.cos(heading), 0.0], (len(times), 1)
+        _, positions, velocities = orbit_fixture.states(
+            *TARGET, look_bearing=LOOK, incidence=INCIDENCE_0, slant_range=SLANT_RANGE_0,
+            right_looking=False, times=times - ORBIT_OFFSET,
         )
-        orbit["position"] = numpy.zeros((len(times), 3))
+        orbit["velocity"] = velocities
+        orbit["position"] = positions

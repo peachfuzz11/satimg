@@ -14,10 +14,10 @@ from __future__ import annotations
 import datetime
 from xml.etree import ElementTree
 
-import numpy
 from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 
+from satimg.metadata.grids import grid_from_points
 from satimg.source.source import Source
 from satimg.transform.gcp_transformer import GCPTransformer
 
@@ -35,13 +35,6 @@ _NS = {
     "safe": "http://www.esa.int/safe/sentinel-1.0",
     "gml": "http://www.opengis.net/gml",
 }
-
-#: Sentinel-1's sun-synchronous orbit inclination, degrees -- actively maintained,
-#: so effectively constant across the whole constellation and mission (ESA mission
-#: documentation). Used to derive the local ground-track heading at a target's own
-#: latitude; see :func:`satimg.sar.ground_track_heading`.
-ORBIT_INCLINATION_DEG = 98.1813
-
 
 def read_manifest(source: Source) -> dict:
     manifest = source.find_file("manifest.safe")
@@ -78,28 +71,36 @@ def annotation_file(source: Source) -> str:
     return f"annotation/{files[0]}"
 
 
-def _nearest_orbit_velocity(root, at: datetime.datetime) -> float:
-    """Platform speed (m/s) from the ``<orbit>`` state vector closest to ``at``.
-    Sentinel-1's orbit is near-circular, so a single vector's speed is
-    representative of the whole (~25s) scene -- no need to interpolate."""
-    best_dt, best_velocity = None, None
-    for orb in root.findall(".//orbit"):
-        t = datetime.datetime.fromisoformat(orb.findtext("time"))
-        dt = abs((t - at).total_seconds())
-        if best_dt is None or dt < best_dt:
-            velocity = numpy.array([float(orb.findtext(f"velocity/{c}")) for c in "xyz"])
-            best_dt, best_velocity = dt, velocity
-    return float(numpy.linalg.norm(best_velocity))
+def orbit(root, epoch: datetime.datetime) -> dict:
+    """The sensor orbit as
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` reads it: the
+    annotation's ``<orbit>`` state vectors (Earth-fixed, every 10 s, over a
+    few minutes around the scene), timed from ``epoch``."""
+    states = sorted(
+        (
+            (datetime.datetime.fromisoformat(o.findtext("time")) - epoch).total_seconds(),
+            [float(o.findtext(f"position/{c}")) for c in "xyz"],
+            [float(o.findtext(f"velocity/{c}")) for c in "xyz"],
+        )
+        for o in root.findall(".//orbit")
+    )
+    return {
+        "epoch": epoch.isoformat() + "Z",
+        "times": [s[0] for s in states],
+        "positions": [s[1] for s in states],
+        "velocities": [s[2] for s in states],
+    }
 
 
 def read_geolocation(
-    source: Source, relpath: str, at: datetime.datetime
+    source: Source, relpath: str, epoch: datetime.datetime
 ) -> tuple[list[dict], dict, tuple[int, int]]:
     """The annotation XML's geolocation grid points (row/col plus each
     :data:`GEOLOC_FIELDS` value, and -- for building GCPs, not exposed in
     :class:`~satimg.metadata.metadata.Metadata` -- latitude/longitude/height), the
-    scene-wide attrs, and the full measurement grid's ``(lines, samples)``
-    shape (``imageAnnotation/imageInformation``)."""
+    scene-wide attrs (``orbit`` timed from ``epoch``, see :func:`orbit`), and
+    the full measurement grid's ``(lines, samples)`` shape
+    (``imageAnnotation/imageInformation``)."""
     with source.open(relpath) as f:
         root = ElementTree.parse(f).getroot()
     points = []
@@ -118,9 +119,8 @@ def read_geolocation(
         "incidence_angle_mid_swath": float(root.findtext(".//incidenceAngleMidSwath")),
         "platform_heading": float(root.findtext(".//platformHeading")),
         "pass": root.findtext(".//pass"),
-        "platform_velocity": _nearest_orbit_velocity(root, at),
-        "orbit_inclination": ORBIT_INCLINATION_DEG,
         "azimuth_pixel_spacing": float(root.findtext(".//azimuthPixelSpacing")),
+        "orbit": orbit(root, epoch),
     }
     shape = (
         int(root.findtext(".//numberOfLines")),
@@ -139,3 +139,11 @@ def build_transformer(points: list[dict]) -> GCPTransformer:
         for p in points
     ]
     return GCPTransformer(gcps, CRS.from_epsg(4326))
+
+
+def build_fields(points: list[dict]) -> dict:
+    """:func:`read_geolocation`'s grid points as
+    :class:`~satimg.scene_geometry.SceneGeometry` fields: each
+    :data:`GEOLOC_FIELDS` value on the geolocation grid."""
+    grid = grid_from_points(points, tuple(GEOLOC_FIELDS))
+    return {name: (grid["rows"], grid["cols"], grid[name], units) for name, (_tag, units) in GEOLOC_FIELDS.items()}

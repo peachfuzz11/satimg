@@ -4,7 +4,7 @@ import numpy
 import pytest
 
 import satimg
-from satimg import SceneGeometry, Sentinel1GRDGeometry
+from satimg import SAROrbitGeometry, SceneGeometry
 from satimg.products.landsat.c2l1.landsat_c2l1 import GEOMETRY_GRID
 from satimg.transform.affine_transformer import AffineTransformer
 from satimg.transform.transformer_factory import load_transformer
@@ -25,7 +25,7 @@ def _stored(product):
 
 
 def _load(product, stored):
-    cls = Sentinel1GRDGeometry if isinstance(product.geometry, Sentinel1GRDGeometry) else SceneGeometry
+    cls = SAROrbitGeometry if isinstance(product.geometry, SAROrbitGeometry) else SceneGeometry
     return cls.from_dict(stored)
 
 
@@ -40,8 +40,8 @@ def test_round_trips_through_strict_json(product):
 
 
 def test_sentinel1_loads_with_its_gcp_transformer(sentinel1_iw):
-    geometry = Sentinel1GRDGeometry.from_dict(_stored(sentinel1_iw))
-    assert type(geometry) is Sentinel1GRDGeometry
+    geometry = SAROrbitGeometry.from_dict(_stored(sentinel1_iw))
+    assert type(geometry) is SAROrbitGeometry
     assert type(geometry.transformer) is GCPTransformer
 
 
