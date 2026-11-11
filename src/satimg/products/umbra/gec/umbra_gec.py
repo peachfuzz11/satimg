@@ -12,6 +12,7 @@ from satimg.products.umbra.gec import umbra_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
 from satimg.readers.thumbnail import thumbnail_from_visual
 from satimg.registry import register
+from satimg.sar_orbit_geometry import SAROrbitGeometry
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
@@ -44,6 +45,13 @@ class UmbraGEC(Product):
     north-up). ``metadata`` has no per-pixel fields; its ``attrs`` carry the
     scene-centre imaging geometry (``incidence_angle``, ``squint_angle``,
     ``look_direction``, ``pass``, ``slant_range``, ...).
+
+    The moving-target methods -- :meth:`doppler_azimuth_shift_m`,
+    :meth:`doppler_pixel_shift`, :meth:`correct_position`,
+    :meth:`heading_to_los` -- work from the sensor orbit in ``attrs["orbit"]``
+    (rebuilt from the scene-centre geometry, see
+    :func:`~satimg.products.umbra.gec.umbra_gec_parsing.orbit`) and live on
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry`.
     """
 
     def __init__(self, source: Source):
@@ -57,6 +65,9 @@ class UmbraGEC(Product):
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
         self._attrs["pixel_spacing"] = list(pixel_spacing(self._transformer, self._shape))
+        centre = self._transformer.rowcol_to_latlon(((self._shape[0] - 1) / 2, (self._shape[1] - 1) / 2))[0]
+        self._attrs["orbit"] = umbra_gec_parsing.orbit(self._attrs, *centre, self._timestamp)
+        self._geometry = SAROrbitGeometry(self._transformer, {}, self._attrs, self._shape)
 
     def _open_raw(self, tile: int | tuple[int, int], overview: int = 1) -> xarray.DataArray:
         merged = merge_bands([self._tif], tile=tile, overview=overview)
@@ -80,7 +91,7 @@ class UmbraGEC(Product):
         return thumbnail_from_visual(self.visual_overview(self.visual_overviews[-1]))
 
     def _read_metadata(self) -> Metadata:
-        return Metadata({}, self._attrs)
+        return self._geometry.metadata
 
     @property
     def height(self) -> int:
@@ -90,3 +101,27 @@ class UmbraGEC(Product):
     @property
     def width(self) -> int:
         return self._shape[1]
+
+    # -- SAR geometry (see SAROrbitGeometry) ----------------------------------------
+    @property
+    def geometry(self) -> SAROrbitGeometry:
+        """As :attr:`Product.geometry`, as a
+        :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` -- which the
+        moving-target methods below delegate to."""
+        return self._geometry
+
+    def heading_to_los(self, rowcol, heading_deg):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.heading_to_los`."""
+        return self._geometry.heading_to_los(rowcol, heading_deg)
+
+    def doppler_azimuth_shift_m(self, rowcol, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_azimuth_shift_m`."""
+        return self._geometry.doppler_azimuth_shift_m(rowcol, speed, heading_deg)
+
+    def doppler_pixel_shift(self, rowcol, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_pixel_shift`."""
+        return self._geometry.doppler_pixel_shift(rowcol, speed, heading_deg)
+
+    def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.correct_position`."""
+        return self._geometry.correct_position(lat, lon, speed, heading_deg)

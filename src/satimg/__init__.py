@@ -60,6 +60,7 @@ from satimg.products.umbra.gec.umbra_gec_connector import UmbraGECConnector
 from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 from satimg.registry import UnknownProductError
+from satimg.sar_orbit_geometry import SAROrbitGeometry
 from satimg.scene_geometry import SceneGeometry
 from satimg.tiling import as_band_yx, label_bands, read_window
 
@@ -92,6 +93,7 @@ __all__ = [
     "SceneGeometry",
     "Sentinel1GRDGeometry",
     "NisarGCOVGeometry",
+    "SAROrbitGeometry",
     "Metadata",
     "Field",
     # downloading

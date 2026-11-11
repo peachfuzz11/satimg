@@ -11,9 +11,12 @@ with overviews). Sea everywhere at sigma0 -20 dB, one bright 'ship' at
 
 from __future__ import annotations
 
+import datetime
 import json
 
 import numpy
+
+from tests import orbit_fixture
 
 NAME = "ICEYE_4EKGVZ_20251110T124428Z_7004635_X42_SLEDF"
 HEIGHT, WIDTH = 256, 200
@@ -29,6 +32,38 @@ ROW_M, COL_M = 2.3, 2.5
 _ROW_DIR, _COL_DIR = numpy.deg2rad(110.0), numpy.deg2rad(20.0)  # bearings
 GCP_ROWS = [0.0, 85.0, 170.0, 255.0]
 GCP_COLS = [0.0, 66.0, 133.0, 199.0]
+
+#: the imaging geometry at :data:`TARGET` (the middle pixel), for the
+#: synthetic orbit: right-looking down the rows (range)
+INCIDENCE, SLANT_RANGE, LOOK = 24.99, 676_584.3, 110.0
+CENTRE_TIME = datetime.datetime(2025, 11, 10, 12, 44, 42, 38000)
+
+
+def latlon(row: float, col: float) -> tuple[float, float]:
+    """The ground position of pixel centre ``(row, col)`` (pixel indices)."""
+    north = row * ROW_M * numpy.cos(_ROW_DIR) + col * COL_M * numpy.cos(_COL_DIR)
+    east = row * ROW_M * numpy.sin(_ROW_DIR) + col * COL_M * numpy.sin(_COL_DIR)
+    lat = LAT0 + numpy.rad2deg(north / 6_371_008.8)
+    lon = LON0 + numpy.rad2deg(east / (6_371_008.8 * numpy.cos(numpy.deg2rad(LAT0))))
+    return float(lat), float(lon)
+
+
+TARGET = latlon((HEIGHT - 1) / 2, (WIDTH - 1) / 2)
+
+
+def _stamp(seconds: float) -> str:
+    return (CENTRE_TIME + datetime.timedelta(seconds=seconds)).isoformat(timespec="microseconds") + "Z"
+
+
+def _orbit_states() -> list[dict]:
+    times, positions, velocities = orbit_fixture.states(
+        *TARGET, look_bearing=LOOK, incidence=INCIDENCE, slant_range=SLANT_RANGE, right_looking=True
+    )
+    return [
+        {"time": _stamp(t), "position": p.tolist(), "velocity": v.tolist()}
+        for t, p, v in zip(times, positions, velocities)
+    ]
+
 
 PROPERTIES = {
     "datetime": "2025-11-10T12:44:42.038Z",
@@ -49,16 +84,11 @@ PROPERTIES = {
     "iceye:image_id": 7004635,
     "iceye:processing_mode": "SLEDF",
     "iceye:calibration_factor": CF,
+    "iceye:zero_doppler_start_datetime": _stamp(-0.4),
+    "iceye:zero_doppler_end_datetime": _stamp(0.4),
+    "iceye:coordinate_frame": "ecef",
+    "iceye:orbit_states": _orbit_states(),
 }
-
-
-def latlon(row: float, col: float) -> tuple[float, float]:
-    """The ground position of pixel centre ``(row, col)`` (pixel indices)."""
-    north = row * ROW_M * numpy.cos(_ROW_DIR) + col * COL_M * numpy.cos(_COL_DIR)
-    east = row * ROW_M * numpy.sin(_ROW_DIR) + col * COL_M * numpy.sin(_COL_DIR)
-    lat = LAT0 + numpy.rad2deg(north / 6_371_008.8)
-    lon = LON0 + numpy.rad2deg(east / (6_371_008.8 * numpy.cos(numpy.deg2rad(LAT0))))
-    return float(lat), float(lon)
 
 
 def dn(db: float) -> int:

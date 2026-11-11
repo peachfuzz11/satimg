@@ -12,6 +12,7 @@ from satimg.products.capella.gec import capella_gec_parsing
 from satimg.readers.raster import keep_open, merge_bands, raster_grid
 from satimg.readers.thumbnail import load_thumbnail, thumbnail_from_visual
 from satimg.registry import register
+from satimg.sar_orbit_geometry import SAROrbitGeometry
 from satimg.source.source import Source
 from satimg.tiling import as_band_yx, label_bands
 from satimg.transform.affine_transformer import AffineTransformer
@@ -44,6 +45,12 @@ class CapellaGEC(Product):
     scene-centre imaging geometry (``incidence_angle``, ``look_angle``,
     ``squint_angle``, ``look_direction``, ``pass``, ...) and the
     ``scale_factor``.
+
+    The moving-target methods -- :meth:`doppler_azimuth_shift_m`,
+    :meth:`doppler_pixel_shift`, :meth:`correct_position`,
+    :meth:`heading_to_los` -- work from the sensor orbit in ``attrs["orbit"]``
+    (the extended metadata's state vectors) and live on
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry`.
     """
 
     def __init__(self, source: Source):
@@ -57,6 +64,7 @@ class CapellaGEC(Product):
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
         self._footprint = self._grid_outline()
+        self._geometry = SAROrbitGeometry(self._transformer, {}, self._attrs, self._shape)
 
     def _grid_outline(self) -> dict:
         """The image grid's outline as a GeoJSON Feature -- the extended
@@ -101,7 +109,7 @@ class CapellaGEC(Product):
 
     # -- metadata ----------------------------------------------------------------
     def _read_metadata(self) -> Metadata:
-        return Metadata({}, self._attrs)
+        return self._geometry.metadata
 
     @property
     def height(self) -> int:
@@ -111,3 +119,27 @@ class CapellaGEC(Product):
     @property
     def width(self) -> int:
         return self._shape[1]
+
+    # -- SAR geometry (see SAROrbitGeometry) ----------------------------------------
+    @property
+    def geometry(self) -> SAROrbitGeometry:
+        """As :attr:`Product.geometry`, as a
+        :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` -- which the
+        moving-target methods below delegate to."""
+        return self._geometry
+
+    def heading_to_los(self, rowcol, heading_deg):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.heading_to_los`."""
+        return self._geometry.heading_to_los(rowcol, heading_deg)
+
+    def doppler_azimuth_shift_m(self, rowcol, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_azimuth_shift_m`."""
+        return self._geometry.doppler_azimuth_shift_m(rowcol, speed, heading_deg)
+
+    def doppler_pixel_shift(self, rowcol, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.doppler_pixel_shift`."""
+        return self._geometry.doppler_pixel_shift(rowcol, speed, heading_deg)
+
+    def correct_position(self, lat: float, lon: float, speed: float, heading_deg: float):
+        """See :meth:`satimg.sar_orbit_geometry.SAROrbitGeometry.correct_position`."""
+        return self._geometry.correct_position(lat, lon, speed, heading_deg)

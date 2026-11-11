@@ -82,6 +82,33 @@ def gcp_grid(gcps) -> tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.n
     return rows, cols, lat, lon
 
 
+def epoch(props: dict) -> datetime.datetime:
+    """The scene centre's imaging time: the middle of the zero-Doppler span
+    (a GRD is in zero-Doppler geometry), else the item's ``datetime``."""
+    start, end = props.get("iceye:zero_doppler_start_datetime"), props.get("iceye:zero_doppler_end_datetime")
+    if start and end:
+        t0 = _time(start)
+        return t0 + (_time(end) - t0) / 2
+    return _time(props["datetime"])
+
+
+def orbit(props: dict) -> dict | None:
+    """The sensor orbit as
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` reads it: ICEYE's
+    ECEF ``iceye:orbit_states`` (a few dozen, spanning the acquisition),
+    timed from :func:`epoch`; ``None`` without them."""
+    states = props.get("iceye:orbit_states")
+    if not states or props.get("iceye:coordinate_frame", "ecef").lower() != "ecef":
+        return None
+    t0 = epoch(props)
+    return {
+        "epoch": t0.isoformat() + "Z",
+        "times": [(_time(s["time"]) - t0).total_seconds() for s in states],
+        "positions": [list(map(float, s["position"])) for s in states],
+        "velocities": [list(map(float, s["velocity"])) for s in states],
+    }
+
+
 def read_metadata(path: str) -> dict:
     """``{"timestamp", "calibration_factor", "scale", "offset", "shape",
     "nodes", "attrs"}`` from the GRD's header alone -- ``timestamp`` the
@@ -89,7 +116,7 @@ def read_metadata(path: str) -> dict:
     value into amplitude, which ``calibration_factor`` turns into sigma
     nought (``sigma0 = cf * (DN * scale + offset)^2``); ``nodes`` the GCP
     grid (:func:`gcp_grid`); ``attrs`` the scene-wide values below (angles in
-    degrees, distances in metres)."""
+    degrees, distances in metres; ``orbit`` see :func:`orbit`)."""
     with rasterio.open(path) as src:
         props = json.loads(src.tags()["ICEYE_PROPERTIES"])
         scale, offset = src.scales[0], src.offsets[0]
@@ -121,5 +148,6 @@ def read_metadata(path: str) -> dict:
             "calibration_factor": cf,
             "scene_id": props.get("iceye:scene_id"),
             "image_id": props.get("iceye:image_id"),
+            "orbit": orbit(props),
         },
     }

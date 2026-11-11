@@ -51,20 +51,53 @@ def _time(text: str) -> datetime.datetime:
     return t.replace(microsecond=int(frac[:6].ljust(6, "0"))) if frac else t
 
 
+#: how far either side of the collect (seconds) to keep state vectors --
+#: enough for the orbit spline to cover every target's imaging time
+ORBIT_MARGIN = 5.0
+
+
+def orbit(collect: dict, epoch: datetime.datetime) -> dict | None:
+    """The sensor orbit around the collect, as
+    :class:`~satimg.sar_orbit_geometry.SAROrbitGeometry` reads it: the
+    extended JSON's ECEF state vectors (about one a second, over a minute or
+    more) within :data:`ORBIT_MARGIN` of the collect, timed from ``epoch``;
+    ``None`` without them."""
+    vectors = collect.get("state", {}).get("state_vectors")
+    if not vectors:
+        return None
+    states = sorted(
+        ((_time(s["time"]) - epoch).total_seconds(), s["position"], s["velocity"]) for s in vectors
+    )
+    kept = states
+    if "start_timestamp" in collect and "stop_timestamp" in collect:
+        start = (_time(collect["start_timestamp"]) - epoch).total_seconds() - ORBIT_MARGIN
+        stop = (_time(collect["stop_timestamp"]) - epoch).total_seconds() + ORBIT_MARGIN
+        kept = [s for s in states if start <= s[0] <= stop]
+        if len(kept) < 4:  # sparse states: the four nearest the scene centre
+            kept = sorted(sorted(states, key=lambda s: abs(s[0]))[:4])
+    return {
+        "epoch": epoch.isoformat() + "Z",
+        "times": [s[0] for s in kept],
+        "positions": [[float(v) for v in s[1]] for s in kept],
+        "velocities": [[float(v) for v in s[2]] for s in kept],
+    }
+
+
 def read_metadata(source: Source, relpath: str) -> dict:
     """``{"timestamp", "scale_factor", "attrs"}`` from the extended JSON --
     ``timestamp`` the scene centre's time (naive UTC), ``scale_factor`` what
     turns a pixel value into amplitude (``sigma0 = (DN * scale_factor)^2``),
     ``attrs`` the scene-wide values below (angles in degrees, distances in
-    metres)."""
+    metres; ``orbit`` see :func:`orbit`)."""
     with source.open(relpath) as f:
         doc = json.load(f)
     collect = doc["collect"]
     image, radar = collect["image"], collect["radar"]
     centre = image["center_pixel"]
     scale = float(image["scale_factor"])
+    timestamp = _time(centre["center_time"])
     return {
-        "timestamp": _time(centre["center_time"]),
+        "timestamp": timestamp,
         "scale_factor": scale,
         "attrs": {
             "platform": collect.get("platform"),
@@ -82,5 +115,6 @@ def read_metadata(source: Source, relpath: str) -> dict:
             "looks": image.get("enl"),
             "pixel_spacing": [image.get("pixel_spacing_row"), image.get("pixel_spacing_column")],
             "collect_id": collect.get("collect_id"),
+            "orbit": orbit(collect, timestamp),
         },
     }
