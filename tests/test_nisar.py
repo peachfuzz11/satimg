@@ -1,5 +1,7 @@
 import json
+import shutil
 import zipfile
+from types import SimpleNamespace
 
 import numpy
 import pytest
@@ -58,6 +60,15 @@ def test_resolves(name):
 
 
 # -- product ------------------------------------------------------------------
+def test_opens_an_h5_saved_without_its_extension(h5_path, tmp_path):
+    # as download writes it to a save_path without one, alone in its folder
+    bare = tmp_path / fx.NAME.removesuffix(".h5")
+    shutil.copy(h5_path, bare)
+    with satimg.open(str(bare)) as p:
+        assert isinstance(p, NisarGCOV)
+        assert p.shape == (2, fx.HEIGHT, fx.WIDTH)
+
+
 def test_opens_a_bare_h5(product):
     assert isinstance(product, NisarGCOV)
     assert product.shape == (2, fx.HEIGHT, fx.WIDTH)
@@ -236,3 +247,19 @@ def test_connector_needs_a_token_or_login(monkeypatch):
     session = NisarGCOVConnector(token="t")._get_session()
     assert session.headers["Authorization"] == "Bearer t"
     assert NisarGCOVConnector(username="u", password="p")._get_session().auth == ("u", "p")
+
+
+def test_search_by_id_sends_no_max_results(monkeypatch):
+    # ASF answers 400 to maxResults alongside a granule list
+    from satimg.products.nisar.gcov import nisar_gcov_connector
+
+    sent = {}
+
+    def get(url, params, timeout):
+        sent.update(params)
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"features": []})
+
+    monkeypatch.setattr(nisar_gcov_connector.requests, "get", get)
+    nisar_gcov_connector.NisarGCOVConnector().search(ids=["NISAR_L2_PR_GCOV_030_138_D_060"])
+    assert sent["granule_list"] == "NISAR_L2_PR_GCOV_030_138_D_060"
+    assert "maxResults" not in sent
