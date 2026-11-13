@@ -428,24 +428,8 @@ product.metadata.attrs["moon_illumination"]   # 0-1: how bright the background i
 
 The image is in sensor (swath) geometry, not map projected: `transformer` is a
 `SwathTransformer` over the geolocation file's per-pixel positions, scan by
-scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
-they are found by a spike detector rather than the image model:
-
-```python
-from satimg import ViirsBoatDetector
-
-lights = ViirsBoatDetector(product).detect()          # every light, tagged
-boats = [d for d in lights if "on_land" not in d.tags and "platform" not in d.tags]
-```
-
-It finds local spikes well clear of the local background and its noise,
-drops energetic-particle hits (single pixels, frequent in the South Atlantic
-Anomaly) and the noisy swath-edge columns, and skips anything not dark
-enough. In the spirit of NOAA's VIIRS Boat Detection, not a reimplementation;
-thresholds were set on a few granules. It does not see unlit vessels, sees
-through thin cloud only (the light is blurred, often lost), can be fooled by
-lightning and moonlit cloud edges, and the moon's glint raises the floor --
-treat it as a lead, not a census.
+scan, to within 50 m. Boats show up at night as their lights, a pixel or two
+each, not as hulls.
 
 `get_connector("viirs-dnb")` searches NOAA-20 and NOAA-21 near-real-time
 granules together (`satellite="noaa-20"` / `"noaa-21"` for one; `nrt=False`

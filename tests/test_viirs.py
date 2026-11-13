@@ -11,7 +11,6 @@ from satimg import SceneGeometry
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
-from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
 from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
 from satimg.products.swath_nodes import node_columns, scan_edge_rows
 from satimg.products.viirs.dnb.viirs_dnb_parsing import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
@@ -199,41 +198,6 @@ def test_geometry_round_trips(product, truth):
     got = geometry.transformer.rowcol_to_latlon((40.5, 180.5))
     assert _metres(got, numpy.array([[lat[40, 180], lon[40, 180]]]))[0] < 300
     assert geometry.metadata.solar_zenith.at((32, 128)) == pytest.approx(product.metadata.solar_zenith.at((32, 128)), abs=0.5)
-
-
-# -- boat lights ----------------------------------------------------------------------
-@pytest.fixture(scope="module")
-def detections(product):
-    return ViirsBoatDetector(product).detect()
-
-
-def _pixels(detections):
-    return {(int(d.bbox.center[1]), int(d.bbox.center[0])) for d in detections}
-
-
-def test_finds_every_injected_boat(detections):
-    assert set(fx.BOATS) <= _pixels(detections)
-
-
-def test_drops_the_particle_hit(detections):
-    assert fx.PARTICLE not in _pixels(detections)
-
-
-def test_skips_the_noisy_edge_columns(detections):
-    assert all(col >= 8 for _, col in _pixels(detections))
-
-
-def test_detections_are_tagged_and_located(detections, product):
-    d = next(d for d in detections if (int(d.bbox.center[1]), int(d.bbox.center[0])) == fx.BOATS[0])
-    assert d.label.name == "boat" and 0.5 <= d.label.confidence <= 1
-    expected = product.transformer.rowcol_to_latlon((fx.BOATS[0][0] + 0.5, fx.BOATS[0][1] + 0.5))[0]
-    assert (d.coordinate.lat, d.coordinate.lon) == pytest.approx(tuple(expected))
-    assert isinstance(d.tags, list)
-
-
-def test_daytime_granule_has_no_boat_lights(product, monkeypatch):
-    monkeypatch.setitem(product.metadata.attrs, "day_night", "day")
-    assert ViirsBoatDetector(product).detect() == []
 
 
 # -- connector ------------------------------------------------------------------------

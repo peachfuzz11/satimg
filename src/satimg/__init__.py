@@ -33,7 +33,6 @@ from satimg.prediction.characteriser import Characteriser
 from satimg.prediction.detector import Detector, DetectorConfig
 from satimg.prediction.models import CharacterisationModel, Yolo26Model
 from satimg.prediction.types import BBox, Characterisation, Coordinate, Detection
-from satimg.prediction.viirs_boat_detector import ViirsBoatConfig, ViirsBoatDetector
 from satimg.product import Product, open, open_zip
 from satimg.products.capella.gec.capella_gec import CapellaGEC
 from satimg.products.capella.gec.capella_gec_connector import CapellaGECConnector
@@ -115,8 +114,6 @@ __all__ = [
     "Yolo26Model",
     "Characteriser",
     "CharacterisationModel",
-    "ViirsBoatDetector",
-    "ViirsBoatConfig",
     "Detection",
     "Characterisation",
     "BBox",

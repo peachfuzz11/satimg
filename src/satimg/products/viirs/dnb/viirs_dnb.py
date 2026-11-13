@@ -61,10 +61,7 @@ class ViirsDNB(Product):
     moon's illumination -- what decides how dark the background is.
 
     The transformer interpolates the geolocation file's per-pixel positions
-    to within :data:`TRANSFORMER_TOLERANCE_M`. Boats show up at night as
-    their lights, a pixel or two each, not as hulls: see
-    :class:`~satimg.prediction.viirs_boat_detector.ViirsBoatDetector` rather than the image-model
-    :class:`~satimg.prediction.detector.Detector`.
+    to within :data:`TRANSFORMER_TOLERANCE_M`.
     """
 
     def __init__(self, source: Source):
