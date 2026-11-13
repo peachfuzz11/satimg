@@ -91,6 +91,8 @@ class NisarGCOVConnector(EarthdataLogin, Connector):
             params["end"] = stop_datetime.isoformat()
         if ids:
             params["granule_list"] = ",".join(ids)
+            # ASF refuses maxResults with a granule list
+            del params["maxResults"]
         logger.debug("ASF search: %s", params)
         response = requests.get(SEARCH_URL, params=params, timeout=120)
         response.raise_for_status()

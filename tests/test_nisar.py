@@ -1,5 +1,6 @@
 import json
 import zipfile
+from types import SimpleNamespace
 
 import numpy
 import pytest
@@ -236,3 +237,19 @@ def test_connector_needs_a_token_or_login(monkeypatch):
     session = NisarGCOVConnector(token="t")._get_session()
     assert session.headers["Authorization"] == "Bearer t"
     assert NisarGCOVConnector(username="u", password="p")._get_session().auth == ("u", "p")
+
+
+def test_search_by_id_sends_no_max_results(monkeypatch):
+    # ASF answers 400 to maxResults alongside a granule list
+    from satimg.products.nisar.gcov import nisar_gcov_connector
+
+    sent = {}
+
+    def get(url, params, timeout):
+        sent.update(params)
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"features": []})
+
+    monkeypatch.setattr(nisar_gcov_connector.requests, "get", get)
+    nisar_gcov_connector.NisarGCOVConnector().search(ids=["NISAR_L2_PR_GCOV_030_138_D_060"])
+    assert sent["granule_list"] == "NISAR_L2_PR_GCOV_030_138_D_060"
+    assert "maxResults" not in sent
