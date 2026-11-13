@@ -1,4 +1,5 @@
 import json
+import shutil
 import zipfile
 from types import SimpleNamespace
 
@@ -59,6 +60,15 @@ def test_resolves(name):
 
 
 # -- product ------------------------------------------------------------------
+def test_opens_an_h5_saved_without_its_extension(h5_path, tmp_path):
+    # as download writes it to a save_path without one, alone in its folder
+    bare = tmp_path / fx.NAME.removesuffix(".h5")
+    shutil.copy(h5_path, bare)
+    with satimg.open(str(bare)) as p:
+        assert isinstance(p, NisarGCOV)
+        assert p.shape == (2, fx.HEIGHT, fx.WIDTH)
+
+
 def test_opens_a_bare_h5(product):
     assert isinstance(product, NisarGCOV)
     assert product.shape == (2, fx.HEIGHT, fx.WIDTH)
