@@ -23,6 +23,10 @@ class Sentinel2L1C(Product):
     the viewing grids are the per-detector grids merged. SAFE parsing itself
     lives in :mod:`satimg.products.sentinel2.l1c.sentinel2_l1c_parsing`."""
 
+    @classmethod
+    def scene_key(cls, name: str) -> str | None:
+        return sentinel2_l1c_parsing.scene_key(name)
+
     def __init__(self, source: Source):
         super().__init__(source)
         self._meta = sentinel2_l1c_parsing.parse_mtd(self._source)

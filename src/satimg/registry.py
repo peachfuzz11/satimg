@@ -48,3 +48,18 @@ def resolve(path: str) -> type[Product]:
             )
             return cls
     raise UnknownProductError(path)
+
+
+def scene_key(name: str) -> str:
+    """The scene a product belongs to: its name (a path, folder or zip name, or
+    a connector's search item id) without the parts that change when the scene
+    is reprocessed, so every version of one acquisition gets the same key --
+    e.g. ``S1A_IW_GRDH_1SDV_..._04368F_4953_COG`` and ``..._04368F_A1B2_COG``
+    both give ``S1A_IW_GRDH_1SDV_..._04368F``. Names no product recognises
+    (or whose product has no such parts) are returned as they are."""
+    name = Path(name).name.removesuffix(".zip")
+    for cls in dict.fromkeys(cls for _, cls in _REGISTRY):
+        key = cls.scene_key(name)
+        if key is not None:
+            return key
+    return name

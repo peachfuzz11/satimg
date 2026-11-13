@@ -85,6 +85,14 @@ class Product(abc.ABC):
     def path(self) -> str:
         return self._path
 
+    @classmethod
+    def scene_key(cls, name: str) -> str | None:
+        """``name`` (a product's folder name or search item id) without the parts
+        that change when the scene is reprocessed, so every version of one
+        acquisition shares it -- or None if ``name`` is not this product's, or
+        the product has no such parts. See :func:`satimg.scene_key`."""
+        return None
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._path!r})"
 
