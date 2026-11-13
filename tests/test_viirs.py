@@ -12,7 +12,7 @@ from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
 from satimg.connectors.connector_factory import get_connector
 from satimg.connectors._credentials import CredentialsError
 from satimg.prediction.viirs_boat_detector import ViirsBoatDetector
-from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
+from satimg.products.viirs.dnb.viirs_dnb import GEOMETRY_TOLERANCE_M, ViirsDNB
 from satimg.products.swath_nodes import node_columns, scan_edge_rows
 from satimg.products.viirs.dnb.viirs_dnb_parsing import FILL_BELOW, SCAN_ROWS, granule_key, read_geolocation
 from satimg.readers.thumbnail import THUMBNAIL_SIZE
@@ -123,6 +123,27 @@ def test_geolocation_is_the_scan_edge_rows(truth):
         numpy.testing.assert_array_equal(got, numpy.where(full[rows] <= FILL_BELOW, numpy.nan, full[rows]))
 
 
+def test_geolocation_takes_the_terrain_shift_back_off(tmp_path):
+    # a mountain 1 km up, seen 45 degrees off nadir with the satellite due
+    # east: the file puts it where the line of sight meets the ground, 1 km
+    # east of where it meets the ellipsoid; a sea-level pixel stays put
+    path = tmp_path / "geo.nc"
+    with h5py.File(path, "w") as g:
+        for name, value in (
+            ("latitude", 0.0), ("longitude", 10.0), ("sensor_zenith", 45.0), ("sensor_azimuth", 90.0),
+            ("moon_illumination_fraction", 0.0),
+        ):
+            g[f"geolocation_data/{name}"] = numpy.full((SCAN_ROWS, 2), value)
+        g["geolocation_data/height"] = numpy.array([[1000.0, 0.0]] * SCAN_ROWS)
+    with h5py.File(path) as g:
+        geolocation = read_geolocation(g)
+    numpy.testing.assert_allclose(geolocation["lat"], 0.0, atol=1e-12)
+    # degrees of longitude at the equator, as metres along the ground
+    metres = numpy.rad2deg(1) / 6_371_000
+    numpy.testing.assert_allclose(geolocation["lon"][:, 0], 10.0 - 1000.0 * metres)
+    numpy.testing.assert_allclose(geolocation["lon"][:, 1], 10.0)
+
+
 def test_open_reads_no_full_resolution_array():
     """Opening reads only the geolocation's scan-edge rows and a sparse
     sample -- never a full-resolution variable, nor any radiance."""
@@ -196,9 +217,24 @@ def test_geometry_round_trips(product, truth):
     geometry = SceneGeometry.from_dict(stored)
     assert isinstance(geometry.transformer, SwathTransformer)
     lat, lon = truth
-    got = geometry.transformer.rowcol_to_latlon((40.5, 180.5))
-    assert _metres(got, numpy.array([[lat[40, 180], lon[40, 180]]]))[0] < 300
+    got = geometry.transformer.rowcol_to_latlon((32.5, 180.5))
+    assert _metres(got, numpy.array([[lat[32, 180], lon[32, 180]]]))[0] < GEOMETRY_TOLERANCE_M
     assert geometry.metadata.solar_zenith.at((32, 128)) == pytest.approx(product.metadata.solar_zenith.at((32, 128)), abs=0.5)
+
+
+def test_stored_geometry_is_a_plain_coarse_grid(product, truth):
+    # no scan structure, so a handful of nodes; on the scan starts it is
+    # fitted to, within its tolerance (between them it misses by how far a
+    # scan's rows stray from the line through the scan starts: ~1.3 km at
+    # most on a full granule)
+    transformer = product.geometry.transformer
+    assert transformer._scan_rows is None
+    assert len(transformer._rows) * len(transformer._cols) < 100
+    lat, lon = truth
+    rr, cc = numpy.meshgrid(numpy.arange(0, fx.ROWS, SCAN_ROWS), numpy.arange(fx.COLS), indexing="ij")
+    rc = numpy.column_stack((rr.ravel() + 0.5, cc.ravel() + 0.5))
+    error = _metres(transformer.rowcol_to_latlon(rc), numpy.column_stack((lat[rr, cc].ravel(), lon[rr, cc].ravel())))
+    assert error.max() < GEOMETRY_TOLERANCE_M
 
 
 # -- boat lights ----------------------------------------------------------------------

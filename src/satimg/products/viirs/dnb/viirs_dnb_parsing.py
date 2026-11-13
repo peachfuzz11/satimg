@@ -18,6 +18,7 @@ import numpy
 from satimg.products import swath_nodes
 from satimg.readers.hdf5 import read_scaled
 from satimg.source.source import Source
+from satimg.transform.swath_transformer import EARTH_RADIUS_M
 
 #: detector rows per VIIRS scan: geolocation is linear in row within one,
 #: but jumps between scans (the "bow-tie" overlap at the swath edges)
@@ -109,13 +110,20 @@ def read_granule(l1b_h5, name: str) -> dict:
 
 
 def read_geolocation(geo_h5) -> dict:
-    """The V??03DNB file's latitude / longitude (terrain corrected -- the
-    ellipsoid at sea), scaled, fills as ``NaN`` -- on its scan-edge rows
-    only (``"rows"``), all a node grid needs (see :func:`nodes`): a quarter
-    of the file's positions are never read whole, an eighth is. The moon
-    illumination is per pixel there; the median of every
-    :data:`SCAN_ROWS`-th row and column stands for the granule.
-    ``"shape"`` is the full granule's."""
+    """The V??03DNB file's latitude / longitude, scaled, fills as ``NaN`` --
+    on its scan-edge rows only (``"rows"``), all a node grid needs (see
+    :func:`nodes`): a quarter of the file's positions are never read whole,
+    an eighth is. The moon illumination is per pixel there; the median of
+    every :data:`SCAN_ROWS`-th row and column stands for the granule.
+    ``"shape"`` is the full granule's.
+
+    The file's positions are terrain corrected: over mountains each sits
+    where the line of sight meets the ground, ``height * tan(sensor zenith)``
+    -- kilometres at the swath edge -- nearer the satellite than where it
+    meets the ellipsoid. No smooth grid follows that (a 250 m node grid kept
+    a third of the columns of a pass over Norway), so it is taken back off:
+    the positions returned are where each line of sight meets the
+    ellipsoid -- the file's own, at sea."""
     group = geo_h5["geolocation_data"]
     shape = group["latitude"].shape
     rows = swath_nodes.scan_edge_rows(shape[0], SCAN_ROWS)
@@ -124,11 +132,24 @@ def read_geolocation(geo_h5) -> dict:
     def median(variable):
         return float(numpy.nanmedian(read_scaled(group[variable], key=sparse)))
 
+    lat = read_scaled(group["latitude"], FILL_BELOW, rows)
+    lon = read_scaled(group["longitude"], FILL_BELOW, rows)
+    if "height" in group:
+        # metres along the ground, away from the satellite (the sensor
+        # azimuth points from the pixel towards it)
+        shift = numpy.nan_to_num(read_scaled(group["height"], key=rows)) * numpy.tan(
+            numpy.deg2rad(read_scaled(group["sensor_zenith"], key=rows))
+        )
+        azimuth = numpy.deg2rad(read_scaled(group["sensor_azimuth"], key=rows))
+        lat, lon = (
+            lat - numpy.rad2deg(shift * numpy.cos(azimuth) / EARTH_RADIUS_M),
+            lon - numpy.rad2deg(shift * numpy.sin(azimuth) / (EARTH_RADIUS_M * numpy.cos(numpy.deg2rad(lat)))),
+        )
     return {
         "shape": shape,
         "rows": rows,
-        "lat": read_scaled(group["latitude"], FILL_BELOW, rows),
-        "lon": read_scaled(group["longitude"], FILL_BELOW, rows),
+        "lat": lat,
+        "lon": lon,
         # percent, per pixel
         "moon_illumination": median("moon_illumination_fraction") / 100.0,
         "moon_phase_angle": median("moon_phase_angle") if "moon_phase_angle" in group else None,
@@ -147,6 +168,26 @@ def nodes(geolocation: dict, tolerance_m: float) -> dict:
     return {
         "rows": rows + 0.5, "cols": cols + 0.5, "lat": lat[:, cols], "lon": lon[:, cols],
         "row_index": rows, "col_index": cols,
+    }
+
+
+def coarse_nodes(geolocation: dict, tolerance_m: float) -> dict:
+    """As :func:`nodes`, but a plain grid for a transformer without
+    ``scan_rows`` -- interpolating across scans, so between the scan starts
+    it is off by however far a scan's rows stray from the line through them
+    (the bow-tie: up to ~1.3 km, under two pixels, on a full granule)
+    whatever ``tolerance_m``, for a few hundred nodes rather than every
+    scan's two rows.
+    Its rows come from the scan starts: evenly spaced, as
+    :func:`~satimg.products.swath_nodes.node_columns` assumes."""
+    lat, lon, rows = geolocation["lat"], geolocation["lon"], geolocation["rows"]
+    cols = swath_nodes.node_columns(lat, lon, tolerance_m)
+    starts = numpy.flatnonzero(rows % SCAN_ROWS == 0)
+    picked = numpy.union1d(starts[swath_nodes.node_columns(lat[starts].T, lon[starts].T, tolerance_m)], [len(rows) - 1])
+    return {
+        "rows": rows[picked] + 0.5, "cols": cols + 0.5,
+        "lat": lat[numpy.ix_(picked, cols)], "lon": lon[numpy.ix_(picked, cols)],
+        "row_index": rows[picked], "col_index": cols,
     }
 
 

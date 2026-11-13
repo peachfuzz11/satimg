@@ -24,11 +24,12 @@ from satimg.transform.swath_transformer import SwathTransformer
 #: metres the product's own transformer may be off the GEO file's per-pixel
 #: positions (a DNB pixel is ~750 m)
 TRANSFORMER_TOLERANCE_M = 50.0
-#: ... and :attr:`ViirsDNB.geometry`'s stored one: a third of a pixel,
-#: at a third of the size
-GEOMETRY_TOLERANCE_M = 250.0
+#: ... and :attr:`ViirsDNB.geometry`'s stored one, on a plain grid that
+#: interpolates across scans (see :func:`viirs_dnb_parsing.coarse_nodes`):
+#: within ~1.3 km (under two pixels), in a few hundred nodes
+GEOMETRY_TOLERANCE_M = 500.0
 #: side of the square grid the stored geometry keeps each angle field on
-GEOMETRY_GRID = 32
+GEOMETRY_GRID = 16
 
 #: nW / (cm^2 sr) per the L1B's W / (cm^2 sr)
 NANOWATTS = 1e9
@@ -75,7 +76,7 @@ class ViirsDNB(Product):
         with open_h5(self._source, geo) as h5:
             geolocation = viirs_dnb_parsing.read_geolocation(h5)
             fine = viirs_dnb_parsing.nodes(geolocation, TRANSFORMER_TOLERANCE_M)
-            coarse = viirs_dnb_parsing.nodes(geolocation, GEOMETRY_TOLERANCE_M)
+            coarse = viirs_dnb_parsing.coarse_nodes(geolocation, GEOMETRY_TOLERANCE_M)
             coarse.update(viirs_dnb_parsing.read_angles(h5, coarse))
         self._timestamp = granule["timestamp"]
         self._footprint = granule["footprint"]
@@ -88,9 +89,7 @@ class ViirsDNB(Product):
         self._transformer = SwathTransformer(
             fine["rows"], fine["cols"], fine["lat"], fine["lon"], scan_rows=viirs_dnb_parsing.SCAN_ROWS
         )
-        self._coarse_transformer = SwathTransformer(
-            coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"], scan_rows=viirs_dnb_parsing.SCAN_ROWS
-        )
+        self._coarse_transformer = SwathTransformer(coarse["rows"], coarse["cols"], coarse["lat"], coarse["lon"])
         self._angles = coarse
 
     # -- pixels ---------------------------------------------------------------
@@ -143,8 +142,11 @@ class ViirsDNB(Product):
     def geometry(self) -> SceneGeometry:
         """As :attr:`Product.geometry`: the transformer at
         :data:`GEOMETRY_TOLERANCE_M`, the angle fields on a
-        :data:`GEOMETRY_GRID` square grid -- a few hundred KB of JSON."""
+        :data:`GEOMETRY_GRID` square grid to the file's 0.01 degree -- tens of
+        KB of JSON."""
         shape = (self.height, self.width)
-        return SceneGeometry(
-            self._coarse_transformer, coarsen(self.metadata, shape, GEOMETRY_GRID), self._attrs, shape
-        )
+        fields = {
+            name: (rows, cols, numpy.round(values, 2), units)
+            for name, (rows, cols, values, units) in coarsen(self.metadata, shape, GEOMETRY_GRID).items()
+        }
+        return SceneGeometry(self._coarse_transformer, fields, self._attrs, shape)

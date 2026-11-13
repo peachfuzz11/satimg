@@ -275,8 +275,9 @@ geometry.correct_position(lat, lon, speed_mps, heading_deg)   # SAR only
 ```
 
 Whichever class loads it, the transformer comes back as the kind that was
-stored: affine, ground control points (Sentinel-1) or swath (VIIRS, MODIS,
-OLCI, ICEYE; stored to within a third of a pixel).
+stored: affine, ground control points (Sentinel-1) or swath (MODIS, OLCI,
+ICEYE; stored to within a third of a pixel; VIIRS to within two pixels, a
+plain grid of a few hundred nodes).
 
 Landsat's angle fields and NISAR's radar-grid fields are stored resampled to 32 x 32.
 
@@ -428,7 +429,11 @@ product.metadata.attrs["moon_illumination"]   # 0-1: how bright the background i
 
 The image is in sensor (swath) geometry, not map projected: `transformer` is a
 `SwathTransformer` over the geolocation file's per-pixel positions, scan by
-scan, to within 50 m. Boats show up as their lights, a pixel or two each, so
+scan, to within 50 m -- at sea level: the file's positions are terrain
+corrected, and over mountains that shift (kilometres at the swath edge) is
+taken back off, so they are where each line of sight meets the ellipsoid. At
+sea that is the file's own position; on high ground it is off by the
+terrain's parallax. Boats show up as their lights, a pixel or two each, so
 they are found by a spike detector rather than the image model:
 
 ```python
