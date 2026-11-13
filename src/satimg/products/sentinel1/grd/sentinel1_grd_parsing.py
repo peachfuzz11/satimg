@@ -12,6 +12,7 @@ entry points that call these.
 from __future__ import annotations
 
 import datetime
+import re
 from xml.etree import ElementTree
 
 from rasterio.control import GroundControlPoint
@@ -147,3 +148,15 @@ def build_fields(points: list[dict]) -> dict:
     :data:`GEOLOC_FIELDS` value on the geolocation grid."""
     grid = grid_from_points(points, tuple(GEOLOC_FIELDS))
     return {name: (grid["rows"], grid["cols"], grid[name], units) for name, (_tag, units) in GEOLOC_FIELDS.items()}
+
+
+#: ``S1A_IW_GRDH_1SDV_<start>_<stop>_<orbit>_<datatake>_<product unique id>[_COG][.SAFE]``
+_SCENE_NAME = re.compile(r"^(S1[A-D]_.+_[0-9A-F]{6})_[0-9A-F]{4}(?:_COG)?(?:\.SAFE)?$")
+
+
+def scene_key(name: str) -> str | None:
+    """``name`` without the product unique id (and ``_COG`` / ``.SAFE``), which
+    change every time ESA reprocesses the scene -- or None if ``name`` is not a
+    Sentinel-1 product name."""
+    match = _SCENE_NAME.match(name)
+    return match.group(1) if match else None

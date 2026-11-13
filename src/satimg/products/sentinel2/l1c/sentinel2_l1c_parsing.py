@@ -175,3 +175,17 @@ def parse_tl(source: Source) -> dict:
         "timestamp": timestamp, "axes": axes, "grids": grids, "attrs": attrs,
         "crs": crs, "transforms": transforms, "pixel_shapes": pixel_shapes,
     }
+
+
+#: ``S2A_MSIL1C_<sensing>_<N baseline>_<R orbit>_<T tile>_<generation time>[.SAFE]``
+_SCENE_NAME = re.compile(
+    r"^(S2[A-D]_MSIL1C_\d{8}T\d{6})_N\d{4}_(R\d{3}_T[0-9A-Z]{5})_\d{8}T\d{6}(?:\.SAFE)?$"
+)
+
+
+def scene_key(name: str) -> str | None:
+    """``name`` without the processing baseline and generation time (and
+    ``.SAFE``), which change every time ESA reprocesses the scene -- or None if
+    ``name`` is not a Sentinel-2 L1C product name."""
+    match = _SCENE_NAME.match(name)
+    return "_".join(match.groups()) if match else None

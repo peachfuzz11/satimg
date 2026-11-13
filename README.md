@@ -525,6 +525,21 @@ connector = get_connector("sentinel-2-l1c",
 connector.download(items[0], "/data/scene.zip")
 ```
 
+A scene that ESA or USGS reprocesses comes back under a new name: Sentinel-1
+changes its product unique id (`..._04368F_4953_COG` → `..._04368F_A1B2_COG`),
+Sentinel-2 its processing baseline and generation time, Landsat its correction
+level, processing date and tier. `satimg.scene_key` drops those parts, so every
+version of one acquisition gets the same key -- use it to skip a scene you
+already have:
+
+```python
+satimg.scene_key("S1A_IW_GRDH_1SDV_20210102T224803_20210102T224828_035965_04368F_4953_COG")
+# 'S1A_IW_GRDH_1SDV_20210102T224803_20210102T224828_035965_04368F'
+```
+
+It takes a search item id, a folder or zip name, or a path. Names of other
+products are returned as they are.
+
 `get_connector("nisar-gcov")` searches the ASF DAAC; its `download` writes the
 granule's own `.h5` rather than a zip. Every other `download` gives you a zip
 archive — see
@@ -589,8 +604,9 @@ Subclass `Product`, implement the abstract hooks (`_open_raw(tile, overview)`,
 with `satimg.label_bands(da, [...])` — and `thumbnail`), set
 `self._transformer`, `self._timestamp` and `self._footprint` in `__init__`
 (the base class serves them as `transformer` / `timestamp` / `footprint`),
-optionally override `_read_metadata` to expose per-pixel metadata, and
-register a filename pattern. For `visual_overview`,
+optionally override `_read_metadata` to expose per-pixel metadata and the
+`scene_key` classmethod if reprocessing changes the product's name (see
+[Downloading](#downloading)), and register a filename pattern. For `visual_overview`,
 `_open_raw` also takes an `overview` factor (pass it on to `merge_bands`) and
 `_visual_paths()` names the rasters the visual is read from:
 

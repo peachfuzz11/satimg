@@ -28,6 +28,10 @@ class LandsatC2L1(Product):
     ``view_azimuth``), read decimated to a coarse grid. ``MTL.json``/angle-raster
     parsing itself lives in :mod:`satimg.products.landsat.c2l1.landsat_c2l1_parsing`."""
 
+    @classmethod
+    def scene_key(cls, name: str) -> str | None:
+        return landsat_c2l1_parsing.scene_key(name)
+
     def __init__(self, source: Source):
         super().__init__(source)
         mtl = landsat_c2l1_parsing.parse_mtl(self._source)

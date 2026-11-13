@@ -35,6 +35,10 @@ class Sentinel1GRD(SARProduct):
     :mod:`satimg.products.sentinel1.grd.sentinel1_grd_parsing`.
     """
 
+    @classmethod
+    def scene_key(cls, name: str) -> str | None:
+        return sentinel1_grd_parsing.scene_key(name)
+
     def __init__(self, source: Source):
         super().__init__(source)
         meta = sentinel1_grd_parsing.read_manifest(self._source)

@@ -57,7 +57,7 @@ from satimg.products.umbra.gec.umbra_gec import UmbraGEC
 from satimg.products.umbra.gec.umbra_gec_connector import UmbraGECConnector
 from satimg.products.viirs.dnb.viirs_dnb import ViirsDNB
 from satimg.products.viirs.dnb.viirs_dnb_connector import ViirsDNBConnector
-from satimg.registry import UnknownProductError
+from satimg.registry import UnknownProductError, scene_key
 from satimg.sar_orbit_geometry import SAROrbitGeometry
 from satimg.sar_product import SARProduct
 from satimg.scene_geometry import SceneGeometry
@@ -72,6 +72,7 @@ __all__ = [
     "SARProduct",
     "Patch",
     "UnknownProductError",
+    "scene_key",
     "CapellaGEC",
     "IceyeGRD",
     "LandsatC2L1",

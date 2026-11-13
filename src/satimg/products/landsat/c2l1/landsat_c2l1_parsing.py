@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 
 import numpy
 import rasterio
@@ -101,3 +102,15 @@ def read_angle_grid(
     cols = (grid_t.c + (numpy.arange(out_w) + 0.5) * grid_t.a - pan_transform.c) / pan_transform.a - 0.5
     rows = (grid_t.f + (numpy.arange(out_h) + 0.5) * grid_t.e - pan_transform.f) / pan_transform.e - 0.5
     return rows, cols, values
+
+
+#: ``LC08_<correction level>_<path row>_<acquired>_<processed>_<collection>_<tier>``
+_SCENE_NAME = re.compile(r"^(L[COTEM]\d{2})_L1[A-Z]{2}_(\d{6}_\d{8})_\d{8}_\d{2}_[A-Z0-9]{2}$")
+
+
+def scene_key(name: str) -> str | None:
+    """``name`` without the correction level, processing date, collection and
+    tier, which change when USGS reprocesses the scene -- or None if ``name`` is
+    not a Landsat Level-1 product name."""
+    match = _SCENE_NAME.match(name)
+    return "_".join(match.groups()) if match else None
