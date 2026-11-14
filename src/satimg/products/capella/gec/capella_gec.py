@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy
 import PIL.Image
+import rasterio
+import shapely
 import xarray
 
 from satimg.metadata.metadata import Metadata
@@ -61,17 +63,35 @@ class CapellaGEC(SARProduct):
         self._attrs = parsed["attrs"]
         transform, crs, self._shape = raster_grid(self._tif)
         self._transformer = AffineTransformer(transform, crs)
-        self._footprint = self._grid_outline()
+        self._footprint = self._imaged_outline()
         self._geometry = SAROrbitGeometry(self._transformer, {}, self._attrs, self._shape)
 
-    def _grid_outline(self) -> dict:
-        """The image grid's outline as a GeoJSON Feature -- the extended
-        metadata carries no footprint, and the grid's corners need no pixel
-        read (the imaged area inside it is a little smaller: the grid is
-        north-up, the collect is not)."""
+    def _imaged_outline(self) -> dict:
+        """The imaged area's outline as a GeoJSON Feature. The extended
+        metadata carries no footprint, and the grid is north-up while the
+        collect is not: a spotlight fills a rotated square of it, zeros
+        around. Traced on the GEC's coarsest overview (a few hundred pixels a
+        side, not the scene): the convex hull of every row's first and last
+        lit pixel, simplified to its corners (within two overview pixels).
+        The whole grid if nothing is lit."""
         h, w = self._shape
-        corners = self._transformer.rowcol_to_latlon([(0, 0), (0, w), (h, w), (h, 0), (0, 0)])
-        ring = [(float(lon), float(lat)) for lat, lon in corners]
+        with rasterio.open(self._tif) as src:
+            factor = max([1, *src.overviews(1)])
+            lit = src.read(1, out_shape=(max(1, h // factor), max(1, w // factor))) > 0
+        rows = numpy.flatnonzero(lit.any(axis=1))
+        if len(rows):
+            first = lit[rows].argmax(axis=1)
+            last = lit.shape[1] - 1 - lit[rows, ::-1].argmax(axis=1)
+            # the lit pixels' outer corners, as (col, row) in the full grid
+            sy, sx = h / lit.shape[0], w / lit.shape[1]
+            points = [(c * sx, r * sy) for row, left, right in zip(rows, first, last)
+                      for c in (left, right + 1) for r in (row, row + 1)]
+            # to within two overview pixels: merges the stair-steps at a corner
+            hull = shapely.MultiPoint(points).convex_hull.simplify(2 * max(sx, sy))
+            corners = [(row, col) for col, row in hull.exterior.coords]
+        else:
+            corners = [(0, 0), (0, w), (h, w), (h, 0), (0, 0)]
+        ring = [(float(lon), float(lat)) for lat, lon in self._transformer.rowcol_to_latlon(corners)]
         return {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [ring]}}
 
     # -- pixels ----------------------------------------------------------------

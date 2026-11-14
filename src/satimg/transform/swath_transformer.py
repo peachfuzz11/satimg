@@ -42,6 +42,9 @@ class SwathTransformer(Transformer):
         self._lat = numpy.asarray(lat, dtype=float)
         self._lon = numpy.asarray(lon, dtype=float)
         self._xyz = unit_vectors(self._lat, self._lon)
+        # every node, flat, NaN as 0 (never nearest): what latlon_to_rowcol's
+        # nearest-node search multiplies against -- built once, not per call
+        self._nodes = numpy.nan_to_num(self._xyz.reshape(-1, 3), nan=0.0)
         self._scan_rows = scan_rows
         # node index range [first, last] of each scan (one scan: everything)
         if scan_rows:
@@ -131,7 +134,7 @@ class SwathTransformer(Transformer):
     def latlon_to_rowcol(self, coords: Coords) -> numpy.ndarray:
         ll = as_n2(coords)
         target = unit_vectors(ll[:, 0], ll[:, 1])
-        nodes = numpy.nan_to_num(self._xyz.reshape(-1, 3), nan=0.0)
+        nodes = self._nodes
         out = numpy.full((len(ll), 2), numpy.nan)
         # the nearest-node search is a (points x nodes) product: bound it to
         # ~20M entries, whatever the node grid's size

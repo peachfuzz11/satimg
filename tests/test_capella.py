@@ -52,12 +52,34 @@ def test_opens_the_product_folder(product):
     assert product.transformer.crs.to_epsg() == fx.EPSG
 
 
-def test_footprint_is_the_grid_outline(product):
+def _footprint_corners(product):
     ring = product.footprint["geometry"]["coordinates"][0]
-    assert len(ring) == 5 and ring[0] == ring[-1]
-    corners = product.transformer.latlon_to_rowcol([(lat, lon) for lon, lat in ring[:4]])
-    expected = [[0, 0], [0, fx.WIDTH], [fx.HEIGHT, fx.WIDTH], [fx.HEIGHT, 0]]
-    assert corners.ravel() == pytest.approx(numpy.ravel(expected), abs=1e-6)
+    assert ring[0] == ring[-1]
+    return product.transformer.latlon_to_rowcol([(lat, lon) for lon, lat in ring[:-1]])
+
+
+def test_footprint_is_the_imaged_area(product):
+    # the fixture's 8-pixel zero border is left out (to within two of the
+    # coarsest overview's 4-pixel pixels)
+    corners = _footprint_corners(product)
+    assert len(corners) == 4
+    assert sorted(map(tuple, corners.round())) == pytest.approx(
+        sorted([(8, 8), (8, fx.WIDTH - 8), (fx.HEIGHT - 8, 8), (fx.HEIGHT - 8, fx.WIDTH - 8)]), abs=8)
+
+
+def test_footprint_of_a_rotated_collect(tmp_path, monkeypatch):
+    # a spotlight's imaged area is a rotated square in the north-up grid: a
+    # diamond here, zeros around it
+    rows, cols = numpy.mgrid[:fx.HEIGHT, :fx.WIDTH]
+    diamond = abs(rows - fx.HEIGHT / 2) + abs(cols - fx.WIDTH / 2) <= 90
+    monkeypatch.setattr(fx, "image", lambda: numpy.where(diamond, fx.dn(fx.SEA_DB), 0).astype("uint16"))
+    with satimg.open(str(fx.build(tmp_path))) as p:
+        corners = _footprint_corners(p)
+    expected = [(fx.HEIGHT / 2 - 90, fx.WIDTH / 2), (fx.HEIGHT / 2, fx.WIDTH / 2 + 90),
+                (fx.HEIGHT / 2 + 90, fx.WIDTH / 2), (fx.HEIGHT / 2, fx.WIDTH / 2 - 90)]
+    assert len(corners) == 4
+    for corner in expected:
+        assert numpy.hypot(*(corners - corner).T).min() <= 8  # two overview pixels
 
 
 def test_sigma0_is_calibrated(product):
