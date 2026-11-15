@@ -18,6 +18,7 @@ import numpy
 from rasterio.crs import CRS
 from rasterio.transform import Affine
 
+from satimg.source.local_source import FileSource
 from satimg.source.source import Source
 
 #: the L-band science group (an S-band product has ``SSAR`` instead).
@@ -55,8 +56,9 @@ MAX_CUBE_NODES = 128
 
 def find_h5(source: Source) -> str:
     """Root-relative path of the product's ``.h5``: the source itself when it
-    is one file, else the first ``.h5`` at its root (a zip holding one)."""
-    if source.name.endswith(".h5") and source.exists(source.name):
+    is one file (named with ``.h5`` or not: ``download`` writes it to whatever
+    path it is given), else the first ``.h5`` at its root (a zip holding one)."""
+    if isinstance(source, FileSource) or (source.name.endswith(".h5") and source.exists(source.name)):
         return source.name
     for name in sorted(source.listdir()):
         if name.endswith(".h5"):
