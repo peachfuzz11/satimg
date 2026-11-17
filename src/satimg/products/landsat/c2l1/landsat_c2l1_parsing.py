@@ -39,6 +39,25 @@ ANGLE_FILES = {
 }
 ANGLE_SCALE = 0.01
 
+#: OLI band number of each optical band of ``BANDS``: the ``<n>`` of ``MTL.json``'s
+#: ``REFLECTANCE_MULT_BAND_<n>`` / ``REFLECTANCE_ADD_BAND_<n>``.
+BAND_NUMBER = {"coastal": 1, "blue": 2, "green": 3, "red": 4, "nir08": 5,
+               "swir16": 6, "swir22": 7, "pan": 8, "cirrus": 9}
+#: ``(multiplier, offset)`` every Collection 2 Level-1 OLI band carries; used if ``MTL.json`` has none.
+DEFAULT_REFLECTANCE = (2.0e-5, -0.1)
+
+
+def reflectance_coefficients(mtl: dict) -> dict[str, tuple[float, float]]:
+    """``{band: (multiplier, offset)}`` from ``MTL.json``'s radiometric rescaling:
+    top-of-atmosphere reflectance is ``(multiplier * DN + offset) / sin(sun elevation)``."""
+    rescale = mtl.get("LEVEL1_RADIOMETRIC_RESCALING", {})
+    out = {}
+    for band, n in BAND_NUMBER.items():
+        mult = rescale.get(f"REFLECTANCE_MULT_BAND_{n}")
+        add = rescale.get(f"REFLECTANCE_ADD_BAND_{n}")
+        out[band] = (float(mult), float(add)) if mult is not None and add is not None else DEFAULT_REFLECTANCE
+    return out
+
 
 def parse_mtl(source: Source) -> dict:
     """``MTL.json``'s image attrs, acquisition timestamp, footprint, and
@@ -80,6 +99,7 @@ def parse_mtl(source: Source) -> dict:
 
     return {
         "image_attrs": attrs,
+        "reflectance": reflectance_coefficients(mtl),
         "timestamp": timestamp,
         "footprint": footprint,
         "transformer": transformer,

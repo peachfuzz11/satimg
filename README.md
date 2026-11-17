@@ -93,6 +93,12 @@ product.visual  # uint8 visualisation: 3-band true colour for optical    -> xarr
 Both are lazy `DataArray`s over the **same grid**, so a `Window` means the same
 thing in each.
 
+Landsat's `visual` is rendered from top-of-atmosphere reflectance (`MTL.json`
+rescaling and the sun elevation), pan-sharpened with a ratio Brovey, the Rayleigh
+path reflectance for that sun elevation removed, then mapped to 8 bits by a fixed
+white point and gamma. Nothing is computed from the scene's own pixels, so every
+window and overview looks the same.
+
 `visual_overview(factor)` is the visual decimated `factor` times, read from the
 overviews the product's own rasters carry (Sentinel-1 GRD COGs have 2x to 64x),
 so a zoomed-out view or a thumbnail reads a fraction of the pixels.
