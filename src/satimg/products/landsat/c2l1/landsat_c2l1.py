@@ -24,6 +24,8 @@ GEOMETRY_GRID = 32
 #: true-colour render, see :meth:`LandsatC2L1._render_visual`
 WHITE_POINT = 0.35  #: top-of-atmosphere reflectance that maps to 255
 GAMMA = 2.2
+#: Rayleigh optical depth at the red, green and blue band centres (Hansen & Travis 1974, sea level)
+RAYLEIGH_TAU = (0.0479, 0.0895, 0.166)
 PAN_WEIGHTS = (0.3, 0.3, 0.35)  #: red, green, blue weights of the synthetic panchromatic band
 
 
@@ -67,11 +69,14 @@ class LandsatC2L1(Product):
         1. DN -> reflectance with ``MTL.json``'s rescaling and the sun elevation.
         2. Ratio-Brovey pan-sharpening: each colour keeps its own magnitude and is scaled by the
            pan band over a synthetic pan (:data:`PAN_WEIGHTS`).
-        3. Reflectance :data:`WHITE_POINT` maps to 255, through a :data:`GAMMA` curve. Pixels with
-           no pan data are 0.
+        3. The Rayleigh path reflectance is subtracted per colour (single scattering, nadir view:
+           ``tau * 0.75 * (1 + mu**2) / (4 * mu)`` with ``mu`` the sine of the sun elevation and
+           ``tau`` from :data:`RAYLEIGH_TAU`), then the rest is scaled so :data:`WHITE_POINT` maps
+           to 255 through a :data:`GAMMA` curve. Pixels with no pan data are 0.
 
-        Every constant is fixed: nothing is computed from the scene's pixels, so every window and
-        overview of every scene is rendered by the same function of its own reflectance.
+        The correction comes from the sun elevation in ``MTL.json`` and fixed physical constants;
+        nothing is computed from the scene's pixels, so every window and overview of every scene is
+        rendered by the same function of its own reflectance.
         """
         a = raw.drop_vars("band")  # positional indexing below; relabel at the end
         bands = ("red", "green", "blue", "pan")
@@ -85,7 +90,10 @@ class LandsatC2L1(Product):
         synthetic = (rgb * (weights / weights.sum())[:, None, None]).sum(dim="band")
         sharp = rgb * (pan / (synthetic + 1e-6)).clip(0, 4)
 
-        tone = (sharp / WHITE_POINT).clip(max=1) ** (1 / GAMMA)
+        mu = self._sin_sun
+        path = (numpy.array(RAYLEIGH_TAU, dtype="float32") * 0.75 * (1 + mu**2) / (4 * mu))[:, None, None]
+        span = numpy.maximum(WHITE_POINT - path, 1e-3)
+        tone = ((sharp - path).clip(min=0) / span).clip(max=1) ** (1 / GAMMA)
         tone = tone.where(a.isel(band=landsat_c2l1_parsing.PAN) > 0, 0).fillna(0)
         return label_bands(as_band_yx((255 * tone).clip(0, 255).astype("uint8")),
                            ("red", "green", "blue"))

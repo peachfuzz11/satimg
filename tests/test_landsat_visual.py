@@ -10,7 +10,7 @@ import pytest
 import xarray
 
 from satimg.products.landsat.c2l1 import landsat_c2l1_parsing
-from satimg.products.landsat.c2l1.landsat_c2l1 import GAMMA, WHITE_POINT
+from satimg.products.landsat.c2l1.landsat_c2l1 import GAMMA, RAYLEIGH_TAU, WHITE_POINT
 from satimg.products.landsat.c2l1.landsat_c2l1_parsing import BANDS, reflectance_coefficients
 
 
@@ -18,6 +18,12 @@ def _dn(product, rho: float) -> int:
     """The DN of every optical band that gives top-of-atmosphere reflectance ``rho``."""
     mult, add = product._reflectance["red"]
     return round((rho * product._sin_sun - add) / mult)
+
+
+def _path(product) -> numpy.ndarray:
+    """The Rayleigh path reflectance (red, green, blue) the render subtracts for this scene's sun."""
+    mu = product._sin_sun
+    return numpy.array(RAYLEIGH_TAU) * 0.75 * (1 + mu**2) / (4 * mu)
 
 
 def _raw(product, rhos) -> xarray.DataArray:
@@ -50,7 +56,17 @@ class TestRender:
         # DNs are whole numbers, so test just above the white point (it clips) and at half of it
         out = landsat._render_visual(_raw(landsat, [WHITE_POINT * 1.05, WHITE_POINT / 2]), 2).values
         assert (out[:, 0, 0] == 255).all()
-        assert abs(int(out[0, 0, 1]) - 255 * 0.5 ** (1 / GAMMA)) <= 1
+        path = _path(landsat)  # equal colours and pan: pan-sharpening changes nothing
+        half = 255 * (numpy.clip(WHITE_POINT / 2 - path, 0, None) / (WHITE_POINT - path)) ** (1 / GAMMA)
+        assert numpy.abs(out[:, 0, 1].astype(float) - half).max() <= 1
+
+    def test_the_rayleigh_path_reflectance_is_removed(self, landsat):
+        path = _path(landsat)
+        below = landsat._render_visual(_raw(landsat, [path.min() * 0.99]), 1).values
+        assert (below == 0).all()  # under every colour's path reflectance
+        above = landsat._render_visual(_raw(landsat, [path.max() * 2]), 1).values
+        assert (above > 0).all()
+        assert path[0] < path[1] < path[2]  # the short wavelengths scatter most: red < green < blue
 
     def test_brighter_reflectance_is_brighter(self, landsat):
         out = landsat._render_visual(_raw(landsat, [0.02, 0.1, 0.2, 0.3]), 4).values[0, 0]
@@ -66,11 +82,9 @@ class TestRender:
         crowded = landsat._render_visual(_raw(landsat, [0.01, 0.2, 0.3, None]), 4).values[:, 0, 1]
         assert alone.tolist() == crowded.tolist()
 
-    def test_pan_sharpening_keeps_each_colour_magnitude(self, landsat):
+    def test_a_brighter_pan_band_brightens_every_colour(self, landsat):
         raw = _raw(landsat, [0.2])
-        # pan twice as bright as the colours: the render brightens, but colours stay in the same ratio
         plain = landsat._render_visual(raw, 1).values[:, 0, 0].astype(int)
         raw.loc[dict(band="pan")] = _dn(landsat, 0.4)
         bright = landsat._render_visual(raw, 1).values[:, 0, 0].astype(int)
         assert (bright > plain).all()
-        assert len(set(plain.tolist())) == 1 and len(set(bright.tolist())) == 1  # equal-DN colours stay grey
