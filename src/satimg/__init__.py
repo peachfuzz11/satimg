@@ -45,6 +45,9 @@ from satimg.products.modis.qkm.modis_qkm_connector import ModisQKMConnector
 from satimg.products.nisar.gcov.nisar_gcov import NisarGCOV
 from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
 from satimg.products.sentinel1.grd.sentinel1_grd import Sentinel1GRD
+from satimg.products.sentinel1.grd.sentinel1_grd_asf_connector import (
+    Sentinel1GRDASFConnector,
+)
 from satimg.products.sentinel1.grd.sentinel1_grd_connector import Sentinel1GRDConnector
 from satimg.products.sentinel2.l1c.sentinel2_l1c import Sentinel2L1C
 from satimg.products.sentinel2.l1c.sentinel2_l1c_connector import Sentinel2L1CConnector
@@ -104,6 +107,7 @@ __all__ = [
     "ModisQKMConnector",
     "NisarGCOVConnector",
     "Sentinel1GRDConnector",
+    "Sentinel1GRDASFConnector",
     "Sentinel2L1CConnector",
     "Sentinel3OLCIConnector",
     "UmbraGECConnector",

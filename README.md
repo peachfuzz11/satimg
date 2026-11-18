@@ -502,7 +502,17 @@ except Umbra, Capella and ICEYE, which need none at all.
 Pass credentials to the connector, or set environment variables
 (`CDSE_USERNAME` / `CDSE_PASSWORD` for Copernicus, `USGS_USERNAME` /
 `USGS_PASSWORD` / optional `USGS_TOKEN` for USGS, `EARTHDATA_TOKEN` -- or
-`EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD` -- for NISAR via NASA Earthdata).
+`EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD` -- for NISAR and Sentinel-1 via the
+Alaska Satellite Facility).
+
+Sentinel-1 has two sources. `get_connector("sentinel-1-grd")` searches the
+Copernicus Data Space COG catalogue, which holds Sentinel-1A, -1C and later --
+no Sentinel-1B, and its products carry another checksum than the original name.
+`get_connector("sentinel-1-grd-asf")` uses the Alaska Satellite Facility,
+which has Sentinel-1A *and* -1B as the original ESA `GRD_HD` products under
+their original names, so a scene listed by its ESA name is found by that exact
+name (`search(ids=[name])`; extra ASF parameters such as `platform="S1B"` pass
+through). `download` writes the product's own zip.
 
 ```python
 from satimg import get_connector

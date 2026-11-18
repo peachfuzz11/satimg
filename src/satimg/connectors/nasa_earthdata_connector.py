@@ -28,17 +28,22 @@ EDL_HOST = "urs.earthdata.nasa.gov"
 CMR_GRANULES = "https://cmr.earthdata.nasa.gov/search/granules.json"
 
 
+def _domain(host: str | None) -> str:
+    return ".".join((host or "").split(".")[-3:])
+
+
 class EarthdataSession(requests.Session):
-    """Keeps basic auth on the redirect to Earthdata Login (and only there):
-    ``requests`` drops credentials on any cross-host redirect, which is
-    exactly the hop EDL's OAuth flow needs them on; and a bearer token must
-    not follow the DAAC's redirect on to signed cloud storage."""
+    """Keeps basic auth on the redirect to Earthdata Login, and between hosts
+    of one DAAC (ASF's ``datapool`` -> ``sentinel1``): ``requests`` drops
+    credentials on any cross-host redirect, which is exactly the hop EDL's
+    OAuth flow needs them on. A bearer token must not follow the DAAC's
+    redirect on to signed cloud storage."""
 
     def rebuild_auth(self, prepared_request, response):
         if "Authorization" in prepared_request.headers:
             new = urlparse(prepared_request.url).hostname
             old = urlparse(response.request.url).hostname
-            if new != old and EDL_HOST not in (new, old):
+            if new != old and EDL_HOST not in (new, old) and _domain(new) != _domain(old):
                 del prepared_request.headers["Authorization"]
 
 
