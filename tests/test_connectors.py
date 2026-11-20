@@ -156,3 +156,92 @@ class TestDownloads:
         with pytest.raises(RuntimeError):
             connector.download(item, str(tmp_path / "l.zip"))
         assert list(tmp_path.iterdir()) == []
+
+
+class TestASF:
+    def test_auth_follows_asf_host_hops_but_not_cloud_storage(self):
+        import requests
+        from satimg.connectors.nasa_earthdata_connector import EarthdataSession
+
+        def hop(old, new):
+            prepared = requests.Request("GET", new, headers={"Authorization": "x"}).prepare()
+            response = requests.Response()
+            response.request = requests.Request("GET", old).prepare()
+            EarthdataSession().rebuild_auth(prepared, response)
+            return "Authorization" in prepared.headers
+
+        assert hop("https://datapool.asf.alaska.edu/a.zip", "https://sentinel1.asf.alaska.edu/a.zip")
+        assert hop("https://sentinel1.asf.alaska.edu/a.zip", "https://urs.earthdata.nasa.gov/oauth/authorize")
+        assert not hop("https://sentinel1.asf.alaska.edu/a.zip", "https://abc.cloudfront.net/a.zip")
+
+    def test_factory_builds_both_asf_connectors_offline(self):
+        from satimg.products.nisar.gcov.nisar_gcov_connector import NisarGCOVConnector
+        from satimg.products.sentinel1.grd.sentinel1_grd_asf_connector import Sentinel1GRDASFConnector
+
+        assert isinstance(get_connector("sentinel-1-grd-asf"), Sentinel1GRDASFConnector)
+        assert isinstance(get_connector("nisar-gcov"), NisarGCOVConnector)
+
+    def test_sentinel1_search_asks_asf_for_iw_grd_hd(self, monkeypatch):
+        from satimg.connectors import asf_connector
+
+        seen = {}
+
+        class Reply:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"features": [{"properties": {"sceneName": "S1B_X", "url": "https://asf/S1B_X.zip"}}]}
+
+        def get(url, params, timeout):
+            seen.update(url=url, params=params)
+            return Reply()
+
+        monkeypatch.setattr(asf_connector.requests, "get", get)
+        items = get_connector("sentinel-1-grd-asf").search(ids=["S1B_X"], platform="S1B")
+        assert seen["url"] == asf_connector.SEARCH_URL
+        assert seen["params"] == {"dataset": "SENTINEL-1", "processingLevel": "GRD_HD", "output": "geojson",
+                                  "beamMode": "IW", "platform": "S1B", "granule_list": "S1B_X"}
+        assert [(i["id"], i["assets"]["data"]["href"]) for i in items] == [("S1B_X", "https://asf/S1B_X.zip")]
+
+    def test_nisar_keeps_its_dataset_and_level(self, monkeypatch):
+        from satimg.connectors import asf_connector
+
+        seen = {}
+
+        class Reply:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"features": []}
+
+        monkeypatch.setattr(asf_connector.requests, "get", lambda url, params, timeout: seen.update(params=params) or Reply())
+        get_connector("nisar-gcov").search()
+        assert (seen["params"]["dataset"], seen["params"]["processingLevel"]) == ("NISAR", "GCOV")
+
+    def test_download_needs_a_login(self, monkeypatch):
+        for var in ("EARTHDATA_TOKEN", "EARTHDATA_USERNAME", "EARTHDATA_PASSWORD"):
+            monkeypatch.delenv(var, raising=False)
+        with pytest.raises(CredentialsError):
+            get_connector("sentinel-1-grd-asf")._get_session()
+
+    def test_download_streams_to_the_file_and_leaves_nothing_on_failure(self, tmp_path, monkeypatch):
+        from satimg.connectors import asf_connector
+
+        connector = get_connector("sentinel-1-grd-asf", token="t")
+        item = {"id": "S1B_X", "assets": {"data": {"href": "https://asf/S1B_X.zip"}}}
+        monkeypatch.setattr(asf_connector, "stream", lambda session, url, f: f.write(b"zip"))
+        out = tmp_path / "x.zip"
+        assert connector.download(item, str(out)) == str(out)
+        assert out.read_bytes() == b"zip"
+        assert not (tmp_path / "x.zip.part").exists()
+
+        def fail(session, url, f):
+            f.write(b"par")
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(asf_connector, "stream", fail)
+        with pytest.raises(RuntimeError):
+            connector.download(item, str(tmp_path / "y.zip"))
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["x.zip"]
