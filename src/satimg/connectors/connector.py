@@ -38,6 +38,10 @@ class STACConnector(Connector, abc.ABC):
     STAC_ENDPOINT: str | None = None
     collection: str | None = None
     product_type: str | None = None
+    # Items per STAC page. Pages are fetched back to back, and the Copernicus
+    # STAC WAF answers 429 after a few rapid requests, so a large AOI that
+    # spans several pages at the server's default of 10 never completes.
+    page_size: int = 1000
 
     @property
     def client(self):
@@ -89,6 +93,7 @@ class STACConnector(Connector, abc.ABC):
                 intersects=geojson,
                 ids=ids,
                 filter=query_filter,
+                limit=self.page_size,
             ).items()
         ]
         if exclude_ids:
