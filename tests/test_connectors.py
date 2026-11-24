@@ -48,6 +48,19 @@ class TestConnectors:
         assert isinstance(connector, LandsatC2L1Connector)
         assert (connector._username, connector._password, connector._token) == ("u", "p", "t")
 
+    def test_search_asks_for_large_pages(self, monkeypatch):
+        connector = get_connector("sentinel-1-grd")
+        calls = []
+
+        class _Client:
+            def search(self, **kwargs):
+                calls.append(kwargs)
+                return type("_Search", (), {"items": lambda self: iter(())})()
+
+        monkeypatch.setattr(connector, "_client", _Client(), raising=False)
+        connector.search()
+        assert calls[0]["limit"] == connector.page_size == 1000
+
     def test_unknown_collection(self):
         with pytest.raises(ValueError, match="no connector"):
             get_connector("modis")
